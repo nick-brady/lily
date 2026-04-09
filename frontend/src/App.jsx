@@ -27,6 +27,26 @@ function AppContent() {
   });
   const [loading, setLoading] = useState(true);
 
+  // Fetch data from server
+  const fetchData = useCallback(async () => {
+    try {
+      const [feedRes, contractionsRes] = await Promise.all([
+        fetch(`${API_URL}/feed`),
+        fetch(`${API_URL}/contractions`)
+      ]);
+      const feedData = await feedRes.json();
+      const contractionsData = await contractionsRes.json();
+
+      setFeed(feedData);
+      setContractions(contractionsData);
+
+      const active = contractionsData.find(c => !c.end_time);
+      setActiveContraction(active || null);
+    } catch (error) {
+      console.error('Failed to fetch data:', error);
+    }
+  }, []);
+
   // Handle WebSocket messages
   const handleWsMessage = useCallback((message) => {
     if (message.type === 'contraction_new') {
@@ -67,12 +87,19 @@ function AppContent() {
         const newItem = { feed_type: update.type, timestamp: update.timestamp, ...update };
         return [newItem, ...prev].sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
       });
+    } else if (message.type === 'update_edit') {
+      const update = message.data;
+      setFeed(prev => prev.map(f =>
+        f.feed_type !== 'contraction' && f.id === update.id
+          ? { ...f, content: update.content }
+          : f
+      ));
     } else if (message.type === 'update_delete') {
       setFeed(prev => prev.filter(f => !(f.feed_type !== 'contraction' && f.id === message.id)));
     }
   }, [activeContraction]);
 
-  const { isConnected } = useWebSocket(handleWsMessage);
+  const { isConnected } = useWebSocket(handleWsMessage, fetchData);
 
   // Apply dark mode
   useEffect(() => {
@@ -82,28 +109,12 @@ function AppContent() {
 
   // Fetch initial data
   useEffect(() => {
-    const fetchData = async () => {
-      try {
-        const [feedRes, contractionsRes] = await Promise.all([
-          fetch(`${API_URL}/feed`),
-          fetch(`${API_URL}/contractions`)
-        ]);
-        const feedData = await feedRes.json();
-        const contractionsData = await contractionsRes.json();
-
-        setFeed(feedData);
-        setContractions(contractionsData);
-
-        const active = contractionsData.find(c => !c.end_time);
-        if (active) setActiveContraction(active);
-      } catch (error) {
-        console.error('Failed to fetch data:', error);
-      } finally {
-        setLoading(false);
-      }
+    const init = async () => {
+      await fetchData();
+      setLoading(false);
     };
-    fetchData();
-  }, []);
+    init();
+  }, [fetchData]);
 
   const handleStart = async () => {
     const now = new Date().toISOString();
@@ -132,6 +143,19 @@ function AppContent() {
       setActiveContraction(null);
     } catch (error) {
       console.error('Failed to stop contraction:', error);
+    }
+  };
+
+  const handleCancel = async () => {
+    if (!activeContraction) return;
+    try {
+      await fetch(`${API_URL}/contraction/${activeContraction.id}`, {
+        method: 'DELETE',
+        headers: getAuthHeaders(),
+      });
+      setActiveContraction(null);
+    } catch (error) {
+      console.error('Failed to cancel contraction:', error);
     }
   };
 
@@ -259,7 +283,19 @@ function AppContent() {
       <main className="max-w-4xl mx-auto px-4 py-6 space-y-6">
         {/* Contraction Button - Admin only */}
         {isAdmin && (
-          <section className="card flex justify-center py-8">
+          <section className="card relative flex justify-center py-8">
+            {activeContraction && (
+              <button
+                onClick={handleCancel}
+                className="absolute top-3 right-3 p-2 text-gray-400 hover:text-red-500
+                           dark:text-gray-500 dark:hover:text-red-400 transition-colors"
+                title="Cancel contraction"
+              >
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            )}
             <ContractionButton
               onStart={handleStart}
               onStop={handleStop}
@@ -275,7 +311,7 @@ function AppContent() {
 
         {/* Timeline Tab */}
         {activeTab === 'timeline' && (
-          <Timeline feed={feed} isAdmin={isAdmin} onDelete={handleDelete} />
+          <Timeline feed={feed} isAdmin={isAdmin} onDelete={handleDelete} getAuthHeaders={getAuthHeaders} />
         )}
 
         {/* Stats Tab */}

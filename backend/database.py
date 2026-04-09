@@ -104,11 +104,17 @@ def get_all_contractions() -> List[dict]:
     rows = cursor.fetchall()
     conn.close()
 
+    def ensure_utc_marker(ts):
+        # Add Z suffix if timestamp doesn't have timezone info
+        if ts and not ts.endswith('Z') and '+' not in ts:
+            return ts + 'Z'
+        return ts
+
     return [
         {
             "id": row["id"],
-            "start_time": row["start_time"],
-            "end_time": row["end_time"],
+            "start_time": ensure_utc_marker(row["start_time"]),
+            "end_time": ensure_utc_marker(row["end_time"]),
             "duration_seconds": row["duration_seconds"]
         }
         for row in rows
@@ -131,10 +137,13 @@ def create_update(timestamp: datetime, update_type: str, content: str = None,
     conn = get_connection()
     cursor = conn.cursor()
 
+    # Store with Z suffix to indicate UTC
+    timestamp_str = timestamp.isoformat() + 'Z' if not timestamp.tzinfo else timestamp.isoformat()
+
     cursor.execute(
         """INSERT INTO updates (timestamp, type, content, photo_filename, audio_filename, milestone)
            VALUES (?, ?, ?, ?, ?, ?)""",
-        (timestamp.isoformat(), update_type, content, photo_filename, audio_filename, milestone)
+        (timestamp_str, update_type, content, photo_filename, audio_filename, milestone)
     )
     conn.commit()
 
@@ -143,7 +152,7 @@ def create_update(timestamp: datetime, update_type: str, content: str = None,
 
     return {
         "id": update_id,
-        "timestamp": timestamp.isoformat(),
+        "timestamp": timestamp_str,
         "type": update_type,
         "content": content,
         "photo_filename": photo_filename,
@@ -159,10 +168,16 @@ def get_all_updates() -> List[dict]:
     rows = cursor.fetchall()
     conn.close()
 
+    def ensure_utc_marker(ts):
+        # Add Z suffix if timestamp doesn't have timezone info
+        if ts and not ts.endswith('Z') and '+' not in ts:
+            return ts + 'Z'
+        return ts
+
     return [
         {
             "id": row["id"],
-            "timestamp": row["timestamp"],
+            "timestamp": ensure_utc_marker(row["timestamp"]),
             "type": row["type"],
             "content": row["content"],
             "photo_filename": row["photo_filename"],
@@ -171,6 +186,36 @@ def get_all_updates() -> List[dict]:
         }
         for row in rows
     ]
+
+
+def update_update(update_id: int, content: str) -> Optional[dict]:
+    """Update the content/caption of an update"""
+    conn = get_connection()
+    cursor = conn.cursor()
+
+    cursor.execute("SELECT * FROM updates WHERE id = ?", (update_id,))
+    row = cursor.fetchone()
+
+    if not row:
+        conn.close()
+        return None
+
+    cursor.execute("UPDATE updates SET content = ? WHERE id = ?", (content, update_id))
+    conn.commit()
+
+    cursor.execute("SELECT * FROM updates WHERE id = ?", (update_id,))
+    row = cursor.fetchone()
+    conn.close()
+
+    return {
+        "id": row["id"],
+        "timestamp": row["timestamp"],
+        "type": row["type"],
+        "content": row["content"],
+        "photo_filename": row["photo_filename"],
+        "audio_filename": row["audio_filename"],
+        "milestone": row["milestone"]
+    }
 
 
 def delete_update(update_id: int) -> Optional[dict]:

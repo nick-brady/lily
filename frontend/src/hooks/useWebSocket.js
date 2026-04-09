@@ -4,18 +4,24 @@ const WS_URL = import.meta.env.DEV
   ? 'ws://localhost:8000/ws'
   : `wss://${window.location.host}/ws`;
 
-export function useWebSocket(onMessage) {
+export function useWebSocket(onMessage, onReconnect) {
   const [isConnected, setIsConnected] = useState(false);
   const wsRef = useRef(null);
   const reconnectTimeoutRef = useRef(null);
   const pingIntervalRef = useRef(null);
   const reconnectAttemptRef = useRef(0);
+  const hasConnectedBeforeRef = useRef(false);
   const onMessageRef = useRef(onMessage);
+  const onReconnectRef = useRef(onReconnect);
 
-  // Keep onMessage ref updated
+  // Keep refs updated
   useEffect(() => {
     onMessageRef.current = onMessage;
   }, [onMessage]);
+
+  useEffect(() => {
+    onReconnectRef.current = onReconnect;
+  }, [onReconnect]);
 
   useEffect(() => {
     let mounted = true;
@@ -36,6 +42,12 @@ export function useWebSocket(onMessage) {
         ws.onopen = () => {
           if (!mounted) return;
           setIsConnected(true);
+
+          // If this is a reconnection, trigger data refresh
+          if (hasConnectedBeforeRef.current) {
+            onReconnectRef.current?.();
+          }
+          hasConnectedBeforeRef.current = true;
           reconnectAttemptRef.current = 0;
 
           // Start ping interval to keep connection alive

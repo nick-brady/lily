@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 
-export default function ContractionButton({ onStart, onStop, activeContraction }) {
+export default function ContractionButton({ onStart, onStop, onCancel, activeContraction }) {
   const [elapsed, setElapsed] = useState(0);
 
   useEffect(() => {

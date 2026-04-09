@@ -21,6 +21,7 @@ export default function UpdateForm({ getAuthHeaders, onSuccess }) {
   const [audioBlob, setAudioBlob] = useState(null);
   const [audioUrl, setAudioUrl] = useState(null);
   const [audioCaption, setAudioCaption] = useState('');
+  const [audioMimeType, setAudioMimeType] = useState('audio/webm');
   const [recordingTime, setRecordingTime] = useState(0);
   const mediaRecorderRef = useRef(null);
   const audioChunksRef = useRef([]);
@@ -49,6 +50,7 @@ export default function UpdateForm({ getAuthHeaders, onSuccess }) {
     setAudioBlob(null);
     setAudioUrl(null);
     setAudioCaption('');
+    setAudioMimeType('audio/webm');
     setRecordingTime(0);
     setIsRecording(false);
     if (timerRef.current) clearInterval(timerRef.current);
@@ -154,9 +156,19 @@ export default function UpdateForm({ getAuthHeaders, onSuccess }) {
   const startRecording = async () => {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      const mediaRecorder = new MediaRecorder(stream);
+
+      // Use MP4 for Safari/iOS, WebM for others
+      let mimeType = 'audio/webm';
+      if (MediaRecorder.isTypeSupported('audio/mp4')) {
+        mimeType = 'audio/mp4';
+      } else if (MediaRecorder.isTypeSupported('audio/webm;codecs=opus')) {
+        mimeType = 'audio/webm;codecs=opus';
+      }
+
+      const mediaRecorder = new MediaRecorder(stream, { mimeType });
       mediaRecorderRef.current = mediaRecorder;
       audioChunksRef.current = [];
+      setAudioMimeType(mimeType);
 
       mediaRecorder.ondataavailable = (e) => {
         if (e.data.size > 0) {
@@ -165,7 +177,7 @@ export default function UpdateForm({ getAuthHeaders, onSuccess }) {
       };
 
       mediaRecorder.onstop = () => {
-        const blob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
+        const blob = new Blob(audioChunksRef.current, { type: mimeType });
         setAudioBlob(blob);
         const url = URL.createObjectURL(blob);
         setAudioUrl(url);
@@ -207,8 +219,10 @@ export default function UpdateForm({ getAuthHeaders, onSuccess }) {
     setLoading(true);
     setError('');
 
+    // Determine file extension from mime type
+    const ext = audioMimeType.includes('mp4') ? '.m4a' : '.webm';
     const formData = new FormData();
-    formData.append('file', audioBlob, 'voice-memo.webm');
+    formData.append('file', audioBlob, `voice-memo${ext}`);
     if (audioCaption) {
       formData.append('caption', audioCaption);
     }

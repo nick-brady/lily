@@ -219,6 +219,21 @@ async def upload_audio(
     return result
 
 
+@app.put("/update/{update_id}", response_model=UpdateResponse)
+async def edit_update(
+    update_id: int,
+    content: str = Form(...),
+    username: str = Depends(get_current_user)
+):
+    result = database.update_update(update_id, content)
+
+    if not result:
+        raise HTTPException(status_code=404, detail="Update not found")
+
+    await manager.broadcast({"type": "update_edit", "data": result})
+    return result
+
+
 @app.delete("/update/{update_id}")
 async def delete_update(
     update_id: int,
