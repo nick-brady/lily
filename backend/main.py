@@ -116,6 +116,18 @@ async def delete_contraction(
     raise HTTPException(status_code=404, detail="Contraction not found")
 
 
+@app.post("/contraction/{contraction_id}/toggle-ignore")
+async def toggle_ignore_interval(
+    contraction_id: int,
+    username: str = Depends(get_current_user)
+):
+    result = database.toggle_ignore_interval(contraction_id)
+    if not result:
+        raise HTTPException(status_code=404, detail="Contraction not found")
+    await manager.broadcast({"type": "contraction_update", "data": result})
+    return result
+
+
 # ============ Updates (Photos, Notes, Milestones) ============
 
 @app.get("/updates", response_model=List[UpdateResponse])

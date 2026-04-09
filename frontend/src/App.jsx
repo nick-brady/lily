@@ -171,6 +171,17 @@ function AppContent() {
     }
   };
 
+  const handleToggleIgnore = async (id) => {
+    try {
+      await fetch(`${API_URL}/contraction/${id}/toggle-ignore`, {
+        method: 'POST',
+        headers: getAuthHeaders(),
+      });
+    } catch (error) {
+      console.error('Failed to toggle ignore:', error);
+    }
+  };
+
   if (loading || authLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-100 dark:bg-gray-900">
@@ -311,7 +322,7 @@ function AppContent() {
 
         {/* Timeline Tab */}
         {activeTab === 'timeline' && (
-          <Timeline feed={feed} isAdmin={isAdmin} onDelete={handleDelete} getAuthHeaders={getAuthHeaders} />
+          <Timeline feed={feed} isAdmin={isAdmin} onDelete={handleDelete} onToggleIgnore={handleToggleIgnore} getAuthHeaders={getAuthHeaders} />
         )}
 
         {/* Stats Tab */}

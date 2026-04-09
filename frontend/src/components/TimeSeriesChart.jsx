@@ -50,19 +50,34 @@ export default function TimeSeriesChart({ contractions, type = 'duration' }) {
         }
       });
     } else {
-      // Interval chart
+      // Interval chart - filter out gaps > 60 min and marked gaps
+      const MAX_INTERVAL_MINUTES = 60;
       for (let i = 1; i < completed.length; i++) {
         const prev = new Date(completed[i - 1].start_time);
         const curr = new Date(completed[i].start_time);
         const interval = (curr - prev) / 1000 / 60; // minutes
 
+        // Skip if this contraction has ignore_interval_before set
+        if (completed[i].ignore_interval_before) {
+          if (data.length > 0 && data[data.length - 1] !== null) {
+            labels.push('');
+            data.push(null);
+          }
+          continue;
+        }
+
+        // Skip intervals that are too large (represent breaks/sleep)
+        if (interval > MAX_INTERVAL_MINUTES) {
+          // Add a break in the line
+          if (data.length > 0 && data[data.length - 1] !== null) {
+            labels.push('');
+            data.push(null);
+          }
+          continue;
+        }
+
         labels.push(curr.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }));
         data.push(interval);
-
-        if (gapIndices.has(i)) {
-          labels.push('');
-          data.push(null);
-        }
       }
     }
 

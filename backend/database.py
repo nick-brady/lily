@@ -20,9 +20,15 @@ def init_db():
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             start_time TEXT NOT NULL,
             end_time TEXT,
-            duration_seconds INTEGER
+            duration_seconds INTEGER,
+            ignore_interval_before INTEGER DEFAULT 0
         )
     """)
+    # Add ignore_interval_before column if it doesn't exist (for existing databases)
+    cursor.execute("PRAGMA table_info(contractions)")
+    columns = [col[1] for col in cursor.fetchall()]
+    if "ignore_interval_before" not in columns:
+        cursor.execute("ALTER TABLE contractions ADD COLUMN ignore_interval_before INTEGER DEFAULT 0")
     cursor.execute("""
         CREATE TABLE IF NOT EXISTS updates (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -115,7 +121,8 @@ def get_all_contractions() -> List[dict]:
             "id": row["id"],
             "start_time": ensure_utc_marker(row["start_time"]),
             "end_time": ensure_utc_marker(row["end_time"]),
-            "duration_seconds": row["duration_seconds"]
+            "duration_seconds": row["duration_seconds"],
+            "ignore_interval_before": bool(row["ignore_interval_before"]) if row["ignore_interval_before"] is not None else False
         }
         for row in rows
     ]
@@ -129,6 +136,41 @@ def delete_contraction(contraction_id: int) -> bool:
     conn.commit()
     conn.close()
     return deleted
+
+
+def toggle_ignore_interval(contraction_id: int) -> Optional[dict]:
+    """Toggle the ignore_interval_before flag on a contraction"""
+    conn = get_connection()
+    cursor = conn.cursor()
+
+    cursor.execute("SELECT * FROM contractions WHERE id = ?", (contraction_id,))
+    row = cursor.fetchone()
+
+    if not row:
+        conn.close()
+        return None
+
+    new_value = 0 if row["ignore_interval_before"] else 1
+    cursor.execute(
+        "UPDATE contractions SET ignore_interval_before = ? WHERE id = ?",
+        (new_value, contraction_id)
+    )
+    conn.commit()
+
+    def ensure_utc_marker(ts):
+        if ts and not ts.endswith('Z') and '+' not in ts:
+            return ts + 'Z'
+        return ts
+
+    result = {
+        "id": row["id"],
+        "start_time": ensure_utc_marker(row["start_time"]),
+        "end_time": ensure_utc_marker(row["end_time"]),
+        "duration_seconds": row["duration_seconds"],
+        "ignore_interval_before": bool(new_value)
+    }
+    conn.close()
+    return result
 
 
 # Update functions

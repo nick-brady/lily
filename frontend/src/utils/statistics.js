@@ -80,6 +80,10 @@ export function check511Rule(contractions) {
   // Calculate intervals between contractions
   const intervals = [];
   for (let i = 1; i < lastHour.length; i++) {
+    // Skip if this contraction has ignore_interval_before set
+    if (lastHour[i].ignore_interval_before) {
+      continue;
+    }
     const prev = new Date(lastHour[i - 1].start_time);
     const curr = new Date(lastHour[i].start_time);
     intervals.push((curr - prev) / 1000 / 60); // minutes

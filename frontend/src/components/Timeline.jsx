@@ -37,7 +37,7 @@ function formatDate(timestamp) {
   return date.toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric' });
 }
 
-function TimelineItem({ item, isAdmin, onDelete, onEdit, onPhotoClick }) {
+function TimelineItem({ item, isAdmin, onDelete, onEdit, onPhotoClick, onToggleIgnore }) {
   const time = formatTime(item.timestamp);
 
   if (item.feed_type === 'contraction') {
@@ -55,16 +55,36 @@ function TimelineItem({ item, isAdmin, onDelete, onEdit, onPhotoClick }) {
                 {formatDuration(item.duration_seconds)}
               </span>
             )}
+            {item.ignore_interval_before && (
+              <span className="text-xs bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300 px-2 py-0.5 rounded">
+                gap before
+              </span>
+            )}
             {isAdmin && (
-              <button
-                onClick={() => onDelete(item.id, 'contraction')}
-                className="ml-auto p-1 text-gray-300 hover:text-red-500 dark:text-gray-600 dark:hover:text-red-400 transition-colors"
-                title="Delete contraction"
-              >
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                </svg>
-              </button>
+              <>
+                <button
+                  onClick={() => onToggleIgnore(item.id)}
+                  className={`ml-auto p-1 transition-colors ${
+                    item.ignore_interval_before
+                      ? 'text-amber-500 hover:text-amber-600'
+                      : 'text-gray-300 hover:text-amber-500 dark:text-gray-600 dark:hover:text-amber-400'
+                  }`}
+                  title={item.ignore_interval_before ? "Remove gap marker" : "Mark gap before this"}
+                >
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                </button>
+                <button
+                  onClick={() => onDelete(item.id, 'contraction')}
+                  className="p-1 text-gray-300 hover:text-red-500 dark:text-gray-600 dark:hover:text-red-400 transition-colors"
+                  title="Delete contraction"
+                >
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </>
             )}
           </div>
         </div>
@@ -236,7 +256,7 @@ function TimelineItem({ item, isAdmin, onDelete, onEdit, onPhotoClick }) {
   return null;
 }
 
-export default function Timeline({ feed, isAdmin, onDelete, onEdit, getAuthHeaders }) {
+export default function Timeline({ feed, isAdmin, onDelete, onEdit, onToggleIgnore, getAuthHeaders }) {
   const [lightbox, setLightbox] = useState({ open: false, url: '', caption: '' });
   const [deleteConfirm, setDeleteConfirm] = useState({ open: false, id: null, type: null });
   const [editModal, setEditModal] = useState({ open: false, id: null, content: '' });
@@ -432,6 +452,7 @@ export default function Timeline({ feed, isAdmin, onDelete, onEdit, getAuthHeade
                   isAdmin={isAdmin}
                   onDelete={handleDeleteClick}
                   onEdit={handleEditClick}
+                  onToggleIgnore={onToggleIgnore}
                   onPhotoClick={openLightbox}
                 />
               ))}

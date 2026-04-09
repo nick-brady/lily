@@ -29,6 +29,10 @@ export default function StatsPanel({ contractions }) {
     if (sorted.length >= 2) {
       const intervals = [];
       for (let i = 1; i < sorted.length; i++) {
+        // Skip if this contraction has ignore_interval_before set
+        if (sorted[i].ignore_interval_before) {
+          continue;
+        }
         const prev = new Date(sorted[i - 1].start_time);
         const curr = new Date(sorted[i].start_time);
         const gapMinutes = (curr - prev) / 1000 / 60;

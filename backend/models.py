@@ -27,6 +27,7 @@ class ContractionResponse(BaseModel):
     start_time: str
     end_time: Optional[str] = None
     duration_seconds: Optional[int] = None
+    ignore_interval_before: bool = False
 
 
 class UpdateResponse(BaseModel):
