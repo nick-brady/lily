@@ -1,0 +1,11 @@
+---
+- name: Deploy Lily Contraction Tracker
+  hosts: lily
+  become: yes
+
+  roles:
+    - common
+    - nginx
+    - supervisor
+    - app
+    - certbot

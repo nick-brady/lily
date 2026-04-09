@@ -1,0 +1,11 @@
+[program:{{ app_name }}]
+command={{ app_dir }}/backend/venv/bin/uvicorn main:app --host 127.0.0.1 --port {{ backend_port }} --workers {{ backend_workers }}
+directory={{ app_dir }}/backend
+user={{ app_user }}
+autostart=true
+autorestart=true
+stopasgroup=true
+killasgroup=true
+stderr_logfile={{ app_dir }}/logs/backend.err.log
+stdout_logfile={{ app_dir }}/logs/backend.out.log
+environment=PATH="{{ app_dir }}/backend/venv/bin"

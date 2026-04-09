@@ -1,0 +1,31 @@
+---
+- name: Install certbot and nginx plugin
+  apt:
+    name:
+      - certbot
+      - python3-certbot-nginx
+    state: present
+
+- name: Check if certificate already exists
+  stat:
+    path: /etc/letsencrypt/live/{{ app_domain }}/fullchain.pem
+  register: cert_file
+
+- name: Obtain SSL certificate
+  command: >
+    certbot --nginx
+    -d {{ app_domain }}
+    --non-interactive
+    --agree-tos
+    --email {{ certbot_email }}
+    --redirect
+  when: not cert_file.stat.exists
+  notify: reload nginx
+
+- name: Set up automatic renewal cron job
+  cron:
+    name: "Certbot renewal"
+    minute: "0"
+    hour: "3"
+    job: "certbot renew --quiet --post-hook 'systemctl reload nginx'"
+    user: root

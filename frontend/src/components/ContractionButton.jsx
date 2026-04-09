@@ -1,0 +1,68 @@
+import { useState, useEffect } from 'react';
+
+export default function ContractionButton({ onStart, onStop, activeContraction }) {
+  const [elapsed, setElapsed] = useState(0);
+
+  useEffect(() => {
+    if (!activeContraction) {
+      setElapsed(0);
+      return;
+    }
+
+    const startTime = new Date(activeContraction.start_time);
+    const updateElapsed = () => {
+      const now = new Date();
+      setElapsed(Math.floor((now - startTime) / 1000));
+    };
+
+    updateElapsed();
+    const interval = setInterval(updateElapsed, 1000);
+    return () => clearInterval(interval);
+  }, [activeContraction]);
+
+  const formatTime = (seconds) => {
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+  };
+
+  if (activeContraction) {
+    return (
+      <div className="flex flex-col items-center gap-4">
+        <div className="text-6xl font-mono font-bold text-red-500 dark:text-red-400">
+          {formatTime(elapsed)}
+        </div>
+        <button
+          onClick={onStop}
+          className="w-48 h-48 rounded-full bg-red-500 hover:bg-red-600 text-white text-2xl font-bold
+                     shadow-2xl hover:shadow-red-500/50 transition-all duration-200 active:scale-95
+                     animate-pulse-slow flex items-center justify-center"
+        >
+          STOP
+        </button>
+        <p className="text-gray-600 dark:text-gray-400 text-sm">
+          Tap when contraction ends
+        </p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex flex-col items-center gap-4">
+      <div className="text-6xl font-mono font-bold text-gray-300 dark:text-gray-600">
+        00:00
+      </div>
+      <button
+        onClick={onStart}
+        className="w-48 h-48 rounded-full bg-primary-600 hover:bg-primary-700 text-white text-xl font-bold
+                   shadow-2xl hover:shadow-primary-500/50 transition-all duration-200 active:scale-95
+                   flex items-center justify-center"
+      >
+        START<br/>CONTRACTION
+      </button>
+      <p className="text-gray-600 dark:text-gray-400 text-sm">
+        Tap when contraction begins
+      </p>
+    </div>
+  );
+}

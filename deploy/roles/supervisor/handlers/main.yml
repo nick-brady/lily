@@ -1,0 +1,13 @@
+---
+- name: update supervisor
+  command: supervisorctl reread
+
+- name: restart supervisor
+  service:
+    name: supervisor
+    state: restarted
+
+- name: restart lily
+  supervisorctl:
+    name: "{{ app_name }}"
+    state: restarted

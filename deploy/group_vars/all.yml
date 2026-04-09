@@ -1,0 +1,17 @@
+---
+# Application settings
+app_name: lily
+app_domain: lily.realdevdata.com
+app_user: lily
+app_group: lily
+app_dir: /opt/lily
+
+# Backend settings
+backend_port: 8000
+backend_workers: 2
+
+# Python settings
+python_version: "3.12"
+
+# Certbot settings
+certbot_email: nick@realdevdata.com

@@ -1,0 +1,20 @@
+---
+- name: Install supervisor
+  apt:
+    name: supervisor
+    state: present
+
+- name: Ensure supervisor is running
+  service:
+    name: supervisor
+    state: started
+    enabled: yes
+
+- name: Create supervisor config for backend
+  template:
+    src: lily.conf.j2
+    dest: /etc/supervisor/conf.d/{{ app_name }}.conf
+    owner: root
+    group: root
+    mode: '0644'
+  notify: update supervisor
