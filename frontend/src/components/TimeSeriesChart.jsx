@@ -24,12 +24,23 @@ ChartJS.register(
   Filler
 );
 
-export default function TimeSeriesChart({ contractions, type = 'duration' }) {
+export default function TimeSeriesChart({ contractions, type = 'duration', timeRange = 'all', customTimestamps = null }) {
   const chartData = useMemo(() => {
     // Filter completed contractions and sort by time
-    const completed = contractions
+    let completed = contractions
       .filter(c => c.end_time && c.duration_seconds)
       .sort((a, b) => new Date(a.start_time) - new Date(b.start_time));
+
+    // Filter by time range
+    if (timeRange === 'hour') {
+      const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000);
+      completed = completed.filter(c => new Date(c.start_time) >= oneHourAgo);
+    } else if (timeRange === 'custom' && customTimestamps) {
+      completed = completed.filter(c => {
+        const time = new Date(c.start_time);
+        return time >= customTimestamps.start && time <= customTimestamps.end;
+      });
+    }
 
     if (completed.length === 0) return null;
 
@@ -94,7 +105,7 @@ export default function TimeSeriesChart({ contractions, type = 'duration' }) {
         pointHoverRadius: 6,
       }],
     };
-  }, [contractions, type]);
+  }, [contractions, type, timeRange, customTimestamps]);
 
   const options = {
     responsive: true,
@@ -136,8 +147,10 @@ export default function TimeSeriesChart({ contractions, type = 'duration' }) {
           callback: (value) => {
             if (type === 'duration') {
               const mins = Math.floor(value / 60);
-              const secs = value % 60;
-              return mins > 0 ? `${mins}m` : `${secs}s`;
+              const secs = Math.round(value % 60);
+              if (mins > 0 && secs > 0) return `${mins}m ${secs}s`;
+              if (mins > 0) return `${mins}m`;
+              return `${secs}s`;
             }
             return `${value} min`;
           }

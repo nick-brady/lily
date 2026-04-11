@@ -1,9 +1,21 @@
 import { useMemo } from 'react';
 import { mean, standardDeviation, check511Rule, formatDuration } from '../utils/statistics';
 
-export default function StatsPanel({ contractions }) {
+export default function StatsPanel({ contractions, timeRange = 'all', customTimestamps = null }) {
+
   const stats = useMemo(() => {
-    const completed = contractions.filter(c => c.end_time && c.duration_seconds);
+    let completed = contractions.filter(c => c.end_time && c.duration_seconds);
+
+    // Filter by time range
+    if (timeRange === 'hour') {
+      const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000);
+      completed = completed.filter(c => new Date(c.start_time) >= oneHourAgo);
+    } else if (timeRange === 'custom' && customTimestamps) {
+      completed = completed.filter(c => {
+        const time = new Date(c.start_time);
+        return time >= customTimestamps.start && time <= customTimestamps.end;
+      });
+    }
 
     if (completed.length === 0) {
       return {
@@ -46,8 +58,8 @@ export default function StatsPanel({ contractions }) {
       }
     }
 
-    // 5-1-1 rule check
-    const rule511 = check511Rule(completed);
+    // 5-1-1 rule check (always uses full data)
+    const rule511 = check511Rule(contractions);
 
     return {
       count: completed.length,
@@ -56,7 +68,7 @@ export default function StatsPanel({ contractions }) {
       stdDuration,
       rule511,
     };
-  }, [contractions]);
+  }, [contractions, timeRange, customTimestamps]);
 
   return (
     <div className="card">
@@ -70,7 +82,7 @@ export default function StatsPanel({ contractions }) {
             {stats.count}
           </div>
           <div className="text-sm text-gray-500 dark:text-gray-400">
-            Total Contractions
+            {timeRange === 'all' ? 'Total' : timeRange === 'hour' ? 'Last Hour' : 'Selected'} Contractions
           </div>
         </div>
 

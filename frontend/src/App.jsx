@@ -1,9 +1,10 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import ContractionButton from './components/ContractionButton';
 import Timeline from './components/Timeline';
 import UpdateForm from './components/UpdateForm';
 import TimeSeriesChart from './components/TimeSeriesChart';
 import StatsPanel from './components/StatsPanel';
+import Predictions from './components/Predictions';
 import ConnectionStatus from './components/ConnectionStatus';
 import LoginForm from './components/LoginForm';
 import { useWebSocket } from './hooks/useWebSocket';
@@ -18,6 +19,32 @@ function AppContent() {
   const [contractions, setContractions] = useState([]);
   const [activeContraction, setActiveContraction] = useState(null);
   const [activeTab, setActiveTab] = useState('timeline'); // 'timeline' or 'stats'
+  const [statsTimeRange, setStatsTimeRange] = useState('all'); // 'all', 'hour', or 'custom'
+  const [customRange, setCustomRange] = useState({ start: 0, end: 100 }); // percentages of data range
+
+  // Compute time bounds from contractions data
+  const timeBounds = useMemo(() => {
+    const completed = contractions.filter(c => c.end_time && c.duration_seconds);
+    if (completed.length === 0) {
+      const now = Date.now();
+      return { min: now - 3600000, max: now }; // Default to last hour
+    }
+    const times = completed.map(c => new Date(c.start_time).getTime());
+    return {
+      min: Math.min(...times),
+      max: Math.max(...times, Date.now())
+    };
+  }, [contractions]);
+
+  // Convert percentage to timestamp
+  const getCustomTimestamps = useCallback(() => {
+    const range = timeBounds.max - timeBounds.min;
+    return {
+      start: new Date(timeBounds.min + (customRange.start / 100) * range),
+      end: new Date(timeBounds.min + (customRange.end / 100) * range)
+    };
+  }, [timeBounds, customRange]);
+
   const [darkMode, setDarkMode] = useState(() => {
     if (typeof window !== 'undefined') {
       return localStorage.getItem('darkMode') === 'true' ||
@@ -328,11 +355,95 @@ function AppContent() {
         {/* Stats Tab */}
         {activeTab === 'stats' && (
           <>
-            <StatsPanel contractions={contractions} />
-            <div className="grid md:grid-cols-2 gap-6">
-              <TimeSeriesChart contractions={contractions} type="duration" />
-              <TimeSeriesChart contractions={contractions} type="interval" />
+            {/* Time Range Toggle */}
+            <div className="card">
+              <div className="flex justify-center mb-3">
+                <div className="flex bg-gray-200 dark:bg-gray-700 rounded-lg p-1">
+                  <button
+                    onClick={() => setStatsTimeRange('all')}
+                    className={`px-4 py-2 text-sm font-medium rounded-md transition-colors ${
+                      statsTimeRange === 'all'
+                        ? 'bg-white dark:bg-gray-600 text-gray-900 dark:text-white shadow-sm'
+                        : 'text-gray-600 dark:text-gray-400'
+                    }`}
+                  >
+                    All Time
+                  </button>
+                  <button
+                    onClick={() => setStatsTimeRange('hour')}
+                    className={`px-4 py-2 text-sm font-medium rounded-md transition-colors ${
+                      statsTimeRange === 'hour'
+                        ? 'bg-white dark:bg-gray-600 text-gray-900 dark:text-white shadow-sm'
+                        : 'text-gray-600 dark:text-gray-400'
+                    }`}
+                  >
+                    Last Hour
+                  </button>
+                  <button
+                    onClick={() => setStatsTimeRange('custom')}
+                    className={`px-4 py-2 text-sm font-medium rounded-md transition-colors ${
+                      statsTimeRange === 'custom'
+                        ? 'bg-white dark:bg-gray-600 text-gray-900 dark:text-white shadow-sm'
+                        : 'text-gray-600 dark:text-gray-400'
+                    }`}
+                  >
+                    Custom
+                  </button>
+                </div>
+              </div>
+
+              {/* Custom Range Sliders */}
+              {statsTimeRange === 'custom' && (() => {
+                const timestamps = getCustomTimestamps();
+                const formatTime = (date) => date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+                return (
+                  <div className="flex flex-col items-center gap-3 pt-2">
+                    <div className="w-full max-w-sm space-y-4">
+                      <div>
+                        <div className="flex justify-between text-xs text-gray-500 dark:text-gray-400 mb-1">
+                          <span>Start</span>
+                          <span className="font-medium text-gray-700 dark:text-gray-300">{formatTime(timestamps.start)}</span>
+                        </div>
+                        <input
+                          type="range"
+                          min="0"
+                          max="100"
+                          value={customRange.start}
+                          onChange={(e) => {
+                            const val = Number(e.target.value);
+                            setCustomRange(prev => ({ ...prev, start: Math.min(val, prev.end - 1) }));
+                          }}
+                          className="w-full h-2 bg-gray-200 dark:bg-gray-700 rounded-lg appearance-none cursor-pointer accent-primary-500"
+                        />
+                      </div>
+                      <div>
+                        <div className="flex justify-between text-xs text-gray-500 dark:text-gray-400 mb-1">
+                          <span>End</span>
+                          <span className="font-medium text-gray-700 dark:text-gray-300">{formatTime(timestamps.end)}</span>
+                        </div>
+                        <input
+                          type="range"
+                          min="0"
+                          max="100"
+                          value={customRange.end}
+                          onChange={(e) => {
+                            const val = Number(e.target.value);
+                            setCustomRange(prev => ({ ...prev, end: Math.max(val, prev.start + 1) }));
+                          }}
+                          className="w-full h-2 bg-gray-200 dark:bg-gray-700 rounded-lg appearance-none cursor-pointer accent-primary-500"
+                        />
+                      </div>
+                    </div>
+                  </div>
+                );
+              })()}
             </div>
+            <StatsPanel contractions={contractions} timeRange={statsTimeRange} customTimestamps={getCustomTimestamps()} />
+            <div className="grid md:grid-cols-2 gap-6">
+              <TimeSeriesChart contractions={contractions} type="duration" timeRange={statsTimeRange} customTimestamps={getCustomTimestamps()} />
+              <TimeSeriesChart contractions={contractions} type="interval" timeRange={statsTimeRange} customTimestamps={getCustomTimestamps()} />
+            </div>
+            <Predictions />
           </>
         )}
       </main>
