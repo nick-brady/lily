@@ -11,6 +11,7 @@ const PREDICTIONS = [
   { name: 'Leslie (Lala)', weight: 7.375, length: null },  // 7 lbs 6 oz
   { name: 'Steven (Papa)', weight: 9.6, length: 21.3 },    // 9 lbs 10 oz
   { name: 'Cynthia', weight: 8, length: 20 },              // 8 lbs
+  { name: 'David (Copa)', weight: 8.7, length: 20.25 },    // 8 lbs 11 oz
 ];
 
 function formatWeight(lbs) {
@@ -39,8 +40,8 @@ function calculateScore(prediction, actual) {
 }
 
 export default function Predictions() {
-  // Set actual measurements once baby is born!
-  const [actual, setActual] = useState({ weight: null, length: null });
+  // Lily's actual measurements!
+  const [actual, setActual] = useState({ weight: 8.4375, length: 20.5 }); // 8 lbs 7 oz, 20.5"
 
   const predictions = PREDICTIONS.map(p => ({
     ...p,
