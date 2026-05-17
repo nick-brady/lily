@@ -7,7 +7,7 @@ from pathlib import Path
 import uuid
 import os
 
-from models import ContractionCreate, ContractionUpdate, ContractionResponse, UpdateResponse
+from schemas import ContractionCreate, ContractionUpdate, ContractionResponse, UpdateResponse
 import database
 from auth import (
     LoginRequest,

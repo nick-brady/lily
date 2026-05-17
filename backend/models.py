@@ -1,40 +1,28 @@
-from pydantic import BaseModel
-from datetime import datetime
-from typing import Optional
+from sqlalchemy import Boolean, Integer, Text
+from sqlalchemy.orm import Mapped, mapped_column
+
+from db import Base
 
 
-class ContractionCreate(BaseModel):
-    start_time: datetime
-    end_time: Optional[datetime] = None
+class Contraction(Base):
+    __tablename__ = "contractions"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    start_time: Mapped[str] = mapped_column(Text, nullable=False)
+    end_time: Mapped[str | None] = mapped_column(Text, nullable=True)
+    duration_seconds: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    ignore_interval_before: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, server_default="false"
+    )
 
 
-class ContractionUpdate(BaseModel):
-    end_time: datetime
+class Update(Base):
+    __tablename__ = "updates"
 
-
-class Contraction(BaseModel):
-    id: int
-    start_time: datetime
-    end_time: Optional[datetime] = None
-    duration_seconds: Optional[int] = None
-
-    class Config:
-        from_attributes = True
-
-
-class ContractionResponse(BaseModel):
-    id: int
-    start_time: str
-    end_time: Optional[str] = None
-    duration_seconds: Optional[int] = None
-    ignore_interval_before: bool = False
-
-
-class UpdateResponse(BaseModel):
-    id: int
-    timestamp: str
-    type: str
-    content: Optional[str] = None
-    photo_filename: Optional[str] = None
-    audio_filename: Optional[str] = None
-    milestone: Optional[str] = None
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    timestamp: Mapped[str] = mapped_column(Text, nullable=False)
+    type: Mapped[str] = mapped_column(Text, nullable=False)
+    content: Mapped[str | None] = mapped_column(Text, nullable=True)
+    photo_filename: Mapped[str | None] = mapped_column(Text, nullable=True)
+    audio_filename: Mapped[str | None] = mapped_column(Text, nullable=True)
+    milestone: Mapped[str | None] = mapped_column(Text, nullable=True)

@@ -1,0 +1,10 @@
+.venv
+__pycache__
+*.pyc
+*.db
+contractions_backup_*.db
+uploads/*
+!uploads/.gitkeep
+.env
+.env.local
+alembic/versions/__pycache__
