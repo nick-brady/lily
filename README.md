@@ -1,71 +1,116 @@
-# Lily - Contraction Tracker
+# Lily
 
-A real-time contraction tracking app with family sync, time series visualizations, and statistical analysis.
+A live, shared birth experience that becomes a permanent keepsake. Families
+track contractions, post photos / videos / voice memos, and narrate the day
+as it unfolds — while loved ones watch in real time. After the birth, the
+timeline lives on as a permanent record of the day their child arrived.
 
-## Features
+See `Lily-Product-Spec.md` for the full product spec and `Lily-Personas.md`
+for the customer personas.
 
-- **One-tap logging** - Big start/stop button for easy tracking during labor
-- **Real-time sync** - Family members see updates instantly via WebSocket
-- **Time series charts** - Duration and interval trends over time
-- **Statistical analysis** - Distribution charts, averages, and 5-1-1 rule indicator
-- **Gap detection** - Handles breaks in labor with visual chart breaks
-- **Dark mode** - Easier on the eyes during nighttime
+## Stack
 
-## Quick Start
+- **Backend:** FastAPI + SQLAlchemy + Alembic + PostgreSQL 16
+- **Frontend:** React + Vite + Tailwind (PR 2 rewrites the auth + multi-tenant flow)
+- **Auth:** Magic link (email) + OTP code (SMS). Identity is phone OR email,
+  no passwords. The dev `Messenger` prints credentials to the backend log;
+  real Resend + Twilio providers land in a follow-up.
 
-### Backend
-
-```bash
-cd backend
-uv venv
-uv pip install -r requirements.txt
-uv run python main.py
-```
-
-Backend runs on http://localhost:8000
-
-### Frontend
+## Quick start (Docker)
 
 ```bash
-cd frontend
-npm install
-npm run dev
+cp .env.example .env
+# edit .env — at minimum set JWT_SECRET_KEY and POSTGRES_PASSWORD
+docker compose up -d --build
 ```
 
-Frontend runs on http://localhost:3000
+The backend serves on `http://localhost:8000`, the frontend on `http://localhost:3000`.
 
-## Tech Stack
+Migrations are **not** run automatically. See the next section.
 
-- **Frontend**: React + Vite + Chart.js + Tailwind CSS
-- **Backend**: Python (FastAPI) + SQLite
-- **Real-time**: WebSockets
-
-## 5-1-1 Rule
-
-The app monitors for the 5-1-1 pattern that often indicates active labor:
-- Contractions **5** minutes apart
-- Lasting **1** minute each
-- For **1** hour
-
-When this pattern is detected, the app will highlight it so you know to contact your healthcare provider.
-
-## API Endpoints
-
-- `GET /contractions` - List all contractions
-- `POST /contraction` - Start a new contraction
-- `PUT /contraction/:id` - Update (end) a contraction
-- `DELETE /contraction/:id` - Delete a contraction
-- `WS /ws` - WebSocket for real-time updates
-
-## Deployment
-
-For single-server deployment, the FastAPI backend can serve the frontend as static files:
+## Running migrations
 
 ```bash
-cd frontend && npm run build
-# Copy dist/ to backend/static/ and serve via FastAPI
+docker compose exec backend alembic upgrade head
 ```
 
-Or deploy separately:
-- Backend: Railway, Fly.io, DigitalOcean
-- Frontend: Vercel, Netlify, Cloudflare Pages
+For the PR 1 cutover (legacy single-tenant → multi-tenant), see
+[Migrating from the legacy schema](#migrating-from-the-legacy-schema).
+
+## Migrating from the legacy schema
+
+The PR 1 cutover replaces the single-tenant `contractions` / `updates`
+tables with the multi-tenant family / users / births / timeline model.
+The migration is staged:
+
+1. **Apply alembic 0002** — creates the new tables alongside the legacy
+   ones:
+
+   ```bash
+   docker compose exec backend alembic upgrade 0002
+   ```
+
+2. **Run the data migration script** — backs up the legacy tables to
+   `/tmp/lily_legacy_backup_<timestamp>.json`, then copies contractions
+   and updates into `timeline_events` (and media into `media_assets`)
+   under a seeded `The Brady Family` row with a single `births` record
+   for Lily Wren:
+
+   ```bash
+   docker compose exec backend python scripts/migrate_to_multitenant.py
+   ```
+
+   Set `SEED_OWNER_EMAIL` (and optionally `_PHONE`, `_NAME`) plus the
+   `SEED_COPARENT_*` equivalents in `.env` if you want the auth flow to
+   recognise you immediately after migration.
+
+3. **Apply alembic 0003** — drops the legacy `contractions` / `updates`
+   tables once you've verified the migrated data:
+
+   ```bash
+   docker compose exec backend alembic upgrade head
+   ```
+
+The script refuses to run if any `families` row already exists, so it's
+safe to leave 0003 unapplied while you confirm everything looks right.
+
+## Auth flow (dev)
+
+```bash
+# 1. Request a challenge (the backend log prints the magic link + code)
+curl -X POST http://localhost:8000/auth/request \
+  -H 'Content-Type: application/json' \
+  -d '{"identifier":"alex@example.com"}'
+
+# 2. Read the magic link / code from the backend logs:
+docker compose logs backend | tail -20
+
+# 3. Verify with either the token from the link...
+curl -X POST http://localhost:8000/auth/verify \
+  -H 'Content-Type: application/json' \
+  -d '{"token":"<challenge_id>.<secret>"}'
+
+# ...or with the OTP code:
+curl -X POST http://localhost:8000/auth/verify \
+  -H 'Content-Type: application/json' \
+  -d '{"identifier":"alex@example.com","code":"123456"}'
+
+# 4. Use the returned access_token for subsequent calls
+curl http://localhost:8000/me -H 'Authorization: Bearer <access_token>'
+```
+
+## API surface (PR 1)
+
+All birth-scoped routes require a `Bearer` JWT and a family membership.
+
+- `POST /auth/request` — request a magic link + OTP
+- `POST /auth/verify` — exchange a token or `{identifier, code}` for a JWT
+- `GET /me` — current user + family memberships
+- `GET /birth/{birth_id}` — birth metadata
+- `GET /birth/{birth_id}/timeline?after_sequence_id=N&limit=500` — timeline events
+- `POST /birth/{birth_id}/event` — typed creator for `text_note` and `milestone`
+- `POST /birth/{birth_id}/contraction/start` — append a contraction event
+- `POST /birth/{birth_id}/contraction/{event_id}/stop` — close a contraction
+- `POST /birth/{birth_id}/media` — multipart upload (photo / video / voice memo)
+
+Live updates (SSE) land in PR 2.

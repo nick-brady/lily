@@ -1,28 +1,349 @@
-from sqlalchemy import Boolean, Integer, Text
-from sqlalchemy.orm import Mapped, mapped_column
+"""SQLAlchemy ORM models for the multi-tenant Lily domain.
+
+See `Lily-Product-Spec.md` for the canonical schema. Enums are declared as
+Postgres native types via `sa.Enum(..., native_enum=True)`.
+"""
+from __future__ import annotations
+
+import enum
+import uuid
+from datetime import datetime
+
+import sqlalchemy as sa
+from sqlalchemy.dialects.postgresql import JSONB, UUID
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from db import Base
 
 
-class Contraction(Base):
-    __tablename__ = "contractions"
+class FamilyRole(str, enum.Enum):
+    owner = "owner"
+    co_parent = "co_parent"
+    family_viewer = "family_viewer"
 
-    id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    start_time: Mapped[str] = mapped_column(Text, nullable=False)
-    end_time: Mapped[str | None] = mapped_column(Text, nullable=True)
-    duration_seconds: Mapped[int | None] = mapped_column(Integer, nullable=True)
-    ignore_interval_before: Mapped[bool] = mapped_column(
-        Boolean, nullable=False, server_default="false"
+
+class BirthStatus(str, enum.Enum):
+    preparing = "preparing"
+    in_labor = "in_labor"
+    born = "born"
+    archived = "archived"
+
+
+class BirthStorageTier(str, enum.Enum):
+    active = "active"
+    cold = "cold"
+    archived = "archived"
+
+
+class TimelineEventType(str, enum.Enum):
+    contraction = "contraction"
+    milestone = "milestone"
+    text_note = "text_note"
+    photo = "photo"
+    video = "video"
+    voice_memo = "voice_memo"
+
+
+class AudienceScope(str, enum.Enum):
+    public = "public"
+    group_targeted = "group_targeted"
+    parents_only = "parents_only"
+
+
+class MediaKind(str, enum.Enum):
+    photo = "photo"
+    video = "video"
+    voice_memo = "voice_memo"
+
+
+class MediaStorageTier(str, enum.Enum):
+    hot = "hot"
+    cold = "cold"
+
+
+class AuthIdentifierKind(str, enum.Enum):
+    email = "email"
+    phone = "phone"
+
+
+def _uuid_pk() -> Mapped[uuid.UUID]:
+    return mapped_column(
+        UUID(as_uuid=True),
+        primary_key=True,
+        server_default=sa.text("gen_random_uuid()"),
     )
 
 
-class Update(Base):
-    __tablename__ = "updates"
+def _created_at() -> Mapped[datetime]:
+    return mapped_column(
+        sa.DateTime(timezone=True),
+        nullable=False,
+        server_default=sa.func.now(),
+    )
 
-    id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    timestamp: Mapped[str] = mapped_column(Text, nullable=False)
-    type: Mapped[str] = mapped_column(Text, nullable=False)
-    content: Mapped[str | None] = mapped_column(Text, nullable=True)
-    photo_filename: Mapped[str | None] = mapped_column(Text, nullable=True)
-    audio_filename: Mapped[str | None] = mapped_column(Text, nullable=True)
-    milestone: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+def _updated_at() -> Mapped[datetime]:
+    return mapped_column(
+        sa.DateTime(timezone=True),
+        nullable=False,
+        server_default=sa.func.now(),
+        onupdate=sa.func.now(),
+    )
+
+
+class User(Base):
+    __tablename__ = "users"
+
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    email: Mapped[str | None] = mapped_column(sa.Text, nullable=True)
+    phone: Mapped[str | None] = mapped_column(sa.Text, nullable=True)
+    display_name: Mapped[str | None] = mapped_column(sa.Text, nullable=True)
+    avatar_url: Mapped[str | None] = mapped_column(sa.Text, nullable=True)
+    created_at: Mapped[datetime] = _created_at()
+    updated_at: Mapped[datetime] = _updated_at()
+
+    memberships: Mapped[list["FamilyMembership"]] = relationship(back_populates="user")
+
+    __table_args__ = (
+        sa.Index(
+            "ix_users_email_unique",
+            "email",
+            unique=True,
+            postgresql_where=sa.text("email IS NOT NULL"),
+        ),
+        sa.Index(
+            "ix_users_phone_unique",
+            "phone",
+            unique=True,
+            postgresql_where=sa.text("phone IS NOT NULL"),
+        ),
+        sa.CheckConstraint(
+            "email IS NOT NULL OR phone IS NOT NULL",
+            name="ck_users_email_or_phone",
+        ),
+    )
+
+
+class Family(Base):
+    __tablename__ = "families"
+
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    primary_owner_user_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        sa.ForeignKey("users.id", ondelete="RESTRICT"),
+        nullable=False,
+    )
+    display_name: Mapped[str] = mapped_column(sa.Text, nullable=False)
+    created_at: Mapped[datetime] = _created_at()
+    updated_at: Mapped[datetime] = _updated_at()
+
+    memberships: Mapped[list["FamilyMembership"]] = relationship(back_populates="family")
+    births: Mapped[list["Birth"]] = relationship(back_populates="family")
+
+
+class FamilyMembership(Base):
+    __tablename__ = "family_memberships"
+
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    family_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        sa.ForeignKey("families.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        sa.ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    role: Mapped[FamilyRole] = mapped_column(
+        sa.Enum(FamilyRole, name="family_role", native_enum=True),
+        nullable=False,
+    )
+    joined_at: Mapped[datetime] = _created_at()
+
+    family: Mapped[Family] = relationship(back_populates="memberships")
+    user: Mapped[User] = relationship(back_populates="memberships")
+
+    __table_args__ = (
+        sa.UniqueConstraint("family_id", "user_id", name="uq_family_memberships_family_user"),
+    )
+
+
+class Birth(Base):
+    __tablename__ = "births"
+
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    family_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        sa.ForeignKey("families.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    child_name: Mapped[str | None] = mapped_column(sa.Text, nullable=True)
+    child_dob: Mapped[datetime | None] = mapped_column(
+        sa.DateTime(timezone=True), nullable=True
+    )
+    slug: Mapped[str] = mapped_column(sa.Text, nullable=False, unique=True)
+    status: Mapped[BirthStatus] = mapped_column(
+        sa.Enum(BirthStatus, name="birth_status", native_enum=True),
+        nullable=False,
+        server_default=BirthStatus.preparing.value,
+    )
+    birth_started_at: Mapped[datetime | None] = mapped_column(
+        sa.DateTime(timezone=True), nullable=True
+    )
+    birth_completed_at: Mapped[datetime | None] = mapped_column(
+        sa.DateTime(timezone=True), nullable=True
+    )
+    storage_tier: Mapped[BirthStorageTier] = mapped_column(
+        sa.Enum(BirthStorageTier, name="birth_storage_tier", native_enum=True),
+        nullable=False,
+        server_default=BirthStorageTier.active.value,
+    )
+    is_unlocked: Mapped[bool] = mapped_column(
+        sa.Boolean, nullable=False, server_default=sa.text("false")
+    )
+    unlocked_at: Mapped[datetime | None] = mapped_column(
+        sa.DateTime(timezone=True), nullable=True
+    )
+    unlocked_by_user_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        sa.ForeignKey("users.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    is_locked_to_invited: Mapped[bool] = mapped_column(
+        sa.Boolean, nullable=False, server_default=sa.text("false")
+    )
+    deleted_at: Mapped[datetime | None] = mapped_column(
+        sa.DateTime(timezone=True), nullable=True
+    )
+    created_at: Mapped[datetime] = _created_at()
+    updated_at: Mapped[datetime] = _updated_at()
+
+    family: Mapped[Family] = relationship(back_populates="births")
+    events: Mapped[list["TimelineEvent"]] = relationship(back_populates="birth")
+
+
+class TimelineEvent(Base):
+    __tablename__ = "timeline_events"
+
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    birth_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        sa.ForeignKey("births.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    event_type: Mapped[TimelineEventType] = mapped_column(
+        sa.Enum(TimelineEventType, name="timeline_event_type", native_enum=True),
+        nullable=False,
+    )
+    sequence_id: Mapped[int] = mapped_column(sa.BigInteger, nullable=False)
+    occurred_at: Mapped[datetime] = mapped_column(
+        sa.DateTime(timezone=True), nullable=False
+    )
+    posted_at: Mapped[datetime] = mapped_column(
+        sa.DateTime(timezone=True), nullable=False, server_default=sa.func.now()
+    )
+    posted_by_user_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        sa.ForeignKey("users.id", ondelete="RESTRICT"),
+        nullable=False,
+    )
+    payload: Mapped[dict] = mapped_column(JSONB, nullable=False, server_default=sa.text("'{}'::jsonb"))
+    audience_scope: Mapped[AudienceScope] = mapped_column(
+        sa.Enum(AudienceScope, name="audience_scope", native_enum=True),
+        nullable=False,
+        server_default=AudienceScope.public.value,
+    )
+    deleted_at: Mapped[datetime | None] = mapped_column(
+        sa.DateTime(timezone=True), nullable=True
+    )
+    created_at: Mapped[datetime] = _created_at()
+    updated_at: Mapped[datetime] = _updated_at()
+
+    birth: Mapped[Birth] = relationship(back_populates="events")
+
+    __table_args__ = (
+        sa.UniqueConstraint("birth_id", "sequence_id", name="uq_timeline_events_birth_seq"),
+        sa.Index("ix_timeline_events_birth_occurred", "birth_id", "occurred_at"),
+    )
+
+
+class MediaAsset(Base):
+    __tablename__ = "media_assets"
+
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    family_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        sa.ForeignKey("families.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    birth_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        sa.ForeignKey("births.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    uploaded_by_user_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        sa.ForeignKey("users.id", ondelete="RESTRICT"),
+        nullable=False,
+    )
+    kind: Mapped[MediaKind] = mapped_column(
+        sa.Enum(MediaKind, name="media_kind", native_enum=True),
+        nullable=False,
+    )
+    original_s3_key: Mapped[str] = mapped_column(sa.Text, nullable=False)
+    hot_s3_key: Mapped[str | None] = mapped_column(sa.Text, nullable=True)
+    cold_s3_key: Mapped[str | None] = mapped_column(sa.Text, nullable=True)
+    storage_tier: Mapped[MediaStorageTier] = mapped_column(
+        sa.Enum(MediaStorageTier, name="media_storage_tier", native_enum=True),
+        nullable=False,
+        server_default=MediaStorageTier.hot.value,
+    )
+    width: Mapped[int | None] = mapped_column(sa.Integer, nullable=True)
+    height: Mapped[int | None] = mapped_column(sa.Integer, nullable=True)
+    duration_seconds: Mapped[int | None] = mapped_column(sa.Integer, nullable=True)
+    bytes: Mapped[int | None] = mapped_column(sa.BigInteger, nullable=True)
+    mime_type: Mapped[str | None] = mapped_column(sa.Text, nullable=True)
+    is_visible_to_viewers: Mapped[bool] = mapped_column(
+        sa.Boolean, nullable=False, server_default=sa.text("true")
+    )
+    created_at: Mapped[datetime] = _created_at()
+    archived_at: Mapped[datetime | None] = mapped_column(
+        sa.DateTime(timezone=True), nullable=True
+    )
+
+
+class AuthChallenge(Base):
+    """Short-lived auth challenges. Two valid completion paths:
+    - email magic link: client follows `/auth/verify?token=<token>` URL
+    - SMS / email OTP: client posts `{identifier, code}` to /auth/verify
+
+    `code_hash` and `magic_link_token_hash` both populated; either one can
+    redeem the challenge. Stored as `sha256(salt || secret)` hex.
+    """
+
+    __tablename__ = "auth_challenges"
+
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    identifier: Mapped[str] = mapped_column(sa.Text, nullable=False)
+    identifier_kind: Mapped[AuthIdentifierKind] = mapped_column(
+        sa.Enum(AuthIdentifierKind, name="auth_identifier_kind", native_enum=True),
+        nullable=False,
+    )
+    salt: Mapped[str] = mapped_column(sa.Text, nullable=False)
+    code_hash: Mapped[str] = mapped_column(sa.Text, nullable=False)
+    magic_link_token_hash: Mapped[str] = mapped_column(sa.Text, nullable=False)
+    expires_at: Mapped[datetime] = mapped_column(
+        sa.DateTime(timezone=True), nullable=False
+    )
+    consumed_at: Mapped[datetime | None] = mapped_column(
+        sa.DateTime(timezone=True), nullable=True
+    )
+    attempt_count: Mapped[int] = mapped_column(
+        sa.Integer, nullable=False, server_default=sa.text("0")
+    )
+    created_at: Mapped[datetime] = _created_at()
+
+    __table_args__ = (
+        sa.Index("ix_auth_challenges_identifier", "identifier"),
+    )

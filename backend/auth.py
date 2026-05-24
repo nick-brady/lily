@@ -1,88 +1,269 @@
+"""Magic-link + SMS-OTP authentication.
+
+Two valid verification paths:
+- Magic link: client follows `{FRONTEND_URL}/auth/verify?token=<challenge_id>.<secret>`
+  and POSTs `{token: "<challenge_id>.<secret>"}` to `/auth/verify`.
+- OTP code: client posts `{identifier, code}` to `/auth/verify`.
+
+The challenge_id is encoded into the magic-link token so we know which salt
+to use when hashing for comparison. OTP lookups instead key by identifier
+(only one unconsumed challenge per identifier at a time).
+
+Identifier normalization is intentionally permissive in PR 1; real E.164
+phone parsing arrives with Twilio in a follow-up.
+"""
+from __future__ import annotations
+
+import hashlib
 import os
-from datetime import datetime, timedelta
-from typing import Optional
+import re
+import secrets
+import uuid
+from datetime import datetime, timedelta, timezone
 
 from fastapi import Depends, HTTPException, status
-from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from jose import JWTError, jwt
-from pydantic import BaseModel
+from sqlalchemy import select
+from sqlalchemy.orm import Session
 
-# Configuration - can be overridden via environment variables
-SECRET_KEY = os.getenv("JWT_SECRET_KEY", "lily-contraction-tracker-secret-key-change-in-production")
-ALGORITHM = "HS256"
-ACCESS_TOKEN_EXPIRE_HOURS = 24
-
-# Hardcoded admin credentials (can be overridden via env vars)
-ADMIN_USERNAME = os.getenv("ADMIN_USERNAME", "admin")
-ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD", "lilywrenmyheart")
-
-security = HTTPBearer(auto_error=False)
+from db import get_db
+from messenger import ConsoleMessenger, Messenger
+from models import AuthChallenge, AuthIdentifierKind, User
+from schemas import AuthRequestIn, AuthRequestOut, AuthVerifyIn, TokenOut, UserOut
 
 
-class LoginRequest(BaseModel):
-    username: str
-    password: str
+JWT_SECRET_KEY = os.environ.get(
+    "JWT_SECRET_KEY", "dev-only-change-me-in-production-or-the-build-will-fail"
+)
+JWT_ALGORITHM = "HS256"
+JWT_TTL = timedelta(days=30)
+CHALLENGE_TTL = timedelta(minutes=15)
+MAX_ATTEMPTS_PER_CHALLENGE = 5
+
+FRONTEND_URL = os.environ.get("FRONTEND_URL", "http://localhost:3000")
+
+EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
+
+_security = HTTPBearer(auto_error=False)
+_messenger: Messenger = ConsoleMessenger()
 
 
-class TokenResponse(BaseModel):
-    access_token: str
-    token_type: str = "bearer"
+def set_messenger(messenger: Messenger) -> None:
+    """Override the default ConsoleMessenger (used in tests)."""
+    global _messenger
+    _messenger = messenger
 
 
-def create_access_token(username: str) -> str:
-    """Create a JWT access token."""
-    expire = datetime.utcnow() + timedelta(hours=ACCESS_TOKEN_EXPIRE_HOURS)
-    to_encode = {
-        "sub": username,
-        "exp": expire
-    }
-    return jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
+def normalize_identifier(raw: str) -> tuple[str, AuthIdentifierKind]:
+    candidate = raw.strip()
+    if "@" in candidate:
+        normalized = candidate.lower()
+        if not EMAIL_RE.match(normalized):
+            raise HTTPException(status_code=400, detail="Invalid email address")
+        return normalized, AuthIdentifierKind.email
+
+    digits = re.sub(r"\D", "", candidate)
+    if len(digits) == 10:
+        normalized = f"+1{digits}"
+    elif len(digits) == 11 and digits.startswith("1"):
+        normalized = f"+{digits}"
+    elif len(digits) >= 8 and candidate.startswith("+"):
+        normalized = f"+{digits}"
+    else:
+        raise HTTPException(status_code=400, detail="Invalid phone number")
+    return normalized, AuthIdentifierKind.phone
 
 
-def verify_token(token: str) -> Optional[str]:
-    """Verify a JWT token and return the username if valid."""
+def _random_salt() -> str:
+    return secrets.token_hex(16)
+
+
+def _random_code() -> str:
+    return f"{secrets.randbelow(1_000_000):06d}"
+
+
+def _random_secret() -> str:
+    return secrets.token_urlsafe(32)
+
+
+def _hash(salt: str, value: str) -> str:
+    return hashlib.sha256(f"{salt}{value}".encode("utf-8")).hexdigest()
+
+
+def _create_access_token(user_id: uuid.UUID) -> str:
+    expire = datetime.now(timezone.utc) + JWT_TTL
+    return jwt.encode(
+        {"sub": str(user_id), "exp": expire},
+        JWT_SECRET_KEY,
+        algorithm=JWT_ALGORITHM,
+    )
+
+
+def _decode_access_token(token: str) -> uuid.UUID | None:
     try:
-        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
-        username: str = payload.get("sub")
-        if username is None:
-            return None
-        return username
+        payload = jwt.decode(token, JWT_SECRET_KEY, algorithms=[JWT_ALGORITHM])
     except JWTError:
+        return None
+    sub = payload.get("sub")
+    if not sub:
+        return None
+    try:
+        return uuid.UUID(sub)
+    except (TypeError, ValueError):
         return None
 
 
-def authenticate_user(username: str, password: str) -> bool:
-    """Check if username and password match the admin credentials."""
-    return username == ADMIN_USERNAME and password == ADMIN_PASSWORD
+def request_challenge(payload: AuthRequestIn, db: Session) -> AuthRequestOut:
+    identifier, kind = normalize_identifier(payload.identifier)
+
+    # Invalidate any existing unconsumed challenges for this identifier;
+    # only the most recent challenge should be usable.
+    db.execute(
+        select(AuthChallenge)
+        .where(
+            AuthChallenge.identifier == identifier,
+            AuthChallenge.consumed_at.is_(None),
+        )
+    )
+    for prior in db.scalars(
+        select(AuthChallenge).where(
+            AuthChallenge.identifier == identifier,
+            AuthChallenge.consumed_at.is_(None),
+        )
+    ).all():
+        prior.consumed_at = datetime.now(timezone.utc)
+
+    salt = _random_salt()
+    code = _random_code()
+    secret = _random_secret()
+    expires_at = datetime.now(timezone.utc) + CHALLENGE_TTL
+
+    challenge = AuthChallenge(
+        identifier=identifier,
+        identifier_kind=kind,
+        salt=salt,
+        code_hash=_hash(salt, code),
+        magic_link_token_hash=_hash(salt, secret),
+        expires_at=expires_at,
+    )
+    db.add(challenge)
+    db.flush()
+
+    magic_link_token = f"{challenge.id}.{secret}"
+    magic_link_url = f"{FRONTEND_URL}/auth/verify?token={magic_link_token}"
+    _messenger.send_challenge(identifier, kind, code, magic_link_url)
+
+    db.commit()
+    return AuthRequestOut(
+        identifier_kind=kind,
+        expires_in_seconds=int(CHALLENGE_TTL.total_seconds()),
+    )
 
 
-async def get_current_user(
-    credentials: Optional[HTTPAuthorizationCredentials] = Depends(security)
-) -> str:
-    """Dependency that requires authentication. Raises 401 if not authenticated."""
+def verify_challenge(payload: AuthVerifyIn, db: Session) -> TokenOut:
+    challenge = _resolve_challenge(payload, db)
+    user = _find_or_create_user(challenge, db)
+    challenge.consumed_at = datetime.now(timezone.utc)
+    db.commit()
+    return TokenOut(
+        access_token=_create_access_token(user.id),
+        user=UserOut.model_validate(user),
+    )
+
+
+def _resolve_challenge(payload: AuthVerifyIn, db: Session) -> AuthChallenge:
+    now = datetime.now(timezone.utc)
+    invalid = HTTPException(status_code=401, detail="Invalid or expired credentials")
+
+    if payload.token:
+        challenge_id_str, _, secret = payload.token.partition(".")
+        if not challenge_id_str or not secret:
+            raise invalid
+        try:
+            challenge_id = uuid.UUID(challenge_id_str)
+        except ValueError:
+            raise invalid
+        challenge = db.get(AuthChallenge, challenge_id)
+        if challenge is None or challenge.consumed_at is not None or challenge.expires_at < now:
+            raise invalid
+        if _hash(challenge.salt, secret) != challenge.magic_link_token_hash:
+            challenge.attempt_count += 1
+            db.commit()
+            raise invalid
+        return challenge
+
+    if payload.identifier and payload.code:
+        identifier, _ = normalize_identifier(payload.identifier)
+        challenge = db.scalars(
+            select(AuthChallenge)
+            .where(
+                AuthChallenge.identifier == identifier,
+                AuthChallenge.consumed_at.is_(None),
+            )
+            .order_by(AuthChallenge.created_at.desc())
+            .limit(1)
+        ).first()
+        if challenge is None or challenge.expires_at < now:
+            raise invalid
+        if challenge.attempt_count >= MAX_ATTEMPTS_PER_CHALLENGE:
+            raise invalid
+        if _hash(challenge.salt, payload.code) != challenge.code_hash:
+            challenge.attempt_count += 1
+            db.commit()
+            raise invalid
+        return challenge
+
+    raise HTTPException(
+        status_code=400,
+        detail="Provide either {token} or {identifier, code}",
+    )
+
+
+def _find_or_create_user(challenge: AuthChallenge, db: Session) -> User:
+    if challenge.identifier_kind is AuthIdentifierKind.email:
+        existing = db.scalars(
+            select(User).where(User.email == challenge.identifier)
+        ).first()
+    else:
+        existing = db.scalars(
+            select(User).where(User.phone == challenge.identifier)
+        ).first()
+
+    if existing:
+        return existing
+
+    user = User(
+        email=challenge.identifier if challenge.identifier_kind is AuthIdentifierKind.email else None,
+        phone=challenge.identifier if challenge.identifier_kind is AuthIdentifierKind.phone else None,
+    )
+    db.add(user)
+    db.flush()
+    return user
+
+
+def get_current_user(
+    credentials: HTTPAuthorizationCredentials | None = Depends(_security),
+    db: Session = Depends(get_db),
+) -> User:
     if credentials is None:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Not authenticated",
             headers={"WWW-Authenticate": "Bearer"},
         )
-
-    username = verify_token(credentials.credentials)
-    if username is None:
+    user_id = _decode_access_token(credentials.credentials)
+    if user_id is None:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid or expired token",
             headers={"WWW-Authenticate": "Bearer"},
         )
-
-    return username
-
-
-async def get_optional_user(
-    credentials: Optional[HTTPAuthorizationCredentials] = Depends(security)
-) -> Optional[str]:
-    """Dependency that optionally checks authentication. Returns None if not authenticated."""
-    if credentials is None:
-        return None
-
-    return verify_token(credentials.credentials)
+    user = db.get(User, user_id)
+    if user is None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Unknown user",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    return user

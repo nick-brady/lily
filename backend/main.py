@@ -1,29 +1,73 @@
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect, HTTPException, Depends, UploadFile, File, Form
-from fastapi.middleware.cors import CORSMiddleware
-from fastapi.staticfiles import StaticFiles
-from datetime import datetime
-from typing import List, Optional
-from pathlib import Path
-import uuid
-import os
+"""HTTP route table for the multi-tenant Lily backend.
 
-from schemas import ContractionCreate, ContractionUpdate, ContractionResponse, UpdateResponse
-import database
-from auth import (
-    LoginRequest,
-    TokenResponse,
-    create_access_token,
-    authenticate_user,
-    get_current_user,
+All birth-scoped routes pass through `BirthAccess`, which resolves the
+caller's `FamilyRole` for the requested birth. PR 1 only admits `owner`
+and `co_parent`; the `family_viewer` flow lands in PR 3.
+
+The `/ws` WebSocket route from the single-tenant build is gone; SSE
+replaces it in PR 2. Live updates are intentionally broken between PR 1
+and PR 2.
+"""
+from __future__ import annotations
+
+import uuid
+from dataclasses import dataclass
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import Annotated, Literal, Union
+
+from fastapi import (
+    Body,
+    Depends,
+    FastAPI,
+    File,
+    Form,
+    HTTPException,
+    Path as PathParam,
+    UploadFile,
+)
+from fastapi.middleware.cors import CORSMiddleware
+from pydantic import Field
+from sqlalchemy import select
+from sqlalchemy.orm import Session
+
+from auth import get_current_user, request_challenge, verify_challenge
+from db import get_db
+from models import (
+    AudienceScope,
+    Birth,
+    FamilyRole,
+    MediaKind,
+    TimelineEvent,
+    TimelineEventType,
+    User,
+)
+from repositories import births as births_repo
+from repositories import media as media_repo
+from repositories import timeline as timeline_repo
+from repositories import users as users_repo
+from schemas import (
+    AuthRequestIn,
+    AuthRequestOut,
+    AuthVerifyIn,
+    BirthOut,
+    CreateMilestoneIn,
+    CreateTextNoteIn,
+    FamilyMembershipOut,
+    MeOut,
+    StartContractionIn,
+    StopContractionIn,
+    TimelineEventOut,
+    TokenOut,
+    UserOut,
 )
 
-app = FastAPI(title="Lily - Birth Day Updates")
 
-# Create uploads directory
 UPLOAD_DIR = Path(__file__).parent / "uploads"
 UPLOAD_DIR.mkdir(exist_ok=True)
 
-# CORS for frontend
+
+app = FastAPI(title="Lily")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -32,284 +76,312 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Serve uploaded files
-app.mount("/uploads", StaticFiles(directory=str(UPLOAD_DIR)), name="uploads")
-
-
-class ConnectionManager:
-    def __init__(self):
-        self.active_connections: List[WebSocket] = []
-
-    async def connect(self, websocket: WebSocket):
-        await websocket.accept()
-        self.active_connections.append(websocket)
-
-    def disconnect(self, websocket: WebSocket):
-        if websocket in self.active_connections:
-            self.active_connections.remove(websocket)
-
-    async def broadcast(self, message: dict):
-        for connection in self.active_connections:
-            try:
-                await connection.send_json(message)
-            except:
-                pass
-
-
-manager = ConnectionManager()
-
 
 @app.get("/")
-async def root():
-    return {"message": "Lily API", "status": "running"}
+async def root() -> dict:
+    return {"name": "lily", "status": "running"}
 
 
-@app.post("/login", response_model=TokenResponse)
-async def login(request: LoginRequest):
-    if not authenticate_user(request.username, request.password):
-        raise HTTPException(
-            status_code=401,
-            detail="Invalid username or password"
+# ============ Auth ============
+
+
+@app.post("/auth/request", response_model=AuthRequestOut)
+def auth_request(
+    payload: AuthRequestIn,
+    db: Session = Depends(get_db),
+) -> AuthRequestOut:
+    return request_challenge(payload, db)
+
+
+@app.post("/auth/verify", response_model=TokenOut)
+def auth_verify(
+    payload: AuthVerifyIn,
+    db: Session = Depends(get_db),
+) -> TokenOut:
+    return verify_challenge(payload, db)
+
+
+@app.get("/me", response_model=MeOut)
+def me(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> MeOut:
+    memberships = users_repo.list_memberships(db, current_user.id)
+    return MeOut(
+        user=UserOut.model_validate(current_user),
+        memberships=[FamilyMembershipOut.model_validate(m) for m in memberships],
+    )
+
+
+# ============ Birth access dependency ============
+
+
+@dataclass
+class BirthAccess:
+    birth: Birth
+    role: FamilyRole
+
+
+def require_birth_access(
+    birth_id: uuid.UUID = PathParam(...),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> BirthAccess:
+    birth = births_repo.get_birth(db, birth_id)
+    if birth is None or birth.deleted_at is not None:
+        raise HTTPException(status_code=404, detail="Birth not found")
+    role = births_repo.user_role_for_birth(db, user_id=current_user.id, birth=birth)
+    if role is None:
+        raise HTTPException(status_code=403, detail="Not a member of this family")
+    return BirthAccess(birth=birth, role=role)
+
+
+def require_parent_access(access: BirthAccess = Depends(require_birth_access)) -> BirthAccess:
+    if not births_repo.is_parent(access.role):
+        raise HTTPException(status_code=403, detail="Parents only")
+    return access
+
+
+# ============ Birth ============
+
+
+@app.get("/birth/{birth_id}", response_model=BirthOut)
+def get_birth(access: BirthAccess = Depends(require_birth_access)) -> BirthOut:
+    return BirthOut.model_validate(access.birth)
+
+
+@app.get("/birth/{birth_id}/timeline", response_model=list[TimelineEventOut])
+def list_timeline(
+    access: BirthAccess = Depends(require_birth_access),
+    after_sequence_id: int | None = None,
+    limit: int = 500,
+    db: Session = Depends(get_db),
+) -> list[TimelineEventOut]:
+    events = timeline_repo.list_events(
+        db,
+        birth_id=access.birth.id,
+        after_sequence_id=after_sequence_id,
+        limit=limit,
+    )
+    return [
+        TimelineEventOut(
+            id=e.id,
+            birth_id=e.birth_id,
+            event_type=e.event_type,
+            sequence_id=e.sequence_id,
+            occurred_at=e.occurred_at,
+            posted_at=e.posted_at,
+            posted_by_user_id=e.posted_by_user_id,
+            payload=dict(e.payload),
+            audience_scope=e.audience_scope,
         )
-    access_token = create_access_token(request.username)
-    return TokenResponse(access_token=access_token)
+        for e in events
+    ]
 
 
-# ============ Contractions ============
-
-@app.get("/contractions", response_model=List[ContractionResponse])
-async def get_contractions():
-    return database.get_all_contractions()
+# ============ Timeline event creators ============
 
 
-@app.post("/contraction", response_model=ContractionResponse)
-async def create_contraction(
-    contraction: ContractionCreate,
-    username: str = Depends(get_current_user)
-):
-    result = database.create_contraction(contraction.start_time, contraction.end_time)
-    await manager.broadcast({"type": "contraction_new", "data": result})
-    return result
+class _CreateTextNote(CreateTextNoteIn):
+    type: Literal["text_note"] = "text_note"
 
 
-@app.put("/contraction/{contraction_id}", response_model=ContractionResponse)
-async def update_contraction(
-    contraction_id: int,
-    update: ContractionUpdate,
-    username: str = Depends(get_current_user)
-):
-    result = database.update_contraction(contraction_id, update.end_time)
-    if not result:
+class _CreateMilestone(CreateMilestoneIn):
+    type: Literal["milestone"] = "milestone"
+
+
+CreateEventIn = Annotated[
+    Union[_CreateTextNote, _CreateMilestone],
+    Field(discriminator="type"),
+]
+
+
+@app.post("/birth/{birth_id}/event", response_model=TimelineEventOut)
+def create_event(
+    payload: CreateEventIn = Body(...),
+    access: BirthAccess = Depends(require_parent_access),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> TimelineEventOut:
+    if isinstance(payload, _CreateTextNote):
+        event_payload = {"type": "text_note", "body": payload.body}
+        event_type = TimelineEventType.text_note
+    elif isinstance(payload, _CreateMilestone):
+        event_payload = {
+            "type": "milestone",
+            "kind": payload.kind,
+            "title": payload.title,
+            "body": payload.body,
+        }
+        event_type = TimelineEventType.milestone
+    else:
+        raise HTTPException(status_code=400, detail="Unsupported event type")
+
+    event = timeline_repo.append_event(
+        db,
+        birth_id=access.birth.id,
+        event_type=event_type,
+        payload=event_payload,
+        posted_by_user_id=current_user.id,
+        occurred_at=payload.occurred_at,
+        audience_scope=payload.audience_scope,
+    )
+    db.commit()
+    return _serialize_event(event)
+
+
+@app.post("/birth/{birth_id}/contraction/start", response_model=TimelineEventOut)
+def start_contraction(
+    payload: StartContractionIn = Body(default=StartContractionIn()),
+    access: BirthAccess = Depends(require_parent_access),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> TimelineEventOut:
+    now = datetime.now(timezone.utc)
+    occurred_at = payload.occurred_at or now
+    event = timeline_repo.append_event(
+        db,
+        birth_id=access.birth.id,
+        event_type=TimelineEventType.contraction,
+        payload={
+            "type": "contraction",
+            "duration_seconds": None,
+            "end_time": None,
+            "gap_before_seconds": _gap_before_seconds(db, access.birth.id, occurred_at),
+        },
+        posted_by_user_id=current_user.id,
+        occurred_at=occurred_at,
+        audience_scope=AudienceScope.public,
+    )
+    db.commit()
+    return _serialize_event(event)
+
+
+@app.post(
+    "/birth/{birth_id}/contraction/{event_id}/stop",
+    response_model=TimelineEventOut,
+)
+def stop_contraction(
+    event_id: uuid.UUID,
+    payload: StopContractionIn = Body(...),
+    access: BirthAccess = Depends(require_parent_access),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> TimelineEventOut:
+    event = timeline_repo.get_event(db, event_id)
+    if event is None or event.birth_id != access.birth.id:
         raise HTTPException(status_code=404, detail="Contraction not found")
-    await manager.broadcast({"type": "contraction_update", "data": result})
-    return result
+    if event.event_type is not TimelineEventType.contraction:
+        raise HTTPException(status_code=400, detail="Event is not a contraction")
+    if event.payload.get("end_time") is not None:
+        raise HTTPException(status_code=400, detail="Contraction already stopped")
+
+    duration = int((payload.end_time - event.occurred_at).total_seconds())
+    timeline_repo.update_payload(
+        db,
+        event,
+        {
+            "end_time": payload.end_time.isoformat(),
+            "duration_seconds": duration,
+        },
+    )
+    db.commit()
+    return _serialize_event(event)
 
 
-@app.delete("/contraction/{contraction_id}")
-async def delete_contraction(
-    contraction_id: int,
-    username: str = Depends(get_current_user)
-):
-    if database.delete_contraction(contraction_id):
-        await manager.broadcast({"type": "contraction_delete", "id": contraction_id})
-        return {"success": True}
-    raise HTTPException(status_code=404, detail="Contraction not found")
+# ============ Media ============
 
 
-@app.post("/contraction/{contraction_id}/toggle-ignore")
-async def toggle_ignore_interval(
-    contraction_id: int,
-    username: str = Depends(get_current_user)
-):
-    result = database.toggle_ignore_interval(contraction_id)
-    if not result:
-        raise HTTPException(status_code=404, detail="Contraction not found")
-    await manager.broadcast({"type": "contraction_update", "data": result})
-    return result
-
-
-# ============ Updates (Photos, Notes, Milestones) ============
-
-@app.get("/updates", response_model=List[UpdateResponse])
-async def get_updates():
-    return database.get_all_updates()
-
-
-@app.post("/update/photo", response_model=UpdateResponse)
-async def upload_photo(
+@app.post("/birth/{birth_id}/media", response_model=TimelineEventOut)
+async def upload_media(
     file: UploadFile = File(...),
-    caption: Optional[str] = Form(None),
-    username: str = Depends(get_current_user)
-):
-    # Validate file type
-    if not file.content_type.startswith("image/"):
-        raise HTTPException(status_code=400, detail="File must be an image")
-
-    # Generate unique filename
-    ext = Path(file.filename).suffix or ".jpg"
-    filename = f"{uuid.uuid4()}{ext}"
+    caption: str | None = Form(None),
+    kind: MediaKind = Form(...),
+    access: BirthAccess = Depends(require_parent_access),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> TimelineEventOut:
+    extension = Path(file.filename or "").suffix or _default_extension(kind)
+    filename = f"{uuid.uuid4()}{extension}"
     filepath = UPLOAD_DIR / filename
-
-    # Save file
     content = await file.read()
-    with open(filepath, "wb") as f:
-        f.write(content)
+    filepath.write_bytes(content)
 
-    # Create database entry
-    result = database.create_update(
-        timestamp=datetime.now(),
-        update_type="photo",
-        content=caption,
-        photo_filename=filename
+    asset = media_repo.create_media_asset(
+        db,
+        family_id=access.birth.family_id,
+        birth_id=access.birth.id,
+        uploaded_by_user_id=current_user.id,
+        kind=kind,
+        original_s3_key=media_repo.local_key(filename),
+        mime_type=file.content_type,
+        bytes_=len(content),
     )
 
-    await manager.broadcast({"type": "update_new", "data": result})
-    return result
-
-
-@app.post("/update/note", response_model=UpdateResponse)
-async def create_note(
-    content: str = Form(...),
-    username: str = Depends(get_current_user)
-):
-    result = database.create_update(
-        timestamp=datetime.now(),
-        update_type="note",
-        content=content
+    event_type = {
+        MediaKind.photo: TimelineEventType.photo,
+        MediaKind.video: TimelineEventType.video,
+        MediaKind.voice_memo: TimelineEventType.voice_memo,
+    }[kind]
+    event_payload = {
+        "type": event_type.value,
+        "media_id": str(asset.id),
+        "caption": caption,
+    }
+    event = timeline_repo.append_event(
+        db,
+        birth_id=access.birth.id,
+        event_type=event_type,
+        payload=event_payload,
+        posted_by_user_id=current_user.id,
+        audience_scope=AudienceScope.public,
     )
+    db.commit()
+    return _serialize_event(event)
 
-    await manager.broadcast({"type": "update_new", "data": result})
-    return result
+
+# ============ helpers ============
 
 
-@app.post("/update/milestone", response_model=UpdateResponse)
-async def create_milestone(
-    milestone: str = Form(...),
-    content: Optional[str] = Form(None),
-    username: str = Depends(get_current_user)
-):
-    result = database.create_update(
-        timestamp=datetime.now(),
-        update_type="milestone",
-        content=content,
-        milestone=milestone
+def _gap_before_seconds(db: Session, birth_id: uuid.UUID, occurred_at: datetime) -> int | None:
+    previous = db.scalars(
+        select(TimelineEvent)
+        .where(
+            TimelineEvent.birth_id == birth_id,
+            TimelineEvent.event_type == TimelineEventType.contraction,
+            TimelineEvent.deleted_at.is_(None),
+        )
+        .order_by(TimelineEvent.occurred_at.desc())
+        .limit(1)
+    ).first()
+    if previous is None:
+        return None
+    return int((occurred_at - previous.occurred_at).total_seconds())
+
+
+def _default_extension(kind: MediaKind) -> str:
+    return {
+        MediaKind.photo: ".jpg",
+        MediaKind.video: ".mp4",
+        MediaKind.voice_memo: ".webm",
+    }[kind]
+
+
+def _serialize_event(e) -> TimelineEventOut:
+    return TimelineEventOut(
+        id=e.id,
+        birth_id=e.birth_id,
+        event_type=e.event_type,
+        sequence_id=e.sequence_id,
+        occurred_at=e.occurred_at,
+        posted_at=e.posted_at,
+        posted_by_user_id=e.posted_by_user_id,
+        payload=dict(e.payload),
+        audience_scope=e.audience_scope,
     )
-
-    await manager.broadcast({"type": "update_new", "data": result})
-    return result
-
-
-@app.post("/update/audio", response_model=UpdateResponse)
-async def upload_audio(
-    file: UploadFile = File(...),
-    caption: Optional[str] = Form(None),
-    username: str = Depends(get_current_user)
-):
-    # Validate file type
-    if not file.content_type.startswith("audio/"):
-        raise HTTPException(status_code=400, detail="File must be an audio file")
-
-    # Generate unique filename
-    ext = Path(file.filename).suffix or ".webm"
-    filename = f"{uuid.uuid4()}{ext}"
-    filepath = UPLOAD_DIR / filename
-
-    # Save file
-    content = await file.read()
-    with open(filepath, "wb") as f:
-        f.write(content)
-
-    # Create database entry
-    result = database.create_update(
-        timestamp=datetime.now(),
-        update_type="audio",
-        content=caption,
-        audio_filename=filename
-    )
-
-    await manager.broadcast({"type": "update_new", "data": result})
-    return result
-
-
-@app.put("/update/{update_id}", response_model=UpdateResponse)
-async def edit_update(
-    update_id: int,
-    content: str = Form(...),
-    username: str = Depends(get_current_user)
-):
-    result = database.update_update(update_id, content)
-
-    if not result:
-        raise HTTPException(status_code=404, detail="Update not found")
-
-    await manager.broadcast({"type": "update_edit", "data": result})
-    return result
-
-
-@app.delete("/update/{update_id}")
-async def delete_update(
-    update_id: int,
-    username: str = Depends(get_current_user)
-):
-    media_files = database.delete_update(update_id)
-
-    if media_files is None:
-        raise HTTPException(status_code=404, detail="Update not found")
-
-    # Delete media files if they exist
-    for filename in [media_files.get("photo_filename"), media_files.get("audio_filename")]:
-        if filename:
-            filepath = UPLOAD_DIR / filename
-            if filepath.exists():
-                os.remove(filepath)
-
-    await manager.broadcast({"type": "update_delete", "id": update_id})
-    return {"success": True}
-
-
-# ============ Combined Feed ============
-
-@app.get("/feed")
-async def get_feed():
-    """Get combined timeline of contractions and updates"""
-    contractions = database.get_all_contractions()
-    updates = database.get_all_updates()
-
-    # Add type markers and normalize timestamp field
-    feed = []
-
-    for c in contractions:
-        feed.append({
-            "feed_type": "contraction",
-            "timestamp": c["start_time"],
-            **c
-        })
-
-    for u in updates:
-        feed.append({
-            "feed_type": u["type"],
-            "timestamp": u["timestamp"],
-            **u
-        })
-
-    # Sort by timestamp descending
-    feed.sort(key=lambda x: x["timestamp"], reverse=True)
-
-    return feed
-
-
-@app.websocket("/ws")
-async def websocket_endpoint(websocket: WebSocket):
-    await manager.connect(websocket)
-    try:
-        while True:
-            data = await websocket.receive_text()
-            if data == "ping":
-                await websocket.send_text("pong")
-    except WebSocketDisconnect:
-        manager.disconnect(websocket)
 
 
 if __name__ == "__main__":
     import uvicorn
+
     uvicorn.run(app, host="0.0.0.0", port=8000)
