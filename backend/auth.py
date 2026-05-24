@@ -30,6 +30,7 @@ from sqlalchemy.orm import Session
 from db import get_db
 from messenger import ConsoleMessenger, Messenger
 from models import AuthChallenge, AuthIdentifierKind, User
+from repositories import invitations as invitations_repo
 from schemas import AuthRequestIn, AuthRequestOut, AuthVerifyIn, TokenOut, UserOut
 
 
@@ -165,6 +166,14 @@ def verify_challenge(payload: AuthVerifyIn, db: Session) -> TokenOut:
     challenge = _resolve_challenge(payload, db)
     user = _find_or_create_user(challenge, db)
     challenge.consumed_at = datetime.now(timezone.utc)
+
+    if payload.invite_token:
+        invitation = invitations_repo.lookup_by_token(db, payload.invite_token)
+        if invitation is not None and invitations_repo.is_redeemable(invitation):
+            invitations_repo.redeem(db, invitation=invitation, user_id=user.id)
+        # Silently ignore unredeemable invites: the sign-in itself
+        # succeeded; the user can ask their inviter for a fresh link.
+
     db.commit()
     return TokenOut(
         access_token=_create_access_token(user.id),
@@ -271,6 +280,25 @@ def get_current_user(
             headers={"WWW-Authenticate": "Bearer"},
         )
     return _user_from_jwt(credentials.credentials, db)
+
+
+def get_optional_current_user(
+    credentials: HTTPAuthorizationCredentials | None = Depends(_security),
+    token: str | None = None,
+    db: Session = Depends(get_db),
+) -> User | None:
+    """Returns the authed user if a valid JWT is provided via either
+    `Authorization: Bearer` or `?token=...`, otherwise `None`.
+
+    Used by routes (like `/media/{id}` and the public SSE stream) that
+    are reachable to both anonymous public visitors and signed-in
+    viewers. A *malformed* token still raises 401 — silent fall-through
+    to None would hide bugs.
+    """
+    raw_token = credentials.credentials if credentials else token
+    if not raw_token:
+        return None
+    return _user_from_jwt(raw_token, db)
 
 
 def get_current_user_stream(

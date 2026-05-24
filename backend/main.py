@@ -38,8 +38,10 @@ from sqlalchemy.orm import Session
 from auth import (
     get_current_user,
     get_current_user_stream,
+    get_optional_current_user,
     request_challenge,
     verify_challenge,
+    FRONTEND_URL,
 )
 from db import get_db
 from events import broker, publish_event_change, publish_event_deleted, serialize_event
@@ -54,8 +56,10 @@ from models import (
     TimelineEvent,
     TimelineEventType,
     User,
+    ViewerInvitation,
 )
 from repositories import births as births_repo
+from repositories import invitations as invitations_repo
 from repositories import media as media_repo
 from repositories import timeline as timeline_repo
 from repositories import users as users_repo
@@ -69,6 +73,10 @@ from schemas import (
     EditEventIn,
     FamilyMembershipOut,
     FamilyWithBirthsOut,
+    InvitationContextOut,
+    InvitationCreateIn,
+    InvitationCreatedOut,
+    InvitationOut,
     MeOut,
     StartContractionIn,
     StopContractionIn,
@@ -189,11 +197,13 @@ def list_timeline(
     limit: int = 1000,
     db: Session = Depends(get_db),
 ) -> list[TimelineEventOut]:
+    visible = births_repo.visible_scopes_for_role(access.role)
     events = timeline_repo.list_events(
         db,
         birth_id=access.birth.id,
         after_sequence_id=after_sequence_id,
         limit=limit,
+        audience_scopes=visible,
     )
     return [_serialize_event_out(e) for e in events]
 
@@ -212,6 +222,18 @@ def _resolve_public_birth(db: Session, slug: str) -> Birth:
     return birth
 
 
+def _scope_set_for_visitor(
+    db: Session, birth: Birth, user: User | None
+) -> frozenset[AudienceScope]:
+    """Widen audience scopes if the public-route visitor turns out to be
+    a member of the family.
+    """
+    if user is None:
+        return frozenset({AudienceScope.public})
+    role = births_repo.user_role_for_birth(db, user_id=user.id, birth=birth)
+    return births_repo.visible_scopes_for_role(role)
+
+
 @app.get("/b/{slug}", response_model=BirthOut)
 def public_birth(slug: str, db: Session = Depends(get_db)) -> BirthOut:
     return BirthOut.model_validate(_resolve_public_birth(db, slug))
@@ -222,22 +244,19 @@ def public_timeline(
     slug: str,
     after_sequence_id: int | None = None,
     limit: int = 1000,
+    current_user: User | None = Depends(get_optional_current_user),
     db: Session = Depends(get_db),
 ) -> list[TimelineEventOut]:
     birth = _resolve_public_birth(db, slug)
-    stmt = (
-        select(TimelineEvent)
-        .where(
-            TimelineEvent.birth_id == birth.id,
-            TimelineEvent.deleted_at.is_(None),
-            TimelineEvent.audience_scope == AudienceScope.public,
-        )
-        .order_by(TimelineEvent.sequence_id.asc())
-        .limit(limit)
+    visible = _scope_set_for_visitor(db, birth, current_user)
+    events = timeline_repo.list_events(
+        db,
+        birth_id=birth.id,
+        after_sequence_id=after_sequence_id,
+        limit=limit,
+        audience_scopes=visible,
     )
-    if after_sequence_id is not None:
-        stmt = stmt.where(TimelineEvent.sequence_id > after_sequence_id)
-    return [_serialize_event_out(e) for e in db.scalars(stmt).all()]
+    return [_serialize_event_out(e) for e in events]
 
 
 # ============ Timeline event creators ============
@@ -314,7 +333,7 @@ async def start_contraction(
         },
         posted_by_user_id=current_user.id,
         occurred_at=occurred_at,
-        audience_scope=AudienceScope.public,
+        audience_scope=payload.audience_scope,
     )
     db.commit()
     db.refresh(event)
@@ -425,6 +444,7 @@ async def upload_media(
     file: UploadFile = File(...),
     caption: str | None = Form(None),
     kind: MediaKind = Form(...),
+    audience_scope: AudienceScope = Form(AudienceScope.public),
     access: BirthAccess = Depends(require_parent_access),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
@@ -462,7 +482,7 @@ async def upload_media(
         event_type=event_type,
         payload=event_payload,
         posted_by_user_id=current_user.id,
-        audience_scope=AudienceScope.public,
+        audience_scope=audience_scope,
     )
     db.commit()
     db.refresh(event)
@@ -470,16 +490,155 @@ async def upload_media(
     return _serialize_event_out(event)
 
 
-@app.get("/media/{media_id}")
-def get_media(media_id: uuid.UUID, db: Session = Depends(get_db)) -> FileResponse:
-    """Serve media files.
+def _media_visible_to(
+    db: Session, asset: MediaAsset, user: User | None
+) -> bool:
+    """Resolve the audience scopes of every event referencing this asset
+    and check whether the requester is allowed to see any of them.
 
-    PR 2 leaves this fully public — anyone with the media_id can fetch it.
-    PR 3 will gate by audience_scope + viewer invitation when public birth
-    pages roll out for real.
+    Anonymous requesters get the public scope only. Authenticated users
+    inherit their role on the asset's family (or anonymous-equivalent if
+    they have no membership there).
     """
+    role: FamilyRole | None = None
+    if user is not None:
+        membership = db.scalars(
+            select(FamilyMembership).where(
+                FamilyMembership.family_id == asset.family_id,
+                FamilyMembership.user_id == user.id,
+            )
+        ).first()
+        if membership is not None:
+            role = membership.role
+    visible = births_repo.visible_scopes_for_role(role)
+
+    referencing_scopes = set(
+        db.scalars(
+            select(TimelineEvent.audience_scope)
+            .where(
+                TimelineEvent.birth_id == asset.birth_id,
+                TimelineEvent.deleted_at.is_(None),
+                TimelineEvent.payload["media_id"].astext == str(asset.id),
+            )
+        ).all()
+    )
+    if not referencing_scopes:
+        # Orphan asset with no event — treat as parent-only, since only
+        # the original uploader could possibly need it.
+        return role in births_repo.PARENT_ROLES
+    return bool(visible & referencing_scopes)
+
+
+# ============ Invitations ============
+
+
+def _invitation_url(plaintext_token: str) -> str:
+    return f"{FRONTEND_URL}/invite/{plaintext_token}"
+
+
+@app.post(
+    "/birth/{birth_id}/invitations",
+    response_model=InvitationCreatedOut,
+)
+def create_invitation(
+    payload: InvitationCreateIn = Body(default=InvitationCreateIn()),
+    access: BirthAccess = Depends(require_parent_access),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> InvitationCreatedOut:
+    invitation, plaintext_token = invitations_repo.create_invitation(
+        db,
+        family_id=access.birth.family_id,
+        birth_id=access.birth.id,
+        invited_by_user_id=current_user.id,
+        display_name_hint=payload.display_name_hint,
+        email_hint=payload.email_hint,
+        phone_hint=payload.phone_hint,
+    )
+    db.commit()
+    db.refresh(invitation)
+    return InvitationCreatedOut(
+        **InvitationOut.model_validate(invitation).model_dump(),
+        token=plaintext_token,
+        invite_url=_invitation_url(plaintext_token),
+    )
+
+
+@app.get(
+    "/birth/{birth_id}/invitations",
+    response_model=list[InvitationOut],
+)
+def list_invitations(
+    access: BirthAccess = Depends(require_parent_access),
+    db: Session = Depends(get_db),
+) -> list[InvitationOut]:
+    rows = invitations_repo.list_for_birth(db, birth_id=access.birth.id)
+    return [InvitationOut.model_validate(r) for r in rows]
+
+
+@app.delete("/birth/{birth_id}/invitations/{invitation_id}", status_code=204)
+def revoke_invitation(
+    invitation_id: uuid.UUID,
+    access: BirthAccess = Depends(require_parent_access),
+    db: Session = Depends(get_db),
+) -> Response:
+    invitation = db.get(ViewerInvitation, invitation_id)
+    if invitation is None or invitation.birth_id != access.birth.id:
+        raise HTTPException(status_code=404, detail="Invitation not found")
+    invitations_repo.revoke(db, invitation)
+    db.commit()
+    return Response(status_code=204)
+
+
+@app.get("/invite/{token}", response_model=InvitationContextOut)
+def lookup_invitation(token: str, db: Session = Depends(get_db)) -> InvitationContextOut:
+    invitation = invitations_repo.lookup_by_token(db, token)
+    if invitation is None or not invitations_repo.is_redeemable(invitation):
+        raise HTTPException(status_code=404, detail="Invitation is invalid or expired")
+    family = db.get(Family, invitation.family_id)
+    birth = db.get(Birth, invitation.birth_id)
+    if family is None or birth is None:
+        raise HTTPException(status_code=404, detail="Invitation is invalid or expired")
+    return InvitationContextOut(
+        family_display_name=family.display_name,
+        birth_id=birth.id,
+        birth_slug=birth.slug,
+        birth_child_name=birth.child_name,
+        display_name_hint=invitation.display_name_hint,
+        email_hint=invitation.email_hint,
+        phone_hint=invitation.phone_hint,
+        expires_at=invitation.expires_at,
+        role=invitation.role,
+    )
+
+
+@app.post("/invite/{token}/redeem", status_code=204)
+def redeem_invitation_authed(
+    token: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> Response:
+    """For users who are already signed in. The new-user flow goes
+    through `/auth/verify` with `invite_token` instead.
+    """
+    invitation = invitations_repo.lookup_by_token(db, token)
+    if invitation is None or not invitations_repo.is_redeemable(invitation):
+        raise HTTPException(status_code=404, detail="Invitation is invalid or expired")
+    invitations_repo.redeem(db, invitation=invitation, user_id=current_user.id)
+    db.commit()
+    return Response(status_code=204)
+
+
+@app.get("/media/{media_id}")
+def get_media(
+    media_id: uuid.UUID,
+    current_user: User | None = Depends(get_optional_current_user),
+    db: Session = Depends(get_db),
+) -> FileResponse:
     asset = media_repo.get_media_asset(db, media_id)
     if asset is None or not asset.is_visible_to_viewers:
+        raise HTTPException(status_code=404, detail="Media not found")
+    if not _media_visible_to(db, asset, current_user):
         raise HTTPException(status_code=404, detail="Media not found")
     if not media_repo.is_local_key(asset.original_s3_key):
         raise HTTPException(
@@ -512,15 +671,14 @@ async def stream_birth(
     role = births_repo.user_role_for_birth(db, user_id=current_user.id, birth=birth)
     if role is None:
         raise HTTPException(status_code=403, detail="Not a member of this family")
+    visible = births_repo.visible_scopes_for_role(role)
+    # Parents see everything, so skip filtering entirely.
+    visible_arg = None if visible == frozenset(AudienceScope) else visible
     after = _parse_last_event_id(last_event_id)
     return StreamingResponse(
-        _sse_generator(request, birth.id, after, db),
+        _sse_generator(request, birth.id, after, db, visible_arg),
         media_type="text/event-stream",
-        headers={
-            "Cache-Control": "no-cache, no-transform",
-            "X-Accel-Buffering": "no",
-            "Connection": "keep-alive",
-        },
+        headers=_sse_headers(),
     )
 
 
@@ -529,19 +687,26 @@ async def stream_public(
     request: Request,
     slug: str,
     last_event_id: str | None = Header(default=None, alias="Last-Event-ID"),
+    current_user: User | None = Depends(get_optional_current_user),
     db: Session = Depends(get_db),
 ) -> StreamingResponse:
     birth = _resolve_public_birth(db, slug)
+    visible = _scope_set_for_visitor(db, birth, current_user)
+    visible_arg = None if visible == frozenset(AudienceScope) else visible
     after = _parse_last_event_id(last_event_id)
     return StreamingResponse(
-        _sse_generator(request, birth.id, after, db, public_only=True),
+        _sse_generator(request, birth.id, after, db, visible_arg),
         media_type="text/event-stream",
-        headers={
-            "Cache-Control": "no-cache, no-transform",
-            "X-Accel-Buffering": "no",
-            "Connection": "keep-alive",
-        },
+        headers=_sse_headers(),
     )
+
+
+def _sse_headers() -> dict[str, str]:
+    return {
+        "Cache-Control": "no-cache, no-transform",
+        "X-Accel-Buffering": "no",
+        "Connection": "keep-alive",
+    }
 
 
 # ============ helpers ============
@@ -572,8 +737,14 @@ async def _sse_generator(
     birth_id: uuid.UUID,
     after_sequence_id: int | None,
     db: Session,
-    public_only: bool = False,
+    visible_scopes: frozenset[AudienceScope] | None = None,
 ) -> AsyncIterator[bytes]:
+    """Generic SSE stream filtered to a set of audience scopes.
+
+    Passing `visible_scopes=None` means no filter (used by parents who
+    can see everything). The replay-then-subscribe pattern lets clients
+    resume with `Last-Event-ID`.
+    """
     # Replay anything the client missed since `after_sequence_id`.
     stmt = (
         select(TimelineEvent)
@@ -585,8 +756,8 @@ async def _sse_generator(
     )
     if after_sequence_id is not None:
         stmt = stmt.where(TimelineEvent.sequence_id > after_sequence_id)
-    if public_only:
-        stmt = stmt.where(TimelineEvent.audience_scope == AudienceScope.public)
+    if visible_scopes is not None:
+        stmt = stmt.where(TimelineEvent.audience_scope.in_(visible_scopes))
     for event in db.scalars(stmt).all():
         yield _format_sse(
             event="appended",
@@ -594,9 +765,11 @@ async def _sse_generator(
             sequence_id=event.sequence_id,
         )
 
-    # Open marker so clients can flip "connected" UI as soon as the
-    # replay-or-empty-batch finishes flushing.
     yield _format_sse(event="open", data={"birth_id": str(birth_id)})
+
+    visible_values: set[str] | None = (
+        {s.value for s in visible_scopes} if visible_scopes is not None else None
+    )
 
     async with broker.subscribe(birth_id) as queue:
         while True:
@@ -608,11 +781,11 @@ async def _sse_generator(
                 yield b": heartbeat\n\n"
                 continue
             # Deletes don't carry audience_scope; always forward them.
-            # Public clients that never saw the original event just no-op.
+            # Filtered-out clients that never saw the event just no-op.
             if (
-                public_only
+                visible_values is not None
                 and event.kind != "deleted"
-                and event.payload.get("audience_scope") != AudienceScope.public.value
+                and event.payload.get("audience_scope") not in visible_values
             ):
                 continue
             yield _format_sse(

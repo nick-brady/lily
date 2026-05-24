@@ -313,6 +313,63 @@ class MediaAsset(Base):
     )
 
 
+class ViewerInvitation(Base):
+    """A shareable invitation that grants a recipient `family_viewer`
+    access to a specific birth after they verify their email/phone.
+
+    The token sent to the recipient is `{invitation_id}.{secret}`. Only
+    the salted hash of the secret is stored, mirroring how AuthChallenge
+    handles magic-link secrets.
+
+    Multi-use by default — the same link can be redeemed by anyone in the
+    family group chat. `revoked_at` is the kill switch; `expires_at` is
+    the natural time-out.
+    """
+
+    __tablename__ = "viewer_invitations"
+
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    family_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        sa.ForeignKey("families.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    birth_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        sa.ForeignKey("births.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    invited_by_user_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        sa.ForeignKey("users.id", ondelete="RESTRICT"),
+        nullable=False,
+    )
+    role: Mapped[FamilyRole] = mapped_column(
+        sa.Enum(FamilyRole, name="family_role", native_enum=True, create_type=False),
+        nullable=False,
+        server_default=FamilyRole.family_viewer.value,
+    )
+    salt: Mapped[str] = mapped_column(sa.Text, nullable=False)
+    token_hash: Mapped[str] = mapped_column(sa.Text, nullable=False)
+    display_name_hint: Mapped[str | None] = mapped_column(sa.Text, nullable=True)
+    email_hint: Mapped[str | None] = mapped_column(sa.Text, nullable=True)
+    phone_hint: Mapped[str | None] = mapped_column(sa.Text, nullable=True)
+    expires_at: Mapped[datetime] = mapped_column(
+        sa.DateTime(timezone=True), nullable=False
+    )
+    revoked_at: Mapped[datetime | None] = mapped_column(
+        sa.DateTime(timezone=True), nullable=True
+    )
+    redemption_count: Mapped[int] = mapped_column(
+        sa.Integer, nullable=False, server_default=sa.text("0")
+    )
+    created_at: Mapped[datetime] = _created_at()
+
+    __table_args__ = (
+        sa.Index("ix_viewer_invitations_birth", "birth_id"),
+    )
+
+
 class AuthChallenge(Base):
     """Short-lived auth challenges. Two valid completion paths:
     - email magic link: client follows `/auth/verify?token=<token>` URL

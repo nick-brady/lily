@@ -6,6 +6,7 @@ import { useSSE } from '../hooks/useSSE';
 import { contractionsFromEvents } from '../utils/statistics';
 import ConnectionStatus from '../components/ConnectionStatus';
 import ContractionButton from '../components/ContractionButton';
+import InviteManager from '../components/InviteManager';
 import Predictions from '../components/Predictions';
 import StatsPanel from '../components/StatsPanel';
 import Timeline from '../components/Timeline';
@@ -239,6 +240,7 @@ export default function BirthManagePage() {
           <>
             <UpdateForm birthId={birth.id} />
             <Timeline events={sortedEvents} canManage birthId={birth.id} />
+            <InviteManager birthId={birth.id} />
           </>
         )}
 

@@ -8,12 +8,26 @@ from typing import Iterable
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from models import Birth, BirthStatus, FamilyMembership, FamilyRole
+from models import AudienceScope, Birth, BirthStatus, FamilyMembership, FamilyRole
 
 
 PARENT_ROLES: frozenset[FamilyRole] = frozenset(
     {FamilyRole.owner, FamilyRole.co_parent}
 )
+
+
+def visible_scopes_for_role(role: FamilyRole | None) -> frozenset[AudienceScope]:
+    """Which `AudienceScope`s a viewer can see, by membership role.
+
+    - Anonymous (no role): public only
+    - family_viewer: public + group_targeted
+    - owner / co_parent: everything
+    """
+    if role is None:
+        return frozenset({AudienceScope.public})
+    if role is FamilyRole.family_viewer:
+        return frozenset({AudienceScope.public, AudienceScope.group_targeted})
+    return frozenset(AudienceScope)
 
 
 def create_birth(

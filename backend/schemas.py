@@ -154,11 +154,16 @@ class AuthRequestOut(BaseModel):
 
 
 class AuthVerifyIn(BaseModel):
-    """Either {identifier, code} (OTP) or {token} (magic link)."""
+    """Either {identifier, code} (OTP) or {token} (magic link).
+
+    An optional `invite_token` redeems a viewer invitation atomically with
+    the auth — saves a round trip during the invite flow.
+    """
 
     identifier: Optional[str] = None
     code: Optional[str] = None
     token: Optional[str] = None
+    invite_token: Optional[str] = None
 
 
 class TokenOut(BaseModel):
@@ -183,10 +188,67 @@ class CreateMilestoneIn(BaseModel):
 
 class StartContractionIn(BaseModel):
     occurred_at: Optional[datetime] = None
+    audience_scope: AudienceScope = AudienceScope.public
 
 
 class StopContractionIn(BaseModel):
     end_time: datetime
+
+
+class InvitationCreateIn(BaseModel):
+    display_name_hint: Optional[str] = None
+    email_hint: Optional[str] = None
+    phone_hint: Optional[str] = None
+
+
+class InvitationOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    family_id: uuid.UUID
+    birth_id: uuid.UUID
+    invited_by_user_id: uuid.UUID
+    role: FamilyRole
+    display_name_hint: Optional[str] = None
+    email_hint: Optional[str] = None
+    phone_hint: Optional[str] = None
+    expires_at: datetime
+    revoked_at: Optional[datetime] = None
+    redemption_count: int
+    created_at: datetime
+
+
+class InvitationCreatedOut(InvitationOut):
+    """One-time payload returned on creation. The plaintext token and URL
+    are only available here; subsequent reads return only the hash-side
+    metadata.
+    """
+
+    token: str
+    invite_url: str
+
+
+class InvitationContextOut(BaseModel):
+    """Public lookup payload for `GET /invite/{token}`. Just enough to
+    render a meaningful redeem screen without leaking family internals.
+    """
+
+    family_display_name: str
+    birth_id: uuid.UUID
+    birth_slug: str
+    birth_child_name: Optional[str] = None
+    display_name_hint: Optional[str] = None
+    email_hint: Optional[str] = None
+    phone_hint: Optional[str] = None
+    expires_at: datetime
+    role: FamilyRole
+
+
+class InvitationRedeemIn(BaseModel):
+    """Used by an already-authenticated user to attach themselves to a
+    family via an invite link. The unauthenticated redeem path goes
+    through /auth/verify with `invite_token` instead.
+    """
 
 
 class EditEventIn(BaseModel):

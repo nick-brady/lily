@@ -2,10 +2,17 @@ import { useEffect, useRef, useState } from 'react';
 import { api } from '../api/client';
 import { MILESTONES } from './Timeline';
 
+const AUDIENCE_OPTIONS = [
+  { value: 'public', label: 'Public', hint: 'Anyone with the link can see' },
+  { value: 'group_targeted', label: 'Family', hint: 'Only invited family viewers' },
+  { value: 'parents_only', label: 'Parents only', hint: 'Just you and your co-parent' },
+];
+
 export default function UpdateForm({ birthId, onSuccess }) {
   const [mode, setMode] = useState(null); // 'photo' | 'note' | 'milestone' | 'audio'
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [audienceScope, setAudienceScope] = useState('public');
 
   const [noteText, setNoteText] = useState('');
   const [selectedMilestone, setSelectedMilestone] = useState('');
@@ -41,6 +48,7 @@ export default function UpdateForm({ birthId, onSuccess }) {
     setPhotoCaption('');
     setSelectedFile(null);
     setPreview(null);
+    setAudienceScope('public');
     if (audioUrl) URL.revokeObjectURL(audioUrl);
     setAudioBlob(null);
     setAudioUrl(null);
@@ -69,6 +77,7 @@ export default function UpdateForm({ birthId, onSuccess }) {
         file: selectedFile,
         kind: 'photo',
         caption: photoCaption,
+        audienceScope,
       });
       resetForm();
       onSuccess?.();
@@ -84,7 +93,7 @@ export default function UpdateForm({ birthId, onSuccess }) {
     setLoading(true);
     setError('');
     try {
-      await api.createTextNote(birthId, noteText);
+      await api.createTextNote(birthId, noteText, { audienceScope });
       resetForm();
       onSuccess?.();
     } catch (err) {
@@ -103,6 +112,7 @@ export default function UpdateForm({ birthId, onSuccess }) {
         kind: selectedMilestone,
         title: MILESTONES[selectedMilestone]?.label,
         body: milestoneNote || null,
+        audienceScope,
       });
       resetForm();
       onSuccess?.();
@@ -173,6 +183,7 @@ export default function UpdateForm({ birthId, onSuccess }) {
         file,
         kind: 'voice_memo',
         caption: audioCaption,
+        audienceScope,
       });
       resetForm();
       onSuccess?.();
@@ -361,6 +372,8 @@ export default function UpdateForm({ birthId, onSuccess }) {
         </div>
       )}
 
+      <AudiencePicker value={audienceScope} onChange={setAudienceScope} />
+
       <div className="flex gap-3 mt-4">
         <button
           onClick={resetForm}
@@ -389,6 +402,33 @@ export default function UpdateForm({ birthId, onSuccess }) {
           {loading ? 'Posting…' : 'Post'}
         </button>
       </div>
+    </div>
+  );
+}
+
+function AudiencePicker({ value, onChange }) {
+  const active = AUDIENCE_OPTIONS.find((o) => o.value === value) || AUDIENCE_OPTIONS[0];
+  return (
+    <div className="mt-4">
+      <div className="flex bg-gray-100 dark:bg-gray-700 rounded-lg p-1">
+        {AUDIENCE_OPTIONS.map((opt) => (
+          <button
+            key={opt.value}
+            type="button"
+            onClick={() => onChange(opt.value)}
+            className={`flex-1 px-3 py-2 text-xs font-medium rounded-md transition-colors ${
+              value === opt.value
+                ? 'bg-white dark:bg-gray-600 text-gray-900 dark:text-white shadow-sm'
+                : 'text-gray-600 dark:text-gray-400'
+            }`}
+          >
+            {opt.label}
+          </button>
+        ))}
+      </div>
+      <p className="text-xs text-gray-500 dark:text-gray-400 mt-2 text-center">
+        {active.hint}
+      </p>
     </div>
   );
 }

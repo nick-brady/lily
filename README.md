@@ -114,27 +114,59 @@ serve the shareable keepsake page.
 ### Authenticated birth routes
 
 - `GET /birth/{birth_id}` — birth metadata
-- `GET /birth/{birth_id}/timeline?after_sequence_id=N&limit=500` — timeline events
-- `POST /birth/{birth_id}/event` — typed creator for `text_note` and `milestone`
-- `POST /birth/{birth_id}/contraction/start` — append a contraction event
+- `GET /birth/{birth_id}/timeline?after_sequence_id=N&limit=500` — timeline
+  events filtered by the requester's role (parents see everything; viewers
+  see public + group_targeted)
+- `POST /birth/{birth_id}/event` — typed creator for `text_note` and `milestone`; accepts `audience_scope`
+- `POST /birth/{birth_id}/contraction/start` — append a contraction event; accepts `audience_scope`
 - `POST /birth/{birth_id}/contraction/{event_id}/stop` — close a contraction
-- `POST /birth/{birth_id}/media` — multipart upload (photo / video / voice memo)
+- `POST /birth/{birth_id}/media` — multipart upload (photo / video / voice memo) with `audience_scope` field
 - `PATCH /birth/{birth_id}/event/{event_id}` — edit caption / body / title
 - `DELETE /birth/{birth_id}/event/{event_id}` — soft-delete an event
 - `POST /birth/{birth_id}/event/{event_id}/toggle-ignore` — flip the
   `ignore_interval_before` flag on a contraction
-- `GET /birth/{birth_id}/stream?token=<jwt>` — server-sent events for live
-  updates. EventSource can't set headers, so the JWT goes on the query string.
-  Heartbeat every 15s; supports `Last-Event-ID` for resume.
+- `GET /birth/{birth_id}/stream?token=<jwt>` — server-sent events filtered
+  by role; heartbeat every 15s; supports `Last-Event-ID` for resume
 
-### Public birth routes (no auth)
+### Invitations (parents)
 
-- `GET /b/{slug}` — birth metadata
-- `GET /b/{slug}/timeline?after_sequence_id=N&limit=500` — public-scope events only
-- `GET /b/{slug}/stream` — public SSE feed (public-scope events only)
-- `GET /media/{media_id}` — serves uploaded media (PR 2 leaves this fully
-  public; PR 3 will gate it through the audience scope on the event that
-  references the asset)
+- `POST /birth/{birth_id}/invitations` — create a shareable invite link
+- `GET /birth/{birth_id}/invitations` — list invites for a birth
+- `DELETE /birth/{birth_id}/invitations/{invitation_id}` — revoke
+
+### Invitation redemption (public / authed)
+
+- `GET /invite/{token}` — public lookup of invite context (family + birth name)
+- `POST /invite/{token}/redeem` — authed-user path, attaches caller as family_viewer
+- New-user path: include `invite_token` in the body of `POST /auth/verify` and
+  the user is created + attached atomically with sign-in
+
+### Public birth routes
+
+- `GET /b/{slug}` — birth metadata (no auth)
+- `GET /b/{slug}/timeline?after_sequence_id=N&limit=500` — audience-filtered
+  timeline. Sending a Bearer token widens visibility if the requester turns
+  out to be a family member.
+- `GET /b/{slug}/stream` — same as `/timeline` but SSE. Sending `?token=<jwt>`
+  widens visibility for signed-in viewers.
+- `GET /media/{media_id}` — gated by the audience scope of every event that
+  references the asset. Sending a Bearer token widens visibility for family
+  members.
+
+## Audience scopes
+
+Posts carry one of three audience scopes; the viewer's role on the family
+determines what they can see:
+
+| Scope            | Anonymous | family_viewer | owner / co_parent |
+|------------------|-----------|---------------|-------------------|
+| `public`         | yes       | yes           | yes               |
+| `group_targeted` |           | yes           | yes               |
+| `parents_only`   |           |               | yes               |
+
+`group_targeted` is the "Family" tier — visible to anyone who's redeemed
+an invitation. Sub-grouping (close family vs extended family) is a future
+PR; today every invited viewer sees every `group_targeted` post.
 
 ## Frontend routes
 
@@ -142,5 +174,6 @@ serve the shareable keepsake page.
   defaults to `lily-wren`)
 - `/login` — magic link / OTP form
 - `/auth/verify?token=...` — consumes the magic link, stores the JWT, lands you on `/b/{slug}/manage`
-- `/b/:slug` — public keepsake view
-- `/b/:slug/manage` — parent dashboard (contraction button, post composer, stats)
+- `/invite/:token` — viewer invitation redeem page (verifies email/phone, attaches as family_viewer)
+- `/b/:slug` — public keepsake view; renders family-only posts too when the signed-in user is an invited viewer
+- `/b/:slug/manage` — parent dashboard (contraction button, post composer, stats, invitation manager)

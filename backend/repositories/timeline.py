@@ -63,6 +63,7 @@ def list_events(
     birth_id: uuid.UUID,
     after_sequence_id: int | None = None,
     limit: int = 500,
+    audience_scopes: "frozenset[AudienceScope] | set[AudienceScope] | None" = None,
 ) -> list[TimelineEvent]:
     stmt = (
         select(TimelineEvent)
@@ -75,6 +76,8 @@ def list_events(
     )
     if after_sequence_id is not None:
         stmt = stmt.where(TimelineEvent.sequence_id > after_sequence_id)
+    if audience_scopes is not None:
+        stmt = stmt.where(TimelineEvent.audience_scope.in_(audience_scopes))
     return list(db.scalars(stmt).all())
 
 

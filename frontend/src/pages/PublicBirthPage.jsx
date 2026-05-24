@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
-import { api } from '../api/client';
+import { api, getToken } from '../api/client';
 import { useAuth } from '../contexts/AuthContext';
 import { useSSE } from '../hooks/useSSE';
 import ConnectionStatus from '../components/ConnectionStatus';
@@ -45,7 +45,9 @@ export default function PublicBirthPage() {
     return () => {
       cancelled = true;
     };
-  }, [slug]);
+    // Re-fetch when the user signs in / out so the audience-widened
+    // timeline is reloaded with the new role.
+  }, [slug, isAuthenticated]);
 
   const handleSSE = useCallback((kind, data) => {
     if (kind === 'deleted') {
@@ -68,7 +70,13 @@ export default function PublicBirthPage() {
     }
   }, []);
 
-  const streamUrl = birth ? `${api.apiUrl}/b/${slug}/stream` : null;
+  const streamUrl = useMemo(() => {
+    if (!birth) return null;
+    const url = new URL(`${api.apiUrl}/b/${slug}/stream`);
+    const token = getToken();
+    if (token) url.searchParams.set('token', token);
+    return url.toString();
+  }, [birth, slug, isAuthenticated]);
   const { isConnected } = useSSE(streamUrl, handleSSE);
 
   const sortedEvents = useMemo(

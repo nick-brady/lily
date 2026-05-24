@@ -47,11 +47,16 @@ export const api = {
     return jsonOrThrow(res);
   },
 
-  async verifyChallenge({ identifier, code, token }) {
+  async verifyChallenge({ identifier, code, token, inviteToken }) {
     const res = await fetch(`${API_URL}/auth/verify`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ identifier, code, token }),
+      body: JSON.stringify({
+        identifier,
+        code,
+        token,
+        invite_token: inviteToken,
+      }),
     });
     return jsonOrThrow(res);
   },
@@ -81,15 +86,17 @@ export const api = {
   async listPublicTimeline(slug, { afterSequenceId } = {}) {
     const url = new URL(`${API_URL}/b/${slug}/timeline`);
     if (afterSequenceId != null) url.searchParams.set('after_sequence_id', afterSequenceId);
-    const res = await fetch(url);
+    // Sending Bearer here is intentional: authed viewers get widened
+    // audience visibility on the same public endpoint.
+    const res = await fetch(url, { headers: authHeaders() });
     return jsonOrThrow(res);
   },
 
-  async startContraction(birthId) {
+  async startContraction(birthId, { audienceScope = 'public' } = {}) {
     const res = await fetch(`${API_URL}/birth/${birthId}/contraction/start`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', ...authHeaders() },
-      body: JSON.stringify({}),
+      body: JSON.stringify({ audience_scope: audienceScope }),
     });
     return jsonOrThrow(res);
   },
@@ -103,33 +110,85 @@ export const api = {
     return jsonOrThrow(res);
   },
 
-  async createTextNote(birthId, body) {
+  async createTextNote(birthId, body, { audienceScope = 'public' } = {}) {
     const res = await fetch(`${API_URL}/birth/${birthId}/event`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', ...authHeaders() },
-      body: JSON.stringify({ type: 'text_note', body }),
+      body: JSON.stringify({
+        type: 'text_note',
+        body,
+        audience_scope: audienceScope,
+      }),
     });
     return jsonOrThrow(res);
   },
 
-  async createMilestone(birthId, { kind, title, body }) {
+  async createMilestone(birthId, { kind, title, body, audienceScope = 'public' }) {
     const res = await fetch(`${API_URL}/birth/${birthId}/event`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', ...authHeaders() },
-      body: JSON.stringify({ type: 'milestone', kind, title, body }),
+      body: JSON.stringify({
+        type: 'milestone',
+        kind,
+        title,
+        body,
+        audience_scope: audienceScope,
+      }),
     });
     return jsonOrThrow(res);
   },
 
-  async uploadMedia(birthId, { file, kind, caption }) {
+  async uploadMedia(birthId, { file, kind, caption, audienceScope = 'public' }) {
     const form = new FormData();
     form.append('file', file);
     form.append('kind', kind);
+    form.append('audience_scope', audienceScope);
     if (caption) form.append('caption', caption);
     const res = await fetch(`${API_URL}/birth/${birthId}/media`, {
       method: 'POST',
       headers: authHeaders(),
       body: form,
+    });
+    return jsonOrThrow(res);
+  },
+
+  async listInvitations(birthId) {
+    const res = await fetch(`${API_URL}/birth/${birthId}/invitations`, {
+      headers: authHeaders(),
+    });
+    return jsonOrThrow(res);
+  },
+
+  async createInvitation(birthId, payload = {}) {
+    const res = await fetch(`${API_URL}/birth/${birthId}/invitations`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...authHeaders() },
+      body: JSON.stringify({
+        display_name_hint: payload.displayNameHint,
+        email_hint: payload.emailHint,
+        phone_hint: payload.phoneHint,
+      }),
+    });
+    return jsonOrThrow(res);
+  },
+
+  async revokeInvitation(birthId, invitationId) {
+    const res = await fetch(
+      `${API_URL}/birth/${birthId}/invitations/${invitationId}`,
+      { method: 'DELETE', headers: authHeaders() },
+    );
+    return jsonOrThrow(res);
+  },
+
+  async lookupInvitation(token) {
+    const res = await fetch(`${API_URL}/invite/${token}`);
+    return jsonOrThrow(res);
+  },
+
+  async redeemInvitationAuthed(token) {
+    const res = await fetch(`${API_URL}/invite/${token}/redeem`, {
+      method: 'POST',
+      headers: authHeaders(),
     });
     return jsonOrThrow(res);
   },

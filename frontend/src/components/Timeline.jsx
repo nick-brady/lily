@@ -2,6 +2,22 @@ import { useState } from 'react';
 import { api } from '../api/client';
 import { formatDuration } from '../utils/statistics';
 
+const AUDIENCE_LABELS = {
+  public: { label: 'Public', tone: 'bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-300' },
+  group_targeted: { label: 'Family', tone: 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300' },
+  parents_only: { label: 'Parents', tone: 'bg-rose-100 text-rose-700 dark:bg-rose-900/30 dark:text-rose-300' },
+};
+
+function AudienceBadge({ scope }) {
+  const meta = AUDIENCE_LABELS[scope] || AUDIENCE_LABELS.public;
+  if (scope === 'public') return null;
+  return (
+    <span className={`text-[10px] uppercase tracking-wide px-2 py-0.5 rounded ${meta.tone}`}>
+      {meta.label}
+    </span>
+  );
+}
+
 const MILESTONES = {
   water_broke: { label: 'Water Broke', icon: '💧' },
   arrived: { label: 'Arrived at Birth Center', icon: '🏠' },
@@ -106,7 +122,7 @@ function MilestoneItem({ event, canManage, onDelete, onEdit }) {
           {body && <p className="text-gray-600 dark:text-gray-400 text-sm mt-2">{body}</p>}
         </div>
         {canManage && (
-          <ItemActions onEdit={() => onEdit(event)} onDelete={() => onDelete(event)} />
+          <ItemActions onEdit={() => onEdit(event)} onDelete={() => onDelete(event)} audienceScope={event.audience_scope} />
         )}
       </div>
     </div>
@@ -131,7 +147,7 @@ function MediaItem({ event, canManage, onDelete, onEdit, onPhotoClick }) {
           </div>
           {caption && <p className="text-gray-600 dark:text-gray-400 text-sm mt-2">{caption}</p>}
           {canManage && (
-            <ItemActions onEdit={() => onEdit(event)} onDelete={() => onDelete(event)} />
+            <ItemActions onEdit={() => onEdit(event)} onDelete={() => onDelete(event)} audienceScope={event.audience_scope} />
           )}
         </div>
       </div>
@@ -150,7 +166,7 @@ function MediaItem({ event, canManage, onDelete, onEdit, onPhotoClick }) {
           </div>
           {caption && <p className="text-gray-600 dark:text-gray-400 text-sm mt-2">{caption}</p>}
           {canManage && (
-            <ItemActions onEdit={() => onEdit(event)} onDelete={() => onDelete(event)} />
+            <ItemActions onEdit={() => onEdit(event)} onDelete={() => onDelete(event)} audienceScope={event.audience_scope} />
           )}
         </div>
       </div>
@@ -178,7 +194,7 @@ function MediaItem({ event, canManage, onDelete, onEdit, onPhotoClick }) {
           {caption && <p className="text-gray-600 dark:text-gray-400 text-sm mt-3">{caption}</p>}
         </div>
         {canManage && (
-          <ItemActions onEdit={() => onEdit(event)} onDelete={() => onDelete(event)} />
+          <ItemActions onEdit={() => onEdit(event)} onDelete={() => onDelete(event)} audienceScope={event.audience_scope} />
         )}
       </div>
     </div>
@@ -197,22 +213,23 @@ function TextNoteItem({ event, canManage, onDelete, onEdit }) {
           <p className="text-gray-700 dark:text-gray-300 whitespace-pre-wrap">{body}</p>
         </div>
         {canManage && (
-          <ItemActions onEdit={() => onEdit(event)} onDelete={() => onDelete(event)} />
+          <ItemActions onEdit={() => onEdit(event)} onDelete={() => onDelete(event)} audienceScope={event.audience_scope} />
         )}
       </div>
     </div>
   );
 }
 
-function ItemActions({ onEdit, onDelete }) {
+function ItemActions({ onEdit, onDelete, audienceScope }) {
   return (
-    <div className="flex gap-3 mt-2">
+    <div className="flex items-center gap-3 mt-2">
       <button onClick={onEdit} className="text-xs text-gray-400 hover:text-primary-500">
         Edit
       </button>
       <button onClick={onDelete} className="text-xs text-gray-400 hover:text-red-500">
         Delete
       </button>
+      <AudienceBadge scope={audienceScope} />
     </div>
   );
 }
