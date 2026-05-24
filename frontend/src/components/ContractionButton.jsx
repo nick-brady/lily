@@ -1,24 +1,19 @@
-import { useState, useEffect } from 'react';
+import { useEffect, useState } from 'react';
 
-export default function ContractionButton({ onStart, onStop, onCancel, activeContraction }) {
+export default function ContractionButton({ onStart, onStop, startTime }) {
   const [elapsed, setElapsed] = useState(0);
 
   useEffect(() => {
-    if (!activeContraction) {
+    if (!startTime) {
       setElapsed(0);
-      return;
+      return undefined;
     }
-
-    const startTime = new Date(activeContraction.start_time);
-    const updateElapsed = () => {
-      const now = new Date();
-      setElapsed(Math.floor((now - startTime) / 1000));
-    };
-
-    updateElapsed();
-    const interval = setInterval(updateElapsed, 1000);
+    const startedAt = new Date(startTime);
+    const tick = () => setElapsed(Math.floor((new Date() - startedAt) / 1000));
+    tick();
+    const interval = setInterval(tick, 1000);
     return () => clearInterval(interval);
-  }, [activeContraction]);
+  }, [startTime]);
 
   const formatTime = (seconds) => {
     const mins = Math.floor(seconds / 60);
@@ -26,7 +21,7 @@ export default function ContractionButton({ onStart, onStop, onCancel, activeCon
     return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
   };
 
-  if (activeContraction) {
+  if (startTime) {
     return (
       <div className="flex flex-col items-center gap-4">
         <div className="text-6xl font-mono font-bold text-red-500 dark:text-red-400">

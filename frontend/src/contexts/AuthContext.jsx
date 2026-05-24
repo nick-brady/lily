@@ -1,75 +1,95 @@
-import { createContext, useContext, useState, useEffect } from 'react';
-
-const API_URL = import.meta.env.DEV ? 'http://localhost:8000' : '';
-const TOKEN_KEY = 'lily_auth_token';
+import { createContext, useCallback, useContext, useEffect, useState } from 'react';
+import { api, getToken, setToken } from '../api/client';
 
 const AuthContext = createContext(null);
 
+function decodeJwtExp(token) {
+  try {
+    const payload = JSON.parse(atob(token.split('.')[1]));
+    return typeof payload.exp === 'number' ? payload.exp * 1000 : null;
+  } catch {
+    return null;
+  }
+}
+
 export function AuthProvider({ children }) {
-  const [token, setToken] = useState(() => localStorage.getItem(TOKEN_KEY));
-  const [isAdmin, setIsAdmin] = useState(false);
+  const [token, setTokenState] = useState(() => getToken());
+  const [user, setUser] = useState(null);
+  const [me, setMe] = useState(null);
   const [loading, setLoading] = useState(true);
 
-  // Check token validity on load
-  useEffect(() => {
-    if (token) {
-      // Simple check - try to decode JWT to see if it's expired
-      try {
-        const payload = JSON.parse(atob(token.split('.')[1]));
-        const isExpired = payload.exp * 1000 < Date.now();
-        if (isExpired) {
-          logout();
-        } else {
-          setIsAdmin(true);
-        }
-      } catch {
-        logout();
-      }
-    }
-    setLoading(false);
-  }, [token]);
-
-  const login = async (username, password) => {
-    const response = await fetch(`${API_URL}/login`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ username, password }),
-    });
-
-    if (!response.ok) {
-      const error = await response.json();
-      throw new Error(error.detail || 'Login failed');
-    }
-
-    const data = await response.json();
-    localStorage.setItem(TOKEN_KEY, data.access_token);
-    setToken(data.access_token);
-    setIsAdmin(true);
-    return true;
-  };
-
-  const logout = () => {
-    localStorage.removeItem(TOKEN_KEY);
+  const logout = useCallback(() => {
     setToken(null);
-    setIsAdmin(false);
-  };
+    setTokenState(null);
+    setUser(null);
+    setMe(null);
+  }, []);
 
-  const getAuthHeaders = () => {
-    if (!token) return {};
-    return { Authorization: `Bearer ${token}` };
-  };
+  useEffect(() => {
+    if (!token) {
+      setLoading(false);
+      return;
+    }
+    const exp = decodeJwtExp(token);
+    if (!exp || exp < Date.now()) {
+      logout();
+      setLoading(false);
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      try {
+        const profile = await api.me();
+        if (cancelled) return;
+        setUser(profile.user);
+        setMe(profile);
+      } catch (err) {
+        if (err.status === 401) logout();
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [token, logout]);
+
+  const acceptToken = useCallback(async (accessToken) => {
+    setToken(accessToken);
+    setTokenState(accessToken);
+    const profile = await api.me();
+    setUser(profile.user);
+    setMe(profile);
+    return profile;
+  }, []);
+
+  const refreshMe = useCallback(async () => {
+    const profile = await api.me();
+    setUser(profile.user);
+    setMe(profile);
+    return profile;
+  }, []);
 
   return (
-    <AuthContext.Provider value={{ isAdmin, login, logout, getAuthHeaders, loading }}>
+    <AuthContext.Provider
+      value={{
+        token,
+        user,
+        me,
+        loading,
+        isAuthenticated: Boolean(user),
+        acceptToken,
+        refreshMe,
+        logout,
+      }}
+    >
       {children}
     </AuthContext.Provider>
   );
 }
 
 export function useAuth() {
-  const context = useContext(AuthContext);
-  if (!context) {
-    throw new Error('useAuth must be used within an AuthProvider');
-  }
-  return context;
+  const ctx = useContext(AuthContext);
+  if (!ctx) throw new Error('useAuth must be used within AuthProvider');
+  return ctx;
 }

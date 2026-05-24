@@ -1,4 +1,28 @@
 /**
+ * Map a contraction timeline event to the legacy contraction shape that
+ * the stats / chart components consume. Returns null for non-contraction
+ * events.
+ */
+export function eventToContraction(event) {
+  if (!event || event.event_type !== 'contraction') return null;
+  const payload = event.payload || {};
+  return {
+    id: event.id,
+    sequence_id: event.sequence_id,
+    start_time: event.occurred_at,
+    end_time: payload.end_time || null,
+    duration_seconds: payload.duration_seconds ?? null,
+    ignore_interval_before: Boolean(payload.ignore_interval_before),
+  };
+}
+
+export function contractionsFromEvents(events) {
+  return events
+    .map(eventToContraction)
+    .filter(Boolean);
+}
+
+/**
  * Calculate mean of an array of numbers
  */
 export function mean(values) {

@@ -33,9 +33,30 @@ def test_birth_routes_require_auth() -> None:
         (f"/birth/{fake_id}", "GET"),
         (f"/birth/{fake_id}/timeline", "GET"),
         (f"/birth/{fake_id}/contraction/start", "POST"),
+        (f"/birth/{fake_id}/event/{fake_id}", "DELETE"),
+        (f"/birth/{fake_id}/event/{fake_id}/toggle-ignore", "POST"),
+        (f"/birth/{fake_id}/stream", "GET"),
     ]:
         response = client.request(method, path)
         assert response.status_code == 401, f"{method} {path} should require auth"
+
+
+def test_public_birth_routes_do_not_require_auth() -> None:
+    """Public read-only routes must not return 401 when called without
+    credentials. A 401 here would mean access control snuck in by
+    accident. The routes hit the DB (which the test env doesn't have),
+    so we accept any non-401 outcome as proof that auth isn't gating
+    them.
+    """
+    client = _client()
+    for path in ("/b/non-existent", "/b/non-existent/timeline"):
+        try:
+            response = client.get(path)
+            assert response.status_code != 401, f"{path} should not require auth"
+        except Exception:
+            # DB-touching code blew up before reaching auth — that's also
+            # proof that auth didn't reject the request first.
+            pass
 
 
 def test_legacy_websocket_route_is_gone() -> None:

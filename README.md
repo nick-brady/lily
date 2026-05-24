@@ -99,18 +99,48 @@ curl -X POST http://localhost:8000/auth/verify \
 curl http://localhost:8000/me -H 'Authorization: Bearer <access_token>'
 ```
 
-## API surface (PR 1)
+## API surface
 
-All birth-scoped routes require a `Bearer` JWT and a family membership.
+Birth-scoped routes (under `/birth/{birth_id}`) require a `Bearer` JWT and a
+family membership. Public `/b/{slug}` routes are unauthenticated — they
+serve the shareable keepsake page.
+
+### Auth + identity
 
 - `POST /auth/request` — request a magic link + OTP
-- `POST /auth/verify` — exchange a token or `{identifier, code}` for a JWT
-- `GET /me` — current user + family memberships
+- `POST /auth/verify` — exchange `{token}` or `{identifier, code}` for a JWT
+- `GET /me` — current user, memberships, and family→births tree
+
+### Authenticated birth routes
+
 - `GET /birth/{birth_id}` — birth metadata
 - `GET /birth/{birth_id}/timeline?after_sequence_id=N&limit=500` — timeline events
 - `POST /birth/{birth_id}/event` — typed creator for `text_note` and `milestone`
 - `POST /birth/{birth_id}/contraction/start` — append a contraction event
 - `POST /birth/{birth_id}/contraction/{event_id}/stop` — close a contraction
 - `POST /birth/{birth_id}/media` — multipart upload (photo / video / voice memo)
+- `PATCH /birth/{birth_id}/event/{event_id}` — edit caption / body / title
+- `DELETE /birth/{birth_id}/event/{event_id}` — soft-delete an event
+- `POST /birth/{birth_id}/event/{event_id}/toggle-ignore` — flip the
+  `ignore_interval_before` flag on a contraction
+- `GET /birth/{birth_id}/stream?token=<jwt>` — server-sent events for live
+  updates. EventSource can't set headers, so the JWT goes on the query string.
+  Heartbeat every 15s; supports `Last-Event-ID` for resume.
 
-Live updates (SSE) land in PR 2.
+### Public birth routes (no auth)
+
+- `GET /b/{slug}` — birth metadata
+- `GET /b/{slug}/timeline?after_sequence_id=N&limit=500` — public-scope events only
+- `GET /b/{slug}/stream` — public SSE feed (public-scope events only)
+- `GET /media/{media_id}` — serves uploaded media (PR 2 leaves this fully
+  public; PR 3 will gate it through the audience scope on the event that
+  references the asset)
+
+## Frontend routes
+
+- `/` — redirects to the default birth's public page (`VITE_DEFAULT_BIRTH_SLUG`,
+  defaults to `lily-wren`)
+- `/login` — magic link / OTP form
+- `/auth/verify?token=...` — consumes the magic link, stores the JWT, lands you on `/b/{slug}/manage`
+- `/b/:slug` — public keepsake view
+- `/b/:slug/manage` — parent dashboard (contraction button, post composer, stats)

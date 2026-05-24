@@ -242,17 +242,8 @@ def _find_or_create_user(challenge: AuthChallenge, db: Session) -> User:
     return user
 
 
-def get_current_user(
-    credentials: HTTPAuthorizationCredentials | None = Depends(_security),
-    db: Session = Depends(get_db),
-) -> User:
-    if credentials is None:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Not authenticated",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
-    user_id = _decode_access_token(credentials.credentials)
+def _user_from_jwt(raw_token: str, db: Session) -> User:
+    user_id = _decode_access_token(raw_token)
     if user_id is None:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -267,3 +258,37 @@ def get_current_user(
             headers={"WWW-Authenticate": "Bearer"},
         )
     return user
+
+
+def get_current_user(
+    credentials: HTTPAuthorizationCredentials | None = Depends(_security),
+    db: Session = Depends(get_db),
+) -> User:
+    if credentials is None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Not authenticated",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    return _user_from_jwt(credentials.credentials, db)
+
+
+def get_current_user_stream(
+    credentials: HTTPAuthorizationCredentials | None = Depends(_security),
+    token: str | None = None,
+    db: Session = Depends(get_db),
+) -> User:
+    """SSE-friendly auth: accepts a JWT via `Authorization: Bearer` *or*
+    via `?token=...` query param. EventSource can't set headers, so we
+    fall back to the query string. The query token is logged in nginx
+    access logs the same way a magic-link token would be — short-lived
+    sessions only.
+    """
+    raw_token = credentials.credentials if credentials else token
+    if not raw_token:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Not authenticated",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    return _user_from_jwt(raw_token, db)

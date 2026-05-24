@@ -94,6 +94,14 @@ class FamilyMembershipOut(BaseModel):
 class MeOut(BaseModel):
     user: UserOut
     memberships: list[FamilyMembershipOut]
+    families: list["FamilyWithBirthsOut"]
+
+
+class FamilyWithBirthsOut(BaseModel):
+    id: uuid.UUID
+    display_name: str
+    role: FamilyRole
+    births: list["BirthOut"]
 
 
 class BirthOut(BaseModel):
@@ -181,6 +189,23 @@ class StopContractionIn(BaseModel):
     end_time: datetime
 
 
+class EditEventIn(BaseModel):
+    """Patch the editable parts of a timeline event's payload.
+
+    For text_note: `body`. For milestone: `title` / `body`. For photo /
+    video / voice_memo: `caption`. Unknown keys are ignored; the
+    repository merges the patch into the existing payload.
+    """
+
+    body: Optional[str] = None
+    title: Optional[str] = None
+    caption: Optional[str] = None
+    transcript_optional: Optional[str] = None
+
+
 # Convenience for tests / fixtures that need to validate an EmailStr-shaped
 # value without importing pydantic.EmailStr at call sites.
 EmailString = EmailStr
+
+MeOut.model_rebuild()
+FamilyWithBirthsOut.model_rebuild()

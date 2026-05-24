@@ -1,20 +1,20 @@
 """HTTP route table for the multi-tenant Lily backend.
 
-All birth-scoped routes pass through `BirthAccess`, which resolves the
-caller's `FamilyRole` for the requested birth. PR 1 only admits `owner`
-and `co_parent`; the `family_viewer` flow lands in PR 3.
-
-The `/ws` WebSocket route from the single-tenant build is gone; SSE
-replaces it in PR 2. Live updates are intentionally broken between PR 1
-and PR 2.
+Birth-scoped routes pass through `BirthAccess` (parents only in PR 2).
+Public read-only routes (`/b/{slug}*`) require no auth at all — they
+serve the keepsake page. SSE lives at `/birth/{id}/stream` for parents
+and `/b/{slug}/stream` for the public view.
 """
 from __future__ import annotations
 
+import asyncio
+import json
+import mimetypes
 import uuid
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Annotated, Literal, Union
+from typing import Annotated, AsyncIterator, Literal, Union
 
 from fastapi import (
     Body,
@@ -23,20 +23,33 @@ from fastapi import (
     File,
     Form,
     HTTPException,
+    Header,
     Path as PathParam,
+    Request,
+    Response,
     UploadFile,
 )
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse, StreamingResponse
 from pydantic import Field
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from auth import get_current_user, request_challenge, verify_challenge
+from auth import (
+    get_current_user,
+    get_current_user_stream,
+    request_challenge,
+    verify_challenge,
+)
 from db import get_db
+from events import broker, publish_event_change, publish_event_deleted, serialize_event
 from models import (
     AudienceScope,
     Birth,
+    Family,
+    FamilyMembership,
     FamilyRole,
+    MediaAsset,
     MediaKind,
     TimelineEvent,
     TimelineEventType,
@@ -53,7 +66,9 @@ from schemas import (
     BirthOut,
     CreateMilestoneIn,
     CreateTextNoteIn,
+    EditEventIn,
     FamilyMembershipOut,
+    FamilyWithBirthsOut,
     MeOut,
     StartContractionIn,
     StopContractionIn,
@@ -65,6 +80,8 @@ from schemas import (
 
 UPLOAD_DIR = Path(__file__).parent / "uploads"
 UPLOAD_DIR.mkdir(exist_ok=True)
+
+SSE_HEARTBEAT_SECONDS = 15
 
 
 app = FastAPI(title="Lily")
@@ -86,18 +103,12 @@ async def root() -> dict:
 
 
 @app.post("/auth/request", response_model=AuthRequestOut)
-def auth_request(
-    payload: AuthRequestIn,
-    db: Session = Depends(get_db),
-) -> AuthRequestOut:
+def auth_request(payload: AuthRequestIn, db: Session = Depends(get_db)) -> AuthRequestOut:
     return request_challenge(payload, db)
 
 
 @app.post("/auth/verify", response_model=TokenOut)
-def auth_verify(
-    payload: AuthVerifyIn,
-    db: Session = Depends(get_db),
-) -> TokenOut:
+def auth_verify(payload: AuthVerifyIn, db: Session = Depends(get_db)) -> TokenOut:
     return verify_challenge(payload, db)
 
 
@@ -107,9 +118,30 @@ def me(
     db: Session = Depends(get_db),
 ) -> MeOut:
     memberships = users_repo.list_memberships(db, current_user.id)
+
+    families: list[FamilyWithBirthsOut] = []
+    for membership in memberships:
+        family = db.get(Family, membership.family_id)
+        if family is None:
+            continue
+        births = db.scalars(
+            select(Birth)
+            .where(Birth.family_id == family.id, Birth.deleted_at.is_(None))
+            .order_by(Birth.created_at.asc())
+        ).all()
+        families.append(
+            FamilyWithBirthsOut(
+                id=family.id,
+                display_name=family.display_name,
+                role=membership.role,
+                births=[BirthOut.model_validate(b) for b in births],
+            )
+        )
+
     return MeOut(
         user=UserOut.model_validate(current_user),
         memberships=[FamilyMembershipOut.model_validate(m) for m in memberships],
+        families=families,
     )
 
 
@@ -142,7 +174,7 @@ def require_parent_access(access: BirthAccess = Depends(require_birth_access)) -
     return access
 
 
-# ============ Birth ============
+# ============ Birth (authed) ============
 
 
 @app.get("/birth/{birth_id}", response_model=BirthOut)
@@ -154,7 +186,7 @@ def get_birth(access: BirthAccess = Depends(require_birth_access)) -> BirthOut:
 def list_timeline(
     access: BirthAccess = Depends(require_birth_access),
     after_sequence_id: int | None = None,
-    limit: int = 500,
+    limit: int = 1000,
     db: Session = Depends(get_db),
 ) -> list[TimelineEventOut]:
     events = timeline_repo.list_events(
@@ -163,20 +195,49 @@ def list_timeline(
         after_sequence_id=after_sequence_id,
         limit=limit,
     )
-    return [
-        TimelineEventOut(
-            id=e.id,
-            birth_id=e.birth_id,
-            event_type=e.event_type,
-            sequence_id=e.sequence_id,
-            occurred_at=e.occurred_at,
-            posted_at=e.posted_at,
-            posted_by_user_id=e.posted_by_user_id,
-            payload=dict(e.payload),
-            audience_scope=e.audience_scope,
+    return [_serialize_event_out(e) for e in events]
+
+
+# ============ Public birth (no auth) ============
+
+
+def _resolve_public_birth(db: Session, slug: str) -> Birth:
+    birth = births_repo.get_birth_by_slug(db, slug)
+    if birth is None or birth.deleted_at is not None:
+        raise HTTPException(status_code=404, detail="Birth not found")
+    if birth.is_locked_to_invited:
+        # PR 2 has no viewer-token mechanism; locked births are unreachable
+        # publicly until PR 3 lands viewer invitations.
+        raise HTTPException(status_code=403, detail="This birth is invited-only")
+    return birth
+
+
+@app.get("/b/{slug}", response_model=BirthOut)
+def public_birth(slug: str, db: Session = Depends(get_db)) -> BirthOut:
+    return BirthOut.model_validate(_resolve_public_birth(db, slug))
+
+
+@app.get("/b/{slug}/timeline", response_model=list[TimelineEventOut])
+def public_timeline(
+    slug: str,
+    after_sequence_id: int | None = None,
+    limit: int = 1000,
+    db: Session = Depends(get_db),
+) -> list[TimelineEventOut]:
+    birth = _resolve_public_birth(db, slug)
+    stmt = (
+        select(TimelineEvent)
+        .where(
+            TimelineEvent.birth_id == birth.id,
+            TimelineEvent.deleted_at.is_(None),
+            TimelineEvent.audience_scope == AudienceScope.public,
         )
-        for e in events
-    ]
+        .order_by(TimelineEvent.sequence_id.asc())
+        .limit(limit)
+    )
+    if after_sequence_id is not None:
+        stmt = stmt.where(TimelineEvent.sequence_id > after_sequence_id)
+    return [_serialize_event_out(e) for e in db.scalars(stmt).all()]
 
 
 # ============ Timeline event creators ============
@@ -197,7 +258,7 @@ CreateEventIn = Annotated[
 
 
 @app.post("/birth/{birth_id}/event", response_model=TimelineEventOut)
-def create_event(
+async def create_event(
     payload: CreateEventIn = Body(...),
     access: BirthAccess = Depends(require_parent_access),
     current_user: User = Depends(get_current_user),
@@ -227,11 +288,13 @@ def create_event(
         audience_scope=payload.audience_scope,
     )
     db.commit()
-    return _serialize_event(event)
+    db.refresh(event)
+    await publish_event_change(access.birth.id, "appended", event)
+    return _serialize_event_out(event)
 
 
 @app.post("/birth/{birth_id}/contraction/start", response_model=TimelineEventOut)
-def start_contraction(
+async def start_contraction(
     payload: StartContractionIn = Body(default=StartContractionIn()),
     access: BirthAccess = Depends(require_parent_access),
     current_user: User = Depends(get_current_user),
@@ -254,18 +317,19 @@ def start_contraction(
         audience_scope=AudienceScope.public,
     )
     db.commit()
-    return _serialize_event(event)
+    db.refresh(event)
+    await publish_event_change(access.birth.id, "appended", event)
+    return _serialize_event_out(event)
 
 
 @app.post(
     "/birth/{birth_id}/contraction/{event_id}/stop",
     response_model=TimelineEventOut,
 )
-def stop_contraction(
+async def stop_contraction(
     event_id: uuid.UUID,
     payload: StopContractionIn = Body(...),
     access: BirthAccess = Depends(require_parent_access),
-    current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> TimelineEventOut:
     event = timeline_repo.get_event(db, event_id)
@@ -286,7 +350,71 @@ def stop_contraction(
         },
     )
     db.commit()
-    return _serialize_event(event)
+    db.refresh(event)
+    await publish_event_change(access.birth.id, "updated", event)
+    return _serialize_event_out(event)
+
+
+@app.patch("/birth/{birth_id}/event/{event_id}", response_model=TimelineEventOut)
+async def edit_event(
+    event_id: uuid.UUID,
+    payload: EditEventIn = Body(...),
+    access: BirthAccess = Depends(require_parent_access),
+    db: Session = Depends(get_db),
+) -> TimelineEventOut:
+    event = timeline_repo.get_event(db, event_id)
+    if event is None or event.birth_id != access.birth.id:
+        raise HTTPException(status_code=404, detail="Event not found")
+    if event.deleted_at is not None:
+        raise HTTPException(status_code=410, detail="Event has been deleted")
+
+    patch = payload.model_dump(exclude_none=True)
+    if not patch:
+        return _serialize_event_out(event)
+    timeline_repo.update_payload(db, event, patch)
+    db.commit()
+    db.refresh(event)
+    await publish_event_change(access.birth.id, "updated", event)
+    return _serialize_event_out(event)
+
+
+@app.delete("/birth/{birth_id}/event/{event_id}", status_code=204)
+async def delete_event(
+    event_id: uuid.UUID,
+    access: BirthAccess = Depends(require_parent_access),
+    db: Session = Depends(get_db),
+) -> Response:
+    event = timeline_repo.get_event(db, event_id)
+    if event is None or event.birth_id != access.birth.id:
+        raise HTTPException(status_code=404, detail="Event not found")
+    if event.deleted_at is not None:
+        return Response(status_code=204)
+    event.deleted_at = datetime.now(timezone.utc)
+    db.commit()
+    await publish_event_deleted(access.birth.id, event.sequence_id, event.id)
+    return Response(status_code=204)
+
+
+@app.post(
+    "/birth/{birth_id}/event/{event_id}/toggle-ignore",
+    response_model=TimelineEventOut,
+)
+async def toggle_ignore_interval(
+    event_id: uuid.UUID,
+    access: BirthAccess = Depends(require_parent_access),
+    db: Session = Depends(get_db),
+) -> TimelineEventOut:
+    event = timeline_repo.get_event(db, event_id)
+    if event is None or event.birth_id != access.birth.id:
+        raise HTTPException(status_code=404, detail="Event not found")
+    if event.event_type is not TimelineEventType.contraction:
+        raise HTTPException(status_code=400, detail="Only contractions support ignore-interval")
+    current = bool(event.payload.get("ignore_interval_before", False))
+    timeline_repo.update_payload(db, event, {"ignore_interval_before": not current})
+    db.commit()
+    db.refresh(event)
+    await publish_event_change(access.birth.id, "updated", event)
+    return _serialize_event_out(event)
 
 
 # ============ Media ============
@@ -337,10 +465,161 @@ async def upload_media(
         audience_scope=AudienceScope.public,
     )
     db.commit()
-    return _serialize_event(event)
+    db.refresh(event)
+    await publish_event_change(access.birth.id, "appended", event)
+    return _serialize_event_out(event)
+
+
+@app.get("/media/{media_id}")
+def get_media(media_id: uuid.UUID, db: Session = Depends(get_db)) -> FileResponse:
+    """Serve media files.
+
+    PR 2 leaves this fully public — anyone with the media_id can fetch it.
+    PR 3 will gate by audience_scope + viewer invitation when public birth
+    pages roll out for real.
+    """
+    asset = media_repo.get_media_asset(db, media_id)
+    if asset is None or not asset.is_visible_to_viewers:
+        raise HTTPException(status_code=404, detail="Media not found")
+    if not media_repo.is_local_key(asset.original_s3_key):
+        raise HTTPException(
+            status_code=500,
+            detail="Media is on remote storage; not serveable until S3 lands",
+        )
+    rel = media_repo.local_path(asset.original_s3_key)
+    path = (Path(__file__).parent / rel).resolve()
+    upload_root = UPLOAD_DIR.resolve()
+    if not path.is_file() or upload_root not in path.parents:
+        raise HTTPException(status_code=404, detail="Media file missing")
+    media_type = asset.mime_type or mimetypes.guess_type(str(path))[0] or "application/octet-stream"
+    return FileResponse(path, media_type=media_type)
+
+
+# ============ SSE ============
+
+
+@app.get("/birth/{birth_id}/stream")
+async def stream_birth(
+    request: Request,
+    birth_id: uuid.UUID,
+    current_user: User = Depends(get_current_user_stream),
+    last_event_id: str | None = Header(default=None, alias="Last-Event-ID"),
+    db: Session = Depends(get_db),
+) -> StreamingResponse:
+    birth = births_repo.get_birth(db, birth_id)
+    if birth is None or birth.deleted_at is not None:
+        raise HTTPException(status_code=404, detail="Birth not found")
+    role = births_repo.user_role_for_birth(db, user_id=current_user.id, birth=birth)
+    if role is None:
+        raise HTTPException(status_code=403, detail="Not a member of this family")
+    after = _parse_last_event_id(last_event_id)
+    return StreamingResponse(
+        _sse_generator(request, birth.id, after, db),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache, no-transform",
+            "X-Accel-Buffering": "no",
+            "Connection": "keep-alive",
+        },
+    )
+
+
+@app.get("/b/{slug}/stream")
+async def stream_public(
+    request: Request,
+    slug: str,
+    last_event_id: str | None = Header(default=None, alias="Last-Event-ID"),
+    db: Session = Depends(get_db),
+) -> StreamingResponse:
+    birth = _resolve_public_birth(db, slug)
+    after = _parse_last_event_id(last_event_id)
+    return StreamingResponse(
+        _sse_generator(request, birth.id, after, db, public_only=True),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache, no-transform",
+            "X-Accel-Buffering": "no",
+            "Connection": "keep-alive",
+        },
+    )
 
 
 # ============ helpers ============
+
+
+def _parse_last_event_id(raw: str | None) -> int | None:
+    if not raw:
+        return None
+    try:
+        return int(raw)
+    except ValueError:
+        return None
+
+
+def _format_sse(*, event: str, data: dict, sequence_id: int | None = None) -> bytes:
+    lines = []
+    if sequence_id is not None:
+        lines.append(f"id: {sequence_id}")
+    lines.append(f"event: {event}")
+    lines.append(f"data: {json.dumps(data, default=str)}")
+    lines.append("")
+    lines.append("")
+    return "\n".join(lines).encode("utf-8")
+
+
+async def _sse_generator(
+    request: Request,
+    birth_id: uuid.UUID,
+    after_sequence_id: int | None,
+    db: Session,
+    public_only: bool = False,
+) -> AsyncIterator[bytes]:
+    # Replay anything the client missed since `after_sequence_id`.
+    stmt = (
+        select(TimelineEvent)
+        .where(
+            TimelineEvent.birth_id == birth_id,
+            TimelineEvent.deleted_at.is_(None),
+        )
+        .order_by(TimelineEvent.sequence_id.asc())
+    )
+    if after_sequence_id is not None:
+        stmt = stmt.where(TimelineEvent.sequence_id > after_sequence_id)
+    if public_only:
+        stmt = stmt.where(TimelineEvent.audience_scope == AudienceScope.public)
+    for event in db.scalars(stmt).all():
+        yield _format_sse(
+            event="appended",
+            data=serialize_event(event),
+            sequence_id=event.sequence_id,
+        )
+
+    # Open marker so clients can flip "connected" UI as soon as the
+    # replay-or-empty-batch finishes flushing.
+    yield _format_sse(event="open", data={"birth_id": str(birth_id)})
+
+    async with broker.subscribe(birth_id) as queue:
+        while True:
+            if await request.is_disconnected():
+                return
+            try:
+                event = await asyncio.wait_for(queue.get(), timeout=SSE_HEARTBEAT_SECONDS)
+            except asyncio.TimeoutError:
+                yield b": heartbeat\n\n"
+                continue
+            # Deletes don't carry audience_scope; always forward them.
+            # Public clients that never saw the original event just no-op.
+            if (
+                public_only
+                and event.kind != "deleted"
+                and event.payload.get("audience_scope") != AudienceScope.public.value
+            ):
+                continue
+            yield _format_sse(
+                event=event.kind,
+                data=event.payload,
+                sequence_id=event.sequence_id,
+            )
 
 
 def _gap_before_seconds(db: Session, birth_id: uuid.UUID, occurred_at: datetime) -> int | None:
@@ -367,7 +646,7 @@ def _default_extension(kind: MediaKind) -> str:
     }[kind]
 
 
-def _serialize_event(e) -> TimelineEventOut:
+def _serialize_event_out(e: TimelineEvent) -> TimelineEventOut:
     return TimelineEventOut(
         id=e.id,
         birth_id=e.birth_id,
