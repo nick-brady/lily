@@ -105,3 +105,57 @@ async def publish_event_deleted(birth_id: uuid.UUID, sequence_id: int, event_id:
             payload={"id": str(event_id)},
         ),
     )
+
+
+async def publish_reaction_change(
+    birth_id: uuid.UUID,
+    *,
+    kind: str,  # "reaction_added" | "reaction_removed"
+    event_id: uuid.UUID,
+    reaction_kind: str,
+    user_id: uuid.UUID,
+) -> None:
+    """Broadcast a reaction toggle. We don't carry an audience scope on
+    these — the subscriber-side filter already ensures viewers won't
+    receive reactions for events they couldn't see (because they never
+    subscribed to those scopes), and the count refresh is cheap if a
+    client misses one.
+
+    `sequence_id` is intentionally negative so engagement events sort
+    after timeline events and don't collide on `Last-Event-ID` replay.
+    """
+    await broker.publish(
+        birth_id,
+        BroadcastedEvent(
+            sequence_id=-1,
+            kind=kind,
+            payload={
+                "event_id": str(event_id),
+                "kind": reaction_kind,
+                "user_id": str(user_id),
+            },
+        ),
+    )
+
+
+async def publish_comment_change(
+    birth_id: uuid.UUID,
+    *,
+    kind: str,  # "comment_added" | "comment_updated" | "comment_deleted"
+    event_id: uuid.UUID,
+    comment_id: uuid.UUID,
+    body: str | None = None,
+    user_id: uuid.UUID | None = None,
+) -> None:
+    payload: dict[str, Any] = {
+        "event_id": str(event_id),
+        "comment_id": str(comment_id),
+    }
+    if body is not None:
+        payload["body"] = body
+    if user_id is not None:
+        payload["user_id"] = str(user_id)
+    await broker.publish(
+        birth_id,
+        BroadcastedEvent(sequence_id=-1, kind=kind, payload=payload),
+    )

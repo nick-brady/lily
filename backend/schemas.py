@@ -18,6 +18,7 @@ from models import (
     BirthStatus,
     FamilyRole,
     MediaKind,
+    ReactionKind,
     TimelineEventType,
 )
 
@@ -119,6 +120,19 @@ class BirthOut(BaseModel):
     is_locked_to_invited: bool
 
 
+class ReactionCountOut(BaseModel):
+    """Per-kind reaction summary on an event.
+
+    `mine: false` is also returned for anonymous viewers — anon users
+    can't react, but they still see counts (this is core to the brand;
+    Aunt Linda scanning a QR card 18 years from now should feel the
+    love poured in).
+    """
+
+    count: int
+    mine: bool
+
+
 class TimelineEventOut(BaseModel):
     id: uuid.UUID
     birth_id: uuid.UUID
@@ -129,6 +143,31 @@ class TimelineEventOut(BaseModel):
     posted_by_user_id: uuid.UUID
     payload: dict
     audience_scope: AudienceScope
+    reactions: dict[ReactionKind, ReactionCountOut] = Field(default_factory=dict)
+    comment_count: int = 0
+
+
+class ReactionToggleIn(BaseModel):
+    kind: ReactionKind
+
+
+class CommentOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    event_id: uuid.UUID
+    user_id: uuid.UUID
+    body: str
+    created_at: datetime
+    updated_at: datetime
+
+
+class CommentCreateIn(BaseModel):
+    body: str = Field(..., min_length=1, max_length=4000)
+
+
+class CommentEditIn(BaseModel):
+    body: str = Field(..., min_length=1, max_length=4000)
 
 
 class MediaAssetOut(BaseModel):

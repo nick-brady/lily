@@ -218,6 +218,79 @@ export const api = {
     return jsonOrThrow(res);
   },
 
+  // ---- Reactions ----
+  // We expose both the parent surface (/birth/{id}) and the public
+  // surface (/b/{slug}). Pages choose based on whether the visitor is
+  // a parent operating their dashboard or a viewer on the keepsake.
+
+  async addReaction({ birthId, slug, eventId, kind }) {
+    const url = birthId
+      ? `${API_URL}/birth/${birthId}/event/${eventId}/reactions`
+      : `${API_URL}/b/${slug}/event/${eventId}/reactions`;
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...authHeaders() },
+      body: JSON.stringify({ kind }),
+    });
+    return jsonOrThrow(res);
+  },
+
+  async removeReaction({ birthId, slug, eventId, kind }) {
+    const url = birthId
+      ? `${API_URL}/birth/${birthId}/event/${eventId}/reactions/${kind}`
+      : `${API_URL}/b/${slug}/event/${eventId}/reactions/${kind}`;
+    const res = await fetch(url, {
+      method: 'DELETE',
+      headers: authHeaders(),
+    });
+    return jsonOrThrow(res);
+  },
+
+  // ---- Comments ----
+
+  async listComments({ birthId, slug, eventId }) {
+    const url = birthId
+      ? `${API_URL}/birth/${birthId}/event/${eventId}/comments`
+      : `${API_URL}/b/${slug}/event/${eventId}/comments`;
+    const res = await fetch(url, { headers: authHeaders() });
+    return jsonOrThrow(res);
+  },
+
+  async createComment({ birthId, slug, eventId, body }) {
+    const url = birthId
+      ? `${API_URL}/birth/${birthId}/event/${eventId}/comments`
+      : `${API_URL}/b/${slug}/event/${eventId}/comments`;
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...authHeaders() },
+      body: JSON.stringify({ body }),
+    });
+    return jsonOrThrow(res);
+  },
+
+  async editComment({ birthId, slug, eventId, commentId, body }) {
+    const url = birthId
+      ? `${API_URL}/birth/${birthId}/event/${eventId}/comments/${commentId}`
+      : `${API_URL}/b/${slug}/event/${eventId}/comments/${commentId}`;
+    const res = await fetch(url, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json', ...authHeaders() },
+      body: JSON.stringify({ body }),
+    });
+    return jsonOrThrow(res);
+  },
+
+  async deleteComment({ birthId, slug, eventId, commentId }) {
+    const url = birthId
+      ? `${API_URL}/birth/${birthId}/event/${eventId}/comments/${commentId}`
+      : `${API_URL}/b/${slug}/event/${eventId}/comments/${commentId}`;
+    const res = await fetch(url, {
+      method: 'DELETE',
+      headers: authHeaders(),
+    });
+    return jsonOrThrow(res);
+  },
+
   mediaUrl(mediaId) {
     return `${API_URL}/media/${mediaId}`;
   },

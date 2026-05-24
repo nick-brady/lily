@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { api } from '../api/client';
 
@@ -8,6 +8,8 @@ const DEFAULT_BIRTH_SLUG = import.meta.env.VITE_DEFAULT_BIRTH_SLUG || 'lily-wren
 export default function AuthPage() {
   const { acceptToken } = useAuth();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const nextPath = searchParams.get('next');
   const [step, setStep] = useState('identifier'); // 'identifier' | 'code'
   const [identifier, setIdentifier] = useState('');
   const [code, setCode] = useState('');
@@ -36,8 +38,29 @@ export default function AuthPage() {
     setLoading(true);
     try {
       const result = await api.verifyChallenge({ identifier, code });
-      await acceptToken(result.access_token);
-      navigate(`/b/${DEFAULT_BIRTH_SLUG}/manage`, { replace: true });
+      const profile = await acceptToken(result.access_token);
+      // After sign-in we land in this order:
+      // 1. `?next=` if the user was redirected here from a guarded action
+      //    (e.g. tapping a reaction while anonymous on the keepsake page).
+      // 2. The first family they're a member of (the spec calls this
+      //    "their" birth — parents land in their dashboard).
+      // 3. A sensible default slug.
+      if (nextPath) {
+        navigate(nextPath, { replace: true });
+        return;
+      }
+      const firstBirth = profile?.families?.[0]?.births?.[0];
+      if (firstBirth) {
+        const isParent =
+          profile.families[0].role === 'owner'
+          || profile.families[0].role === 'co_parent';
+        navigate(
+          isParent ? `/b/${firstBirth.slug}/manage` : `/b/${firstBirth.slug}`,
+          { replace: true },
+        );
+        return;
+      }
+      navigate(`/b/${DEFAULT_BIRTH_SLUG}`, { replace: true });
     } catch (err) {
       setError(err.message || 'Invalid code');
     } finally {

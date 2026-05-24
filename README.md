@@ -128,6 +128,29 @@ serve the shareable keepsake page.
 - `GET /birth/{birth_id}/stream?token=<jwt>` — server-sent events filtered
   by role; heartbeat every 15s; supports `Last-Event-ID` for resume
 
+### Reactions + comments
+
+- `POST /birth/{birth_id}/event/{event_id}/reactions` — body `{kind: "love"|"wow"|"pray"}`. Idempotent: re-POSTing the same kind is a no-op.
+- `DELETE /birth/{birth_id}/event/{event_id}/reactions/{kind}` — remove your own reaction of that kind. Idempotent.
+- `GET /birth/{birth_id}/event/{event_id}/comments` — list comments for an event.
+- `POST /birth/{birth_id}/event/{event_id}/comments` — `{body}`. Returns `402` with a `comments_locked` payload if the birth isn't unlocked yet (see "Comment unlock" below).
+- `PATCH /birth/{birth_id}/event/{event_id}/comments/{comment_id}` — author-only edit.
+- `DELETE /birth/{birth_id}/event/{event_id}/comments/{comment_id}` — author or parent.
+
+The same routes are mirrored under `/b/{slug}/event/{event_id}/...` for the public surface. The public versions accept any authenticated user (not just family members) so visitors who self-sign-in via a QR code can react and comment too. Anonymous users can `GET` reactions (inline on the timeline) and comments, but `POST/PATCH/DELETE` requires auth.
+
+`GET /birth/{birth_id}/timeline` and `GET /b/{slug}/timeline` include per-event `reactions: { kind: { count, mine } }` and `comment_count` inline — two extra bulk queries, no N+1.
+
+SSE adds these event kinds: `reaction_added`, `reaction_removed`, `comment_added`, `comment_updated`, `comment_deleted`.
+
+### Comment unlock
+
+Per the spec, comments are gated behind a one-time $12 unlock per birth (`birth.is_unlocked`). Anyone in the family pays once; everyone gets to comment forever. PR 4 wires the gate (HTTP 402 with a `comments_locked` body); PR 5 will plug Stripe in to actually flip the flag. To manually unlock a birth in dev:
+
+```bash
+docker compose exec backend python scripts/unlock_birth.py lily-wren
+```
+
 ### Invitations (parents)
 
 - `POST /birth/{birth_id}/invitations` — create a shareable invite link
@@ -172,8 +195,8 @@ PR; today every invited viewer sees every `group_targeted` post.
 
 - `/` — redirects to the default birth's public page (`VITE_DEFAULT_BIRTH_SLUG`,
   defaults to `lily-wren`)
-- `/login` — magic link / OTP form
-- `/auth/verify?token=...` — consumes the magic link, stores the JWT, lands you on `/b/{slug}/manage`
+- `/login?next=/path` — magic link / OTP form. The `next` param lets guarded actions (e.g. tapping a reaction while anonymous) come back to where the user was after sign-in.
+- `/auth/verify?token=...&next=...` — consumes the magic link, stores the JWT, then lands at `next` (or the user's first family birth, or the default slug).
 - `/invite/:token` — viewer invitation redeem page (verifies email/phone, attaches as family_viewer)
-- `/b/:slug` — public keepsake view; renders family-only posts too when the signed-in user is an invited viewer
+- `/b/:slug` — public keepsake view; renders family-only posts too when the signed-in user is an invited viewer. Reactions + comments inline on every milestone, post, and photo.
 - `/b/:slug/manage` — parent dashboard (contraction button, post composer, stats, invitation manager)

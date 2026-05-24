@@ -35,6 +35,11 @@ export function useSSE(url, onEvent) {
     source.addEventListener('appended', handle('appended'));
     source.addEventListener('updated', handle('updated'));
     source.addEventListener('deleted', handle('deleted'));
+    source.addEventListener('reaction_added', handle('reaction_added'));
+    source.addEventListener('reaction_removed', handle('reaction_removed'));
+    source.addEventListener('comment_added', handle('comment_added'));
+    source.addEventListener('comment_updated', handle('comment_updated'));
+    source.addEventListener('comment_deleted', handle('comment_deleted'));
     source.onerror = () => {
       setIsConnected(false);
     };

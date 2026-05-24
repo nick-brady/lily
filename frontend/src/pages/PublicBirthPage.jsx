@@ -5,6 +5,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { useSSE } from '../hooks/useSSE';
 import ConnectionStatus from '../components/ConnectionStatus';
 import Timeline from '../components/Timeline';
+import { bumpCommentCount, updateReaction } from '../utils/engagement';
 
 export default function PublicBirthPage() {
   const { slug } = useParams();
@@ -49,6 +50,8 @@ export default function PublicBirthPage() {
     // timeline is reloaded with the new role.
   }, [slug, isAuthenticated]);
 
+  const currentUserId = me?.user?.id;
+
   const handleSSE = useCallback((kind, data) => {
     if (kind === 'deleted') {
       const id = data?.id;
@@ -64,11 +67,36 @@ export default function PublicBirthPage() {
       // Public stream is already audience-filtered on the server.
       setEvents((prev) => {
         const next = new Map(prev);
-        next.set(data.id, data);
+        const existing = next.get(data.id);
+        next.set(data.id, {
+          reactions: existing?.reactions || {},
+          comment_count: existing?.comment_count ?? 0,
+          ...data,
+        });
         return next;
       });
+      return;
     }
-  }, []);
+    if (kind === 'reaction_added' || kind === 'reaction_removed') {
+      const { event_id, kind: reactionKind, user_id } = data || {};
+      if (!event_id || !reactionKind) return;
+      const delta = kind === 'reaction_added' ? 1 : -1;
+      const isMyAction = !!currentUserId && user_id === currentUserId;
+      setEvents((prev) => updateReaction(prev, event_id, reactionKind, delta, isMyAction));
+      return;
+    }
+    if (kind === 'comment_added') {
+      const eventId = data?.event_id;
+      if (!eventId) return;
+      setEvents((prev) => bumpCommentCount(prev, eventId, 1));
+      return;
+    }
+    if (kind === 'comment_deleted') {
+      const eventId = data?.event_id;
+      if (!eventId) return;
+      setEvents((prev) => bumpCommentCount(prev, eventId, -1));
+    }
+  }, [currentUserId]);
 
   const streamUrl = useMemo(() => {
     if (!birth) return null;
@@ -148,7 +176,11 @@ export default function PublicBirthPage() {
             Loading timeline…
           </p>
         ) : (
-          <Timeline events={sortedEvents} />
+          <Timeline
+            events={sortedEvents}
+            slug={slug}
+            isUnlocked={birth?.is_unlocked ?? false}
+          />
         )}
       </main>
 

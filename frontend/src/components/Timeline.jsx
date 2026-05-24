@@ -1,6 +1,8 @@
 import { useState } from 'react';
 import { api } from '../api/client';
 import { formatDuration } from '../utils/statistics';
+import ReactionBar from './ReactionBar';
+import CommentThread from './CommentThread';
 
 const AUDIENCE_LABELS = {
   public: { label: 'Public', tone: 'bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-300' },
@@ -102,7 +104,7 @@ function ContractionItem({ event, canManage, onDelete, onToggleIgnore }) {
   );
 }
 
-function MilestoneItem({ event, canManage, onDelete, onEdit }) {
+function MilestoneItem({ event, canManage, onDelete, onEdit, engagementScope, isUnlocked }) {
   const { kind, title, body } = event.payload || {};
   const milestone = MILESTONES[kind] || MILESTONES.other;
   return (
@@ -124,12 +126,13 @@ function MilestoneItem({ event, canManage, onDelete, onEdit }) {
         {canManage && (
           <ItemActions onEdit={() => onEdit(event)} onDelete={() => onDelete(event)} audienceScope={event.audience_scope} />
         )}
+        <EngagementFooter event={event} scope={engagementScope} isUnlocked={isUnlocked} />
       </div>
     </div>
   );
 }
 
-function MediaItem({ event, canManage, onDelete, onEdit, onPhotoClick }) {
+function MediaItem({ event, canManage, onDelete, onEdit, onPhotoClick, engagementScope, isUnlocked }) {
   const { media_id, caption } = event.payload || {};
   const url = api.mediaUrl(media_id);
   if (event.event_type === 'photo') {
@@ -149,6 +152,7 @@ function MediaItem({ event, canManage, onDelete, onEdit, onPhotoClick }) {
           {canManage && (
             <ItemActions onEdit={() => onEdit(event)} onDelete={() => onDelete(event)} audienceScope={event.audience_scope} />
           )}
+          <EngagementFooter event={event} scope={engagementScope} isUnlocked={isUnlocked} />
         </div>
       </div>
     );
@@ -168,6 +172,7 @@ function MediaItem({ event, canManage, onDelete, onEdit, onPhotoClick }) {
           {canManage && (
             <ItemActions onEdit={() => onEdit(event)} onDelete={() => onDelete(event)} audienceScope={event.audience_scope} />
           )}
+          <EngagementFooter event={event} scope={engagementScope} isUnlocked={isUnlocked} />
         </div>
       </div>
     );
@@ -196,12 +201,13 @@ function MediaItem({ event, canManage, onDelete, onEdit, onPhotoClick }) {
         {canManage && (
           <ItemActions onEdit={() => onEdit(event)} onDelete={() => onDelete(event)} audienceScope={event.audience_scope} />
         )}
+        <EngagementFooter event={event} scope={engagementScope} isUnlocked={isUnlocked} />
       </div>
     </div>
   );
 }
 
-function TextNoteItem({ event, canManage, onDelete, onEdit }) {
+function TextNoteItem({ event, canManage, onDelete, onEdit, engagementScope, isUnlocked }) {
   const { body } = event.payload || {};
   return (
     <div className="flex gap-4 py-4 border-b border-gray-100 dark:border-gray-700/50 last:border-0">
@@ -215,6 +221,7 @@ function TextNoteItem({ event, canManage, onDelete, onEdit }) {
         {canManage && (
           <ItemActions onEdit={() => onEdit(event)} onDelete={() => onDelete(event)} audienceScope={event.audience_scope} />
         )}
+        <EngagementFooter event={event} scope={engagementScope} isUnlocked={isUnlocked} />
       </div>
     </div>
   );
@@ -230,6 +237,22 @@ function ItemActions({ onEdit, onDelete, audienceScope }) {
         Delete
       </button>
       <AudienceBadge scope={audienceScope} />
+    </div>
+  );
+}
+
+/**
+ * Engagement footer rendered under everything except contractions.
+ * Contractions are high-frequency timing data; reacting to one feels
+ * weird. The persona doc explicitly describes "hearts on every
+ * milestone" — engagement lives on the stories, not the metrics.
+ */
+function EngagementFooter({ event, scope, isUnlocked }) {
+  if (!scope) return null;
+  return (
+    <div className="mt-3">
+      <ReactionBar event={event} scope={scope} />
+      <CommentThread event={event} scope={scope} isUnlocked={isUnlocked} />
     </div>
   );
 }
@@ -267,7 +290,18 @@ function editableFieldFor(event) {
   }
 }
 
-export default function Timeline({ events, canManage = false, birthId = null }) {
+export default function Timeline({
+  events,
+  canManage = false,
+  birthId = null,
+  slug = null,
+  isUnlocked = true,
+}) {
+  const engagementScope = birthId
+    ? { birthId }
+    : slug
+      ? { slug }
+      : null;
   const [lightbox, setLightbox] = useState({ open: false, url: '', caption: '' });
   const [deleteConfirm, setDeleteConfirm] = useState(null);
   const [editModal, setEditModal] = useState(null);
@@ -434,6 +468,8 @@ export default function Timeline({ events, canManage = false, birthId = null }) 
                   onEdit={askEdit}
                   onPhotoClick={openLightbox}
                   onToggleIgnore={toggleIgnore}
+                  engagementScope={engagementScope}
+                  isUnlocked={isUnlocked}
                 />
               ))}
             </div>

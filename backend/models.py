@@ -66,6 +66,20 @@ class AuthIdentifierKind(str, enum.Enum):
     phone = "phone"
 
 
+class ReactionKind(str, enum.Enum):
+    """The curated set of feelings we let people express on an event.
+
+    Three is intentional. See `Lily-Personas.md` — Janet leaves "a heart on
+    the belly photo" and "hearts on every milestone"; the unlock exists
+    precisely because reactions alone can't carry what someone actually
+    wants to say. A bigger palette would dilute that gap.
+    """
+
+    love = "love"
+    wow = "wow"
+    pray = "pray"
+
+
 def _uuid_pk() -> Mapped[uuid.UUID]:
     return mapped_column(
         UUID(as_uuid=True),
@@ -367,6 +381,83 @@ class ViewerInvitation(Base):
 
     __table_args__ = (
         sa.Index("ix_viewer_invitations_birth", "birth_id"),
+    )
+
+
+class TimelineEventReaction(Base):
+    """One user's reaction-of-a-given-kind on a specific event. The unique
+    constraint on (event_id, user_id, kind) makes the API idempotent — a
+    user can toggle a reaction on/off, but can't accidentally double-count.
+    Multi-kind is supported (Janet can leave both love and pray on the
+    same milestone).
+
+    Reactions are free-tier; the unlock gate only applies to comments.
+    """
+
+    __tablename__ = "timeline_event_reactions"
+
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    event_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        sa.ForeignKey("timeline_events.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        sa.ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    kind: Mapped[ReactionKind] = mapped_column(
+        sa.Enum(ReactionKind, name="reaction_kind", native_enum=True),
+        nullable=False,
+    )
+    created_at: Mapped[datetime] = _created_at()
+
+    __table_args__ = (
+        sa.UniqueConstraint(
+            "event_id",
+            "user_id",
+            "kind",
+            name="uq_timeline_event_reactions_event_user_kind",
+        ),
+        sa.Index("ix_timeline_event_reactions_event", "event_id"),
+    )
+
+
+class TimelineEventComment(Base):
+    """A family member's message on an event. Soft-deleted (not hard) so
+    we can recover after honest mistakes and so deleted messages don't
+    silently vanish from family memory. The 18-year-from-now case is the
+    one that matters here — Janet's comment on labor day must still exist
+    when Sarah's daughter logs in for the first time.
+
+    Comments are gated behind `birth.is_unlocked`. Parents can still post
+    while locked (they own the page); viewers can't post until the unlock
+    is paid for. The check lives at the route layer.
+    """
+
+    __tablename__ = "timeline_event_comments"
+
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    event_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        sa.ForeignKey("timeline_events.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        sa.ForeignKey("users.id", ondelete="RESTRICT"),
+        nullable=False,
+    )
+    body: Mapped[str] = mapped_column(sa.Text, nullable=False)
+    created_at: Mapped[datetime] = _created_at()
+    updated_at: Mapped[datetime] = _updated_at()
+    deleted_at: Mapped[datetime | None] = mapped_column(
+        sa.DateTime(timezone=True), nullable=True
+    )
+
+    __table_args__ = (
+        sa.Index("ix_timeline_event_comments_event", "event_id"),
     )
 
 

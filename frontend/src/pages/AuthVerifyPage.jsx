@@ -17,13 +17,29 @@ export default function AuthVerifyPage() {
       setError('No token provided.');
       return;
     }
+    const nextPath = params.get('next');
     let cancelled = false;
     (async () => {
       try {
         const result = await api.verifyChallenge({ token });
         if (cancelled) return;
-        await acceptToken(result.access_token);
-        navigate(`/b/${DEFAULT_BIRTH_SLUG}/manage`, { replace: true });
+        const profile = await acceptToken(result.access_token);
+        if (nextPath) {
+          navigate(nextPath, { replace: true });
+          return;
+        }
+        const firstBirth = profile?.families?.[0]?.births?.[0];
+        if (firstBirth) {
+          const isParent =
+            profile.families[0].role === 'owner'
+            || profile.families[0].role === 'co_parent';
+          navigate(
+            isParent ? `/b/${firstBirth.slug}/manage` : `/b/${firstBirth.slug}`,
+            { replace: true },
+          );
+          return;
+        }
+        navigate(`/b/${DEFAULT_BIRTH_SLUG}`, { replace: true });
       } catch (err) {
         if (!cancelled) setError(err.message || 'This link is invalid or expired.');
       }

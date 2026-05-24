@@ -44,7 +44,14 @@ from auth import (
     FRONTEND_URL,
 )
 from db import get_db
-from events import broker, publish_event_change, publish_event_deleted, serialize_event
+from events import (
+    broker,
+    publish_comment_change,
+    publish_event_change,
+    publish_event_deleted,
+    publish_reaction_change,
+    serialize_event,
+)
 from models import (
     AudienceScope,
     Birth,
@@ -53,14 +60,17 @@ from models import (
     FamilyRole,
     MediaAsset,
     MediaKind,
+    ReactionKind,
     TimelineEvent,
     TimelineEventType,
     User,
     ViewerInvitation,
 )
 from repositories import births as births_repo
+from repositories import comments as comments_repo
 from repositories import invitations as invitations_repo
 from repositories import media as media_repo
+from repositories import reactions as reactions_repo
 from repositories import timeline as timeline_repo
 from repositories import users as users_repo
 from schemas import (
@@ -68,6 +78,9 @@ from schemas import (
     AuthRequestOut,
     AuthVerifyIn,
     BirthOut,
+    CommentCreateIn,
+    CommentEditIn,
+    CommentOut,
     CreateMilestoneIn,
     CreateTextNoteIn,
     EditEventIn,
@@ -78,6 +91,8 @@ from schemas import (
     InvitationCreatedOut,
     InvitationOut,
     MeOut,
+    ReactionCountOut,
+    ReactionToggleIn,
     StartContractionIn,
     StopContractionIn,
     TimelineEventOut,
@@ -193,6 +208,7 @@ def get_birth(access: BirthAccess = Depends(require_birth_access)) -> BirthOut:
 @app.get("/birth/{birth_id}/timeline", response_model=list[TimelineEventOut])
 def list_timeline(
     access: BirthAccess = Depends(require_birth_access),
+    current_user: User = Depends(get_current_user),
     after_sequence_id: int | None = None,
     limit: int = 1000,
     db: Session = Depends(get_db),
@@ -205,7 +221,9 @@ def list_timeline(
         limit=limit,
         audience_scopes=visible,
     )
-    return [_serialize_event_out(e) for e in events]
+    return _serialize_events_with_engagement(
+        db, events, requester_user_id=current_user.id
+    )
 
 
 # ============ Public birth (no auth) ============
@@ -256,7 +274,11 @@ def public_timeline(
         limit=limit,
         audience_scopes=visible,
     )
-    return [_serialize_event_out(e) for e in events]
+    return _serialize_events_with_engagement(
+        db,
+        events,
+        requester_user_id=current_user.id if current_user else None,
+    )
 
 
 # ============ Timeline event creators ============
@@ -349,6 +371,7 @@ async def stop_contraction(
     event_id: uuid.UUID,
     payload: StopContractionIn = Body(...),
     access: BirthAccess = Depends(require_parent_access),
+    current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> TimelineEventOut:
     event = timeline_repo.get_event(db, event_id)
@@ -371,7 +394,9 @@ async def stop_contraction(
     db.commit()
     db.refresh(event)
     await publish_event_change(access.birth.id, "updated", event)
-    return _serialize_event_out(event)
+    return _serialize_event_with_engagement(
+        db, event, requester_user_id=current_user.id
+    )
 
 
 @app.patch("/birth/{birth_id}/event/{event_id}", response_model=TimelineEventOut)
@@ -379,6 +404,7 @@ async def edit_event(
     event_id: uuid.UUID,
     payload: EditEventIn = Body(...),
     access: BirthAccess = Depends(require_parent_access),
+    current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> TimelineEventOut:
     event = timeline_repo.get_event(db, event_id)
@@ -389,12 +415,16 @@ async def edit_event(
 
     patch = payload.model_dump(exclude_none=True)
     if not patch:
-        return _serialize_event_out(event)
+        return _serialize_event_with_engagement(
+            db, event, requester_user_id=current_user.id
+        )
     timeline_repo.update_payload(db, event, patch)
     db.commit()
     db.refresh(event)
     await publish_event_change(access.birth.id, "updated", event)
-    return _serialize_event_out(event)
+    return _serialize_event_with_engagement(
+        db, event, requester_user_id=current_user.id
+    )
 
 
 @app.delete("/birth/{birth_id}/event/{event_id}", status_code=204)
@@ -421,6 +451,7 @@ async def delete_event(
 async def toggle_ignore_interval(
     event_id: uuid.UUID,
     access: BirthAccess = Depends(require_parent_access),
+    current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> TimelineEventOut:
     event = timeline_repo.get_event(db, event_id)
@@ -433,7 +464,487 @@ async def toggle_ignore_interval(
     db.commit()
     db.refresh(event)
     await publish_event_change(access.birth.id, "updated", event)
-    return _serialize_event_out(event)
+    return _serialize_event_with_engagement(
+        db, event, requester_user_id=current_user.id
+    )
+
+
+# ============ Reactions ============
+
+
+def _require_visible_event(
+    db: Session,
+    event_id: uuid.UUID,
+    *,
+    birth: Birth,
+    role: FamilyRole | None,
+) -> TimelineEvent:
+    """Resolve a timeline event the caller is allowed to engage with.
+
+    A reaction or comment on an event the caller can't see is meaningless
+    (and would leak audience info via the existence-check). 404 keeps the
+    audience scope opaque.
+
+    `role=None` means an authed stranger who found the page via QR card
+    or shared link — they get public-scope visibility only.
+    """
+    event = timeline_repo.get_event(db, event_id)
+    if (
+        event is None
+        or event.birth_id != birth.id
+        or event.deleted_at is not None
+    ):
+        raise HTTPException(status_code=404, detail="Event not found")
+    visible = births_repo.visible_scopes_for_role(role)
+    if event.audience_scope not in visible:
+        raise HTTPException(status_code=404, detail="Event not found")
+    return event
+
+
+@dataclass
+class PublicEngagementAccess:
+    """Auth context for engagement on the public-shaped surface.
+
+    Anyone authed can interact, even if they aren't a family member —
+    Aunt Linda scans a QR card from a printed announcement, signs in
+    with her phone number, and leaves a comment. The brand depends on
+    that being possible (see Persona 1 Stage 9: "she wasn't even invited
+    to the page originally").
+    """
+
+    birth: Birth
+    user: User
+    role: FamilyRole | None  # None when the user isn't a family member
+
+
+def require_public_engagement(
+    slug: str = PathParam(...),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> PublicEngagementAccess:
+    birth = _resolve_public_birth(db, slug)
+    role = births_repo.user_role_for_birth(db, user_id=current_user.id, birth=birth)
+    return PublicEngagementAccess(birth=birth, user=current_user, role=role)
+
+
+async def _do_add_reaction(
+    db: Session,
+    *,
+    birth: Birth,
+    role: FamilyRole | None,
+    user: User,
+    event_id: uuid.UUID,
+    kind: ReactionKind,
+) -> dict[ReactionKind, ReactionCountOut]:
+    event = _require_visible_event(db, event_id, birth=birth, role=role)
+    added = reactions_repo.add_reaction(
+        db, event_id=event.id, user_id=user.id, kind=kind
+    )
+    db.commit()
+    if added:
+        await publish_reaction_change(
+            birth.id,
+            kind="reaction_added",
+            event_id=event.id,
+            reaction_kind=kind.value,
+            user_id=user.id,
+        )
+    summary = reactions_repo.summarize_event(
+        db, event_id=event.id, requester_user_id=user.id
+    )
+    return {
+        k: ReactionCountOut(count=s.count, mine=s.mine)
+        for k, s in summary.items()
+    }
+
+
+async def _do_remove_reaction(
+    db: Session,
+    *,
+    birth: Birth,
+    role: FamilyRole | None,
+    user: User,
+    event_id: uuid.UUID,
+    kind: ReactionKind,
+) -> dict[ReactionKind, ReactionCountOut]:
+    event = _require_visible_event(db, event_id, birth=birth, role=role)
+    removed = reactions_repo.remove_reaction(
+        db, event_id=event.id, user_id=user.id, kind=kind
+    )
+    db.commit()
+    if removed:
+        await publish_reaction_change(
+            birth.id,
+            kind="reaction_removed",
+            event_id=event.id,
+            reaction_kind=kind.value,
+            user_id=user.id,
+        )
+    summary = reactions_repo.summarize_event(
+        db, event_id=event.id, requester_user_id=user.id
+    )
+    return {
+        k: ReactionCountOut(count=s.count, mine=s.mine)
+        for k, s in summary.items()
+    }
+
+
+@app.post(
+    "/birth/{birth_id}/event/{event_id}/reactions",
+    response_model=dict[ReactionKind, ReactionCountOut],
+)
+async def add_reaction(
+    event_id: uuid.UUID,
+    payload: ReactionToggleIn = Body(...),
+    access: BirthAccess = Depends(require_birth_access),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> dict[ReactionKind, ReactionCountOut]:
+    return await _do_add_reaction(
+        db,
+        birth=access.birth,
+        role=access.role,
+        user=current_user,
+        event_id=event_id,
+        kind=payload.kind,
+    )
+
+
+@app.delete(
+    "/birth/{birth_id}/event/{event_id}/reactions/{kind}",
+    response_model=dict[ReactionKind, ReactionCountOut],
+)
+async def remove_reaction(
+    event_id: uuid.UUID,
+    kind: ReactionKind,
+    access: BirthAccess = Depends(require_birth_access),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> dict[ReactionKind, ReactionCountOut]:
+    return await _do_remove_reaction(
+        db,
+        birth=access.birth,
+        role=access.role,
+        user=current_user,
+        event_id=event_id,
+        kind=kind,
+    )
+
+
+@app.post(
+    "/b/{slug}/event/{event_id}/reactions",
+    response_model=dict[ReactionKind, ReactionCountOut],
+)
+async def public_add_reaction(
+    event_id: uuid.UUID,
+    payload: ReactionToggleIn = Body(...),
+    access: PublicEngagementAccess = Depends(require_public_engagement),
+    db: Session = Depends(get_db),
+) -> dict[ReactionKind, ReactionCountOut]:
+    return await _do_add_reaction(
+        db,
+        birth=access.birth,
+        role=access.role,
+        user=access.user,
+        event_id=event_id,
+        kind=payload.kind,
+    )
+
+
+@app.delete(
+    "/b/{slug}/event/{event_id}/reactions/{kind}",
+    response_model=dict[ReactionKind, ReactionCountOut],
+)
+async def public_remove_reaction(
+    event_id: uuid.UUID,
+    kind: ReactionKind,
+    access: PublicEngagementAccess = Depends(require_public_engagement),
+    db: Session = Depends(get_db),
+) -> dict[ReactionKind, ReactionCountOut]:
+    return await _do_remove_reaction(
+        db,
+        birth=access.birth,
+        role=access.role,
+        user=access.user,
+        event_id=event_id,
+        kind=kind,
+    )
+
+
+# ============ Comments ============
+
+
+def _comment_locked_response(birth: Birth) -> HTTPException:
+    """Standard 402 used everywhere we gate on the unlock. The body has
+    everything the frontend needs to render the dignified $12 prompt
+    from the spec — copy lives client-side.
+    """
+    return HTTPException(
+        status_code=402,
+        detail={
+            "code": "comments_locked",
+            "birth_id": str(birth.id),
+            "child_name": birth.child_name,
+        },
+    )
+
+
+async def _do_create_comment(
+    db: Session,
+    *,
+    birth: Birth,
+    role: FamilyRole | None,
+    user: User,
+    event_id: uuid.UUID,
+    body: str,
+) -> CommentOut:
+    event = _require_visible_event(db, event_id, birth=birth, role=role)
+    # Parents own the page and can post even before the unlock is paid.
+    # Everyone else waits until someone in the family unlocks comments.
+    if not birth.is_unlocked and not births_repo.is_parent(role):
+        raise _comment_locked_response(birth)
+    comment = comments_repo.create_comment(
+        db, event_id=event.id, user_id=user.id, body=body.strip()
+    )
+    db.commit()
+    db.refresh(comment)
+    await publish_comment_change(
+        birth.id,
+        kind="comment_added",
+        event_id=event.id,
+        comment_id=comment.id,
+        body=comment.body,
+        user_id=user.id,
+    )
+    return CommentOut.model_validate(comment)
+
+
+async def _do_edit_comment(
+    db: Session,
+    *,
+    birth: Birth,
+    user: User,
+    event_id: uuid.UUID,
+    comment_id: uuid.UUID,
+    body: str,
+) -> CommentOut:
+    comment = comments_repo.get_comment(db, comment_id)
+    if (
+        comment is None
+        or comment.event_id != event_id
+        or comment.deleted_at is not None
+    ):
+        raise HTTPException(status_code=404, detail="Comment not found")
+    # Only the author can edit. Parents can delete but not rewrite words.
+    if comment.user_id != user.id:
+        raise HTTPException(status_code=403, detail="Only the author can edit")
+    comments_repo.edit_body(db, comment, body.strip())
+    db.commit()
+    db.refresh(comment)
+    await publish_comment_change(
+        birth.id,
+        kind="comment_updated",
+        event_id=event_id,
+        comment_id=comment.id,
+        body=comment.body,
+    )
+    return CommentOut.model_validate(comment)
+
+
+async def _do_delete_comment(
+    db: Session,
+    *,
+    birth: Birth,
+    role: FamilyRole | None,
+    user: User,
+    event_id: uuid.UUID,
+    comment_id: uuid.UUID,
+) -> Response:
+    comment = comments_repo.get_comment(db, comment_id)
+    if comment is None or comment.event_id != event_id:
+        raise HTTPException(status_code=404, detail="Comment not found")
+    if comment.deleted_at is not None:
+        return Response(status_code=204)
+    # Authors can delete their own. Parents can moderate anyone's.
+    is_author = comment.user_id == user.id
+    if not (is_author or births_repo.is_parent(role)):
+        raise HTTPException(status_code=403, detail="Not allowed")
+    comments_repo.soft_delete(db, comment)
+    db.commit()
+    await publish_comment_change(
+        birth.id,
+        kind="comment_deleted",
+        event_id=event_id,
+        comment_id=comment.id,
+    )
+    return Response(status_code=204)
+
+
+@app.get(
+    "/birth/{birth_id}/event/{event_id}/comments",
+    response_model=list[CommentOut],
+)
+def list_event_comments(
+    event_id: uuid.UUID,
+    access: BirthAccess = Depends(require_birth_access),
+    db: Session = Depends(get_db),
+) -> list[CommentOut]:
+    event = _require_visible_event(
+        db, event_id, birth=access.birth, role=access.role
+    )
+    rows = comments_repo.list_for_event(db, event_id=event.id)
+    return [CommentOut.model_validate(r) for r in rows]
+
+
+@app.get(
+    "/b/{slug}/event/{event_id}/comments",
+    response_model=list[CommentOut],
+)
+def public_list_event_comments(
+    slug: str,
+    event_id: uuid.UUID,
+    current_user: User | None = Depends(get_optional_current_user),
+    db: Session = Depends(get_db),
+) -> list[CommentOut]:
+    """Anonymous readers see comments — they're the heart of the
+    keepsake. Posting is gated below."""
+    birth = _resolve_public_birth(db, slug)
+    visible = _scope_set_for_visitor(db, birth, current_user)
+    event = timeline_repo.get_event(db, event_id)
+    if (
+        event is None
+        or event.birth_id != birth.id
+        or event.deleted_at is not None
+        or event.audience_scope not in visible
+    ):
+        raise HTTPException(status_code=404, detail="Event not found")
+    rows = comments_repo.list_for_event(db, event_id=event.id)
+    return [CommentOut.model_validate(r) for r in rows]
+
+
+@app.post(
+    "/birth/{birth_id}/event/{event_id}/comments",
+    response_model=CommentOut,
+)
+async def create_event_comment(
+    event_id: uuid.UUID,
+    payload: CommentCreateIn = Body(...),
+    access: BirthAccess = Depends(require_birth_access),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> CommentOut:
+    return await _do_create_comment(
+        db,
+        birth=access.birth,
+        role=access.role,
+        user=current_user,
+        event_id=event_id,
+        body=payload.body,
+    )
+
+
+@app.post(
+    "/b/{slug}/event/{event_id}/comments",
+    response_model=CommentOut,
+)
+async def public_create_event_comment(
+    event_id: uuid.UUID,
+    payload: CommentCreateIn = Body(...),
+    access: PublicEngagementAccess = Depends(require_public_engagement),
+    db: Session = Depends(get_db),
+) -> CommentOut:
+    return await _do_create_comment(
+        db,
+        birth=access.birth,
+        role=access.role,
+        user=access.user,
+        event_id=event_id,
+        body=payload.body,
+    )
+
+
+@app.patch(
+    "/birth/{birth_id}/event/{event_id}/comments/{comment_id}",
+    response_model=CommentOut,
+)
+async def edit_event_comment(
+    event_id: uuid.UUID,
+    comment_id: uuid.UUID,
+    payload: CommentEditIn = Body(...),
+    access: BirthAccess = Depends(require_birth_access),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> CommentOut:
+    return await _do_edit_comment(
+        db,
+        birth=access.birth,
+        user=current_user,
+        event_id=event_id,
+        comment_id=comment_id,
+        body=payload.body,
+    )
+
+
+@app.patch(
+    "/b/{slug}/event/{event_id}/comments/{comment_id}",
+    response_model=CommentOut,
+)
+async def public_edit_event_comment(
+    event_id: uuid.UUID,
+    comment_id: uuid.UUID,
+    payload: CommentEditIn = Body(...),
+    access: PublicEngagementAccess = Depends(require_public_engagement),
+    db: Session = Depends(get_db),
+) -> CommentOut:
+    return await _do_edit_comment(
+        db,
+        birth=access.birth,
+        user=access.user,
+        event_id=event_id,
+        comment_id=comment_id,
+        body=payload.body,
+    )
+
+
+@app.delete(
+    "/birth/{birth_id}/event/{event_id}/comments/{comment_id}",
+    status_code=204,
+)
+async def delete_event_comment(
+    event_id: uuid.UUID,
+    comment_id: uuid.UUID,
+    access: BirthAccess = Depends(require_birth_access),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> Response:
+    return await _do_delete_comment(
+        db,
+        birth=access.birth,
+        role=access.role,
+        user=current_user,
+        event_id=event_id,
+        comment_id=comment_id,
+    )
+
+
+@app.delete(
+    "/b/{slug}/event/{event_id}/comments/{comment_id}",
+    status_code=204,
+)
+async def public_delete_event_comment(
+    event_id: uuid.UUID,
+    comment_id: uuid.UUID,
+    access: PublicEngagementAccess = Depends(require_public_engagement),
+    db: Session = Depends(get_db),
+) -> Response:
+    return await _do_delete_comment(
+        db,
+        birth=access.birth,
+        role=access.role,
+        user=access.user,
+        event_id=event_id,
+        comment_id=comment_id,
+    )
 
 
 # ============ Media ============
@@ -780,18 +1291,21 @@ async def _sse_generator(
             except asyncio.TimeoutError:
                 yield b": heartbeat\n\n"
                 continue
-            # Deletes don't carry audience_scope; always forward them.
-            # Filtered-out clients that never saw the event just no-op.
+            # Audience filtering only applies to event payloads that
+            # carry a scope. Deletes and engagement events (reactions,
+            # comments) don't — their visibility is already enforced at
+            # write-time, and clients that don't have the parent event
+            # just no-op on the message.
             if (
                 visible_values is not None
-                and event.kind != "deleted"
+                and event.kind in {"appended", "updated"}
                 and event.payload.get("audience_scope") not in visible_values
             ):
                 continue
             yield _format_sse(
                 event=event.kind,
                 data=event.payload,
-                sequence_id=event.sequence_id,
+                sequence_id=event.sequence_id if event.sequence_id >= 0 else None,
             )
 
 
@@ -819,7 +1333,18 @@ def _default_extension(kind: MediaKind) -> str:
     }[kind]
 
 
-def _serialize_event_out(e: TimelineEvent) -> TimelineEventOut:
+def _serialize_event_out(
+    e: TimelineEvent,
+    *,
+    reactions: dict[ReactionKind, reactions_repo.ReactionCount] | None = None,
+    comment_count: int = 0,
+) -> TimelineEventOut:
+    reactions_out: dict[ReactionKind, ReactionCountOut] = {}
+    if reactions:
+        reactions_out = {
+            kind: ReactionCountOut(count=summary.count, mine=summary.mine)
+            for kind, summary in reactions.items()
+        }
     return TimelineEventOut(
         id=e.id,
         birth_id=e.birth_id,
@@ -830,7 +1355,46 @@ def _serialize_event_out(e: TimelineEvent) -> TimelineEventOut:
         posted_by_user_id=e.posted_by_user_id,
         payload=dict(e.payload),
         audience_scope=e.audience_scope,
+        reactions=reactions_out,
+        comment_count=comment_count,
     )
+
+
+def _serialize_events_with_engagement(
+    db: Session,
+    events: list[TimelineEvent],
+    *,
+    requester_user_id: uuid.UUID | None,
+) -> list[TimelineEventOut]:
+    """Two bulk queries (reactions + comment counts) decorate the whole
+    page. Constant query count regardless of how many events are listed.
+    """
+    if not events:
+        return []
+    event_ids = [e.id for e in events]
+    reactions_map = reactions_repo.summarize_events(
+        db, event_ids=event_ids, requester_user_id=requester_user_id
+    )
+    comment_counts = comments_repo.counts_for_events(db, event_ids=event_ids)
+    return [
+        _serialize_event_out(
+            e,
+            reactions=reactions_map.get(e.id),
+            comment_count=comment_counts.get(e.id, 0),
+        )
+        for e in events
+    ]
+
+
+def _serialize_event_with_engagement(
+    db: Session,
+    event: TimelineEvent,
+    *,
+    requester_user_id: uuid.UUID | None,
+) -> TimelineEventOut:
+    return _serialize_events_with_engagement(
+        db, [event], requester_user_id=requester_user_id
+    )[0]
 
 
 if __name__ == "__main__":
