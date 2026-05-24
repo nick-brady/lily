@@ -12,6 +12,7 @@ from typing import Sequence, Union
 
 import sqlalchemy as sa
 from alembic import op
+from sqlalchemy.dialects import postgresql
 
 
 revision: str = "0005"
@@ -21,34 +22,37 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
-    reaction_kind = sa.Enum("love", "wow", "pray", name="reaction_kind")
+    # Create the new enum type explicitly, then reference it with
+    # create_type=False on every column so Alembic doesn't try to
+    # CREATE TYPE again (the same pattern 0002 uses for its enums).
+    reaction_kind = postgresql.ENUM(
+        "love", "wow", "pray", name="reaction_kind", create_type=False
+    )
     reaction_kind.create(op.get_bind(), checkfirst=True)
 
     op.create_table(
         "timeline_event_reactions",
         sa.Column(
             "id",
-            sa.dialects.postgresql.UUID(as_uuid=True),
+            postgresql.UUID(as_uuid=True),
             primary_key=True,
             server_default=sa.text("gen_random_uuid()"),
         ),
         sa.Column(
             "event_id",
-            sa.dialects.postgresql.UUID(as_uuid=True),
+            postgresql.UUID(as_uuid=True),
             sa.ForeignKey("timeline_events.id", ondelete="CASCADE"),
             nullable=False,
         ),
         sa.Column(
             "user_id",
-            sa.dialects.postgresql.UUID(as_uuid=True),
+            postgresql.UUID(as_uuid=True),
             sa.ForeignKey("users.id", ondelete="CASCADE"),
             nullable=False,
         ),
         sa.Column(
             "kind",
-            sa.Enum(
-                "love", "wow", "pray", name="reaction_kind", create_type=False
-            ),
+            reaction_kind,
             nullable=False,
         ),
         sa.Column(
@@ -74,19 +78,19 @@ def upgrade() -> None:
         "timeline_event_comments",
         sa.Column(
             "id",
-            sa.dialects.postgresql.UUID(as_uuid=True),
+            postgresql.UUID(as_uuid=True),
             primary_key=True,
             server_default=sa.text("gen_random_uuid()"),
         ),
         sa.Column(
             "event_id",
-            sa.dialects.postgresql.UUID(as_uuid=True),
+            postgresql.UUID(as_uuid=True),
             sa.ForeignKey("timeline_events.id", ondelete="CASCADE"),
             nullable=False,
         ),
         sa.Column(
             "user_id",
-            sa.dialects.postgresql.UUID(as_uuid=True),
+            postgresql.UUID(as_uuid=True),
             sa.ForeignKey("users.id", ondelete="RESTRICT"),
             nullable=False,
         ),
@@ -117,4 +121,4 @@ def downgrade() -> None:
     op.drop_table("timeline_event_comments")
     op.drop_index("ix_timeline_event_reactions_event", table_name="timeline_event_reactions")
     op.drop_table("timeline_event_reactions")
-    sa.Enum(name="reaction_kind").drop(op.get_bind(), checkfirst=True)
+    postgresql.ENUM(name="reaction_kind").drop(op.get_bind(), checkfirst=True)

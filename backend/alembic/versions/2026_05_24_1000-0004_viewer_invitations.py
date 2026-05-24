@@ -12,6 +12,7 @@ from typing import Sequence, Union
 
 import sqlalchemy as sa
 from alembic import op
+from sqlalchemy.dialects import postgresql
 
 
 revision: str = "0004"
@@ -21,41 +22,44 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
+    # `family_role` is owned by migration 0002 — referencing it here with
+    # `create_type=False` prevents Alembic from re-emitting CREATE TYPE.
+    family_role = postgresql.ENUM(
+        "owner",
+        "co_parent",
+        "family_viewer",
+        name="family_role",
+        create_type=False,
+    )
     op.create_table(
         "viewer_invitations",
         sa.Column(
             "id",
-            sa.dialects.postgresql.UUID(as_uuid=True),
+            postgresql.UUID(as_uuid=True),
             primary_key=True,
             server_default=sa.text("gen_random_uuid()"),
         ),
         sa.Column(
             "family_id",
-            sa.dialects.postgresql.UUID(as_uuid=True),
+            postgresql.UUID(as_uuid=True),
             sa.ForeignKey("families.id", ondelete="CASCADE"),
             nullable=False,
         ),
         sa.Column(
             "birth_id",
-            sa.dialects.postgresql.UUID(as_uuid=True),
+            postgresql.UUID(as_uuid=True),
             sa.ForeignKey("births.id", ondelete="CASCADE"),
             nullable=False,
         ),
         sa.Column(
             "invited_by_user_id",
-            sa.dialects.postgresql.UUID(as_uuid=True),
+            postgresql.UUID(as_uuid=True),
             sa.ForeignKey("users.id", ondelete="RESTRICT"),
             nullable=False,
         ),
         sa.Column(
             "role",
-            sa.Enum(
-                "owner",
-                "co_parent",
-                "family_viewer",
-                name="family_role",
-                create_type=False,
-            ),
+            family_role,
             nullable=False,
             server_default="family_viewer",
         ),
