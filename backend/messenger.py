@@ -11,13 +11,10 @@ is sent (links over SMS are jankier).
 """
 from __future__ import annotations
 
-import logging
+import sys
 from abc import ABC, abstractmethod
 
 from models import AuthIdentifierKind
-
-
-logger = logging.getLogger("lily.messenger")
 
 
 class Messenger(ABC):
@@ -32,7 +29,14 @@ class Messenger(ABC):
 
 
 class ConsoleMessenger(Messenger):
-    """Prints credentials to the backend log. Dev only."""
+    """Prints credentials to stdout. Dev only.
+
+    We deliberately bypass the `logging` framework here — uvicorn's
+    logging config swallows our custom logger and there's no value in
+    fighting that for a dev-only utility. Plain `print` to stdout
+    survives every configuration and shows up cleanly in
+    `docker compose logs backend`.
+    """
 
     def send_challenge(
         self,
@@ -57,4 +61,4 @@ class ConsoleMessenger(Messenger):
                 f"  Code: {code}\n"
                 f"{banner}"
             )
-        logger.info(body)
+        print(body, flush=True, file=sys.stderr)
