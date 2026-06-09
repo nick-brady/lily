@@ -4,16 +4,17 @@ import AuthPage from './pages/AuthPage';
 import AuthVerifyPage from './pages/AuthVerifyPage';
 import BirthManagePage from './pages/BirthManagePage';
 import InviteRedeemPage from './pages/InviteRedeemPage';
+import LandingPage from './pages/LandingPage';
 import PublicBirthPage from './pages/PublicBirthPage';
-
-const DEFAULT_BIRTH_SLUG = import.meta.env.VITE_DEFAULT_BIRTH_SLUG || 'lily-wren';
+import SetupPage from './pages/SetupPage';
 
 export default function App() {
   return (
     <AuthProvider>
       <BrowserRouter>
         <Routes>
-          <Route path="/" element={<Navigate to={`/b/${DEFAULT_BIRTH_SLUG}`} replace />} />
+          <Route path="/" element={<LandingPage />} />
+          <Route path="/setup" element={<SetupPage />} />
           <Route path="/login" element={<AuthPage />} />
           <Route path="/auth/verify" element={<AuthVerifyPage />} />
           <Route path="/invite/:token" element={<InviteRedeemPage />} />

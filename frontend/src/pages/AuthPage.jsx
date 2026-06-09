@@ -3,8 +3,6 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { api } from '../api/client';
 
-const DEFAULT_BIRTH_SLUG = import.meta.env.VITE_DEFAULT_BIRTH_SLUG || 'lily-wren';
-
 export default function AuthPage() {
   const { acceptToken } = useAuth();
   const navigate = useNavigate();
@@ -49,18 +47,18 @@ export default function AuthPage() {
         navigate(nextPath, { replace: true });
         return;
       }
-      const firstBirth = profile?.families?.[0]?.births?.[0];
+      const firstFamily = profile?.families?.[0];
+      const firstBirth = firstFamily?.births?.[0];
       if (firstBirth) {
         const isParent =
-          profile.families[0].role === 'owner'
-          || profile.families[0].role === 'co_parent';
+          firstFamily.role === 'owner' || firstFamily.role === 'co_parent';
         navigate(
           isParent ? `/b/${firstBirth.slug}/manage` : `/b/${firstBirth.slug}`,
           { replace: true },
         );
         return;
       }
-      navigate(`/b/${DEFAULT_BIRTH_SLUG}`, { replace: true });
+      navigate('/setup', { replace: true });
     } catch (err) {
       setError(err.message || 'Invalid code');
     } finally {

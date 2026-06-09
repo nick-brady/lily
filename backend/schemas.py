@@ -304,6 +304,16 @@ class EditEventIn(BaseModel):
     transcript_optional: Optional[str] = None
 
 
+class BirthCreateIn(BaseModel):
+    baby_name: str = Field(..., min_length=1, max_length=100)
+    slug: str = Field(..., min_length=1, max_length=100)
+
+
+class SlugAvailableOut(BaseModel):
+    available: bool
+    suggestion: Optional[str] = None
+
+
 # Convenience for tests / fixtures that need to validate an EmailStr-shaped
 # value without importing pydantic.EmailStr at call sites.
 EmailString = EmailStr

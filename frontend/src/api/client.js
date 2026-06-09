@@ -291,6 +291,20 @@ export const api = {
     return jsonOrThrow(res);
   },
 
+  async checkSlugAvailable(slug) {
+    const res = await fetch(`${API_URL}/births/slug-available?slug=${encodeURIComponent(slug)}`);
+    return jsonOrThrow(res);
+  },
+
+  async createBirth({ babyName, slug }) {
+    const res = await fetch(`${API_URL}/births`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...authHeaders() },
+      body: JSON.stringify({ baby_name: babyName, slug }),
+    });
+    return jsonOrThrow(res);
+  },
+
   mediaUrl(mediaId) {
     return `${API_URL}/media/${mediaId}`;
   },

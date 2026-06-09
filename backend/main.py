@@ -10,6 +10,7 @@ from __future__ import annotations
 import asyncio
 import json
 import mimetypes
+import re
 import uuid
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
@@ -79,7 +80,9 @@ from schemas import (
     AuthRequestIn,
     AuthRequestOut,
     AuthVerifyIn,
+    BirthCreateIn,
     BirthOut,
+    SlugAvailableOut,
     CommentCreateIn,
     CommentEditIn,
     CommentOut,
@@ -203,6 +206,64 @@ def require_parent_access(access: BirthAccess = Depends(require_birth_access)) -
     if not births_repo.is_parent(access.role):
         raise HTTPException(status_code=403, detail="Parents only")
     return access
+
+
+# ============ Birth creation ============
+
+
+def _clean_slug(raw: str) -> str:
+    slug = raw.lower().strip()
+    slug = re.sub(r"[^a-z0-9\s-]", "", slug)
+    slug = re.sub(r"[\s-]+", "-", slug)
+    return slug.strip("-")
+
+
+@app.get("/births/slug-available", response_model=SlugAvailableOut)
+def check_slug_available(slug: str, db: Session = Depends(get_db)) -> SlugAvailableOut:
+    clean = _clean_slug(slug)
+    if not clean:
+        return SlugAvailableOut(available=False)
+    if births_repo.get_birth_by_slug(db, clean) is None:
+        return SlugAvailableOut(available=True)
+    for n in range(2, 100):
+        candidate = f"{clean}-{n}"
+        if births_repo.get_birth_by_slug(db, candidate) is None:
+            return SlugAvailableOut(available=False, suggestion=candidate)
+    return SlugAvailableOut(available=False)
+
+
+@app.post("/births", response_model=BirthOut)
+def create_birth(
+    payload: BirthCreateIn,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> BirthOut:
+    slug = _clean_slug(payload.slug)
+    if not slug:
+        raise HTTPException(status_code=400, detail="Invalid slug")
+    if births_repo.get_birth_by_slug(db, slug) is not None:
+        raise HTTPException(status_code=409, detail="Slug already taken")
+    family = Family(
+        primary_owner_user_id=current_user.id,
+        display_name=f"{payload.baby_name} Family",
+    )
+    db.add(family)
+    db.flush()
+    db.add(FamilyMembership(
+        family_id=family.id,
+        user_id=current_user.id,
+        role=FamilyRole.owner,
+    ))
+    db.flush()
+    birth = births_repo.create_birth(
+        db,
+        family_id=family.id,
+        child_name=payload.baby_name,
+        slug=slug,
+    )
+    db.commit()
+    db.refresh(birth)
+    return BirthOut.model_validate(birth)
 
 
 # ============ Birth (authed) ============
