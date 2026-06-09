@@ -25,8 +25,26 @@ docker compose up -d --build
 ```
 
 The backend serves on `http://localhost:8000`, the frontend on `http://localhost:3000`.
+MinIO (S3-compatible storage) serves on `http://localhost:9000` with a web
+console at `http://localhost:9001`. Media files persist in `./.data/minio/`
+on your machine.
 
 Migrations are **not** run automatically. See the next section.
+
+### Media storage (S3 / MinIO)
+
+Uploads go to S3 via boto3 — the same code path as production. In dev,
+Compose runs MinIO and points the backend at it. In prod, leave
+`AWS_ENDPOINT_URL` unset and use real AWS credentials + bucket.
+
+After bringing the stack up, migrate any legacy on-disk uploads once:
+
+```bash
+docker compose exec backend python scripts/migrate_local_to_s3.py
+```
+
+`GET /media/{id}` checks audience access, then redirects (307) to a
+short-lived presigned S3 URL.
 
 ## Running migrations
 
@@ -172,9 +190,9 @@ docker compose exec backend python scripts/unlock_birth.py lily-wren
   out to be a family member.
 - `GET /b/{slug}/stream` — same as `/timeline` but SSE. Sending `?token=<jwt>`
   widens visibility for signed-in viewers.
-- `GET /media/{media_id}` — gated by the audience scope of every event that
-  references the asset. Sending a Bearer token widens visibility for family
-  members.
+- `GET /media/{media_id}` — gated by audience scope, then 307 redirect to a
+  presigned S3 URL (MinIO in dev, AWS in prod). Legacy `local:` keys still
+  stream from disk until `migrate_local_to_s3.py` has been run.
 
 ## Audience scopes
 

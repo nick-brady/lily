@@ -11,6 +11,7 @@ import asyncio
 import json
 import mimetypes
 import uuid
+from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -30,7 +31,7 @@ from fastapi import (
     UploadFile,
 )
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, StreamingResponse
+from fastapi.responses import FileResponse, RedirectResponse, StreamingResponse
 from pydantic import Field
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -73,6 +74,7 @@ from repositories import media as media_repo
 from repositories import reactions as reactions_repo
 from repositories import timeline as timeline_repo
 from repositories import users as users_repo
+from storage import ensure_bucket, presigned_get_url, put_object
 from schemas import (
     AuthRequestIn,
     AuthRequestOut,
@@ -107,7 +109,13 @@ UPLOAD_DIR.mkdir(exist_ok=True)
 SSE_HEARTBEAT_SECONDS = 15
 
 
-app = FastAPI(title="Lily")
+@asynccontextmanager
+async def lifespan(_app: FastAPI):
+    ensure_bucket()
+    yield
+
+
+app = FastAPI(title="Lily", lifespan=lifespan)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -962,9 +970,17 @@ async def upload_media(
 ) -> TimelineEventOut:
     extension = Path(file.filename or "").suffix or _default_extension(kind)
     filename = f"{uuid.uuid4()}{extension}"
-    filepath = UPLOAD_DIR / filename
     content = await file.read()
-    filepath.write_bytes(content)
+    key = media_repo.media_object_key(
+        family_id=access.birth.family_id,
+        birth_id=access.birth.id,
+        filename=filename,
+    )
+    put_object(
+        key=key,
+        body=content,
+        content_type=file.content_type,
+    )
 
     asset = media_repo.create_media_asset(
         db,
@@ -972,7 +988,7 @@ async def upload_media(
         birth_id=access.birth.id,
         uploaded_by_user_id=current_user.id,
         kind=kind,
-        original_s3_key=media_repo.local_key(filename),
+        original_s3_key=key,
         mime_type=file.content_type,
         bytes_=len(content),
     )
@@ -1140,29 +1156,33 @@ def redeem_invitation_authed(
     return Response(status_code=204)
 
 
-@app.get("/media/{media_id}")
+@app.get("/media/{media_id}", response_model=None)
 def get_media(
     media_id: uuid.UUID,
     current_user: User | None = Depends(get_optional_current_user),
     db: Session = Depends(get_db),
-) -> FileResponse:
+) -> FileResponse | RedirectResponse:
     asset = media_repo.get_media_asset(db, media_id)
     if asset is None or not asset.is_visible_to_viewers:
         raise HTTPException(status_code=404, detail="Media not found")
     if not _media_visible_to(db, asset, current_user):
         raise HTTPException(status_code=404, detail="Media not found")
-    if not media_repo.is_local_key(asset.original_s3_key):
-        raise HTTPException(
-            status_code=500,
-            detail="Media is on remote storage; not serveable until S3 lands",
+
+    if media_repo.is_local_key(asset.original_s3_key):
+        rel = media_repo.local_path(asset.original_s3_key)
+        path = (Path(__file__).parent / rel).resolve()
+        upload_root = UPLOAD_DIR.resolve()
+        if not path.is_file() or upload_root not in path.parents:
+            raise HTTPException(status_code=404, detail="Media file missing")
+        media_type = (
+            asset.mime_type
+            or mimetypes.guess_type(str(path))[0]
+            or "application/octet-stream"
         )
-    rel = media_repo.local_path(asset.original_s3_key)
-    path = (Path(__file__).parent / rel).resolve()
-    upload_root = UPLOAD_DIR.resolve()
-    if not path.is_file() or upload_root not in path.parents:
-        raise HTTPException(status_code=404, detail="Media file missing")
-    media_type = asset.mime_type or mimetypes.guess_type(str(path))[0] or "application/octet-stream"
-    return FileResponse(path, media_type=media_type)
+        return FileResponse(path, media_type=media_type)
+
+    url = presigned_get_url(asset.original_s3_key)
+    return RedirectResponse(url, status_code=307)
 
 
 # ============ SSE ============

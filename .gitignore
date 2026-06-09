@@ -21,6 +21,9 @@ backend/uploads/*
 .env
 .env.local
 
+# MinIO local data (bind-mounted in docker compose)
+.data/
+
 # IDE
 .idea/
 .vscode/

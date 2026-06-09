@@ -1,8 +1,8 @@
 """Media asset creates + reads.
 
-`original_s3_key` is overloaded in PR 1: until PR 5 wires S3 it holds a
-local filesystem path (prefixed with `local:` so the source is unambiguous).
-The column name stays — that's where the key actually goes.
+`original_s3_key` holds the S3 object key (e.g. `f/{family_id}/b/{birth_id}/…`).
+Legacy rows migrated from PR 1 may still use the `local:` prefix until
+`scripts/migrate_local_to_s3.py` has been run.
 """
 from __future__ import annotations
 
@@ -11,13 +11,19 @@ import uuid
 from sqlalchemy.orm import Session
 
 from models import MediaAsset, MediaKind, MediaStorageTier
+from storage import object_key as s3_object_key
 
 
 LOCAL_KEY_PREFIX = "local:"
 
 
 def local_key(filename: str) -> str:
+    """Legacy PR 1 filesystem key — only used by migrate_local_to_s3."""
     return f"{LOCAL_KEY_PREFIX}uploads/{filename}"
+
+
+def media_object_key(*, family_id: uuid.UUID, birth_id: uuid.UUID, filename: str) -> str:
+    return s3_object_key(family_id=family_id, birth_id=birth_id, filename=filename)
 
 
 def is_local_key(key: str) -> bool:

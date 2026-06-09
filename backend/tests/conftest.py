@@ -16,5 +16,13 @@ os.environ.setdefault(
     "DATABASE_URL", "postgresql://lily:lily@localhost:5432/lily_test_unused"
 )
 os.environ.setdefault("JWT_SECRET_KEY", "test-secret-key")
+os.environ.setdefault("S3_BUCKET", "lily-media-test")
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
+
+def pytest_configure(config) -> None:
+    """Unit tests must not hit MinIO on app startup."""
+    import storage as storage_mod
+
+    storage_mod.ensure_bucket = lambda: None  # type: ignore[method-assign]
