@@ -9,7 +9,7 @@ const AUDIENCE_OPTIONS = [
 ];
 
 export default function UpdateForm({ birthId, onSuccess }) {
-  const [mode, setMode] = useState(null); // 'photo' | 'note' | 'milestone' | 'audio'
+  const [mode, setMode] = useState(null); // 'photo' | 'note' | 'milestone' | 'audio' | 'video'
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [audienceScope, setAudienceScope] = useState('public');
@@ -20,6 +20,9 @@ export default function UpdateForm({ birthId, onSuccess }) {
   const [photoCaption, setPhotoCaption] = useState('');
   const [selectedFile, setSelectedFile] = useState(null);
   const [preview, setPreview] = useState(null);
+  const [selectedVideoFile, setSelectedVideoFile] = useState(null);
+  const [videoPreviewUrl, setVideoPreviewUrl] = useState(null);
+  const [videoCaption, setVideoCaption] = useState('');
 
   const [isRecording, setIsRecording] = useState(false);
   const [audioBlob, setAudioBlob] = useState(null);
@@ -32,12 +35,19 @@ export default function UpdateForm({ birthId, onSuccess }) {
   const timerRef = useRef(null);
 
   const fileInputRef = useRef(null);
+  const videoFileInputRef = useRef(null);
 
   useEffect(() => {
     return () => {
       if (audioUrl) URL.revokeObjectURL(audioUrl);
     };
   }, [audioUrl]);
+
+  useEffect(() => {
+    return () => {
+      if (videoPreviewUrl) URL.revokeObjectURL(videoPreviewUrl);
+    };
+  }, [videoPreviewUrl]);
 
   const resetForm = () => {
     setMode(null);
@@ -48,6 +58,10 @@ export default function UpdateForm({ birthId, onSuccess }) {
     setPhotoCaption('');
     setSelectedFile(null);
     setPreview(null);
+    if (videoPreviewUrl) URL.revokeObjectURL(videoPreviewUrl);
+    setSelectedVideoFile(null);
+    setVideoPreviewUrl(null);
+    setVideoCaption('');
     setAudienceScope('public');
     if (audioUrl) URL.revokeObjectURL(audioUrl);
     setAudioBlob(null);
@@ -66,6 +80,21 @@ export default function UpdateForm({ birthId, onSuccess }) {
     const reader = new FileReader();
     reader.onload = (ev) => setPreview(ev.target.result);
     reader.readAsDataURL(file);
+  };
+
+  const clearVideoSelection = () => {
+    if (videoPreviewUrl) URL.revokeObjectURL(videoPreviewUrl);
+    setSelectedVideoFile(null);
+    setVideoPreviewUrl(null);
+    if (videoFileInputRef.current) videoFileInputRef.current.value = '';
+  };
+
+  const handleVideoSelect = (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    if (videoPreviewUrl) URL.revokeObjectURL(videoPreviewUrl);
+    setSelectedVideoFile(file);
+    setVideoPreviewUrl(URL.createObjectURL(file));
   };
 
   const submitPhoto = async () => {
@@ -194,6 +223,26 @@ export default function UpdateForm({ birthId, onSuccess }) {
     }
   };
 
+  const submitVideo = async () => {
+    if (!selectedVideoFile) return;
+    setLoading(true);
+    setError('');
+    try {
+      await api.uploadMedia(birthId, {
+        file: selectedVideoFile,
+        kind: 'video',
+        caption: videoCaption,
+        audienceScope,
+      });
+      resetForm();
+      onSuccess?.();
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const formatRecordingTime = (seconds) => {
     const mins = Math.floor(seconds / 60);
     const secs = seconds % 60;
@@ -206,6 +255,9 @@ export default function UpdateForm({ birthId, onSuccess }) {
         <div className="flex flex-wrap gap-3 justify-center">
           <ModeButton mode="photo" color="primary" onClick={() => setMode('photo')}>
             Photo
+          </ModeButton>
+          <ModeButton mode="video" color="violet" onClick={() => setMode('video')}>
+            Video
           </ModeButton>
           <ModeButton mode="note" color="blue" onClick={() => setMode('note')}>
             Note
@@ -262,6 +314,52 @@ export default function UpdateForm({ birthId, onSuccess }) {
             type="text"
             value={photoCaption}
             onChange={(e) => setPhotoCaption(e.target.value)}
+            placeholder="Add a caption (optional)"
+            className="w-full px-4 py-3 rounded-xl border border-gray-200 dark:border-gray-700
+                       bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100"
+          />
+        </div>
+      )}
+
+      {mode === 'video' && (
+        <div className="space-y-4">
+          <input
+            type="file"
+            ref={videoFileInputRef}
+            onChange={handleVideoSelect}
+            accept="video/*"
+            className="hidden"
+          />
+          {videoPreviewUrl ? (
+            <div className="relative">
+              <video
+                src={videoPreviewUrl}
+                controls
+                className="w-full rounded-xl max-h-64 bg-black"
+              />
+              <button
+                type="button"
+                onClick={clearVideoSelection}
+                className="absolute top-2 right-2 p-1 bg-black/50 rounded-full text-white"
+              >
+                <CloseIcon />
+              </button>
+            </div>
+          ) : (
+            <button
+              type="button"
+              onClick={() => videoFileInputRef.current?.click()}
+              className="w-full py-12 border-2 border-dashed border-gray-300 dark:border-gray-600
+                         rounded-xl text-gray-500 dark:text-gray-400 hover:border-violet-400
+                         hover:text-violet-500 transition-colors"
+            >
+              Tap to select video
+            </button>
+          )}
+          <input
+            type="text"
+            value={videoCaption}
+            onChange={(e) => setVideoCaption(e.target.value)}
             placeholder="Add a caption (optional)"
             className="w-full px-4 py-3 rounded-xl border border-gray-200 dark:border-gray-700
                        bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100"
@@ -385,13 +483,15 @@ export default function UpdateForm({ birthId, onSuccess }) {
         <button
           onClick={
             mode === 'photo' ? submitPhoto
-              : mode === 'note' ? submitNote
-                : mode === 'audio' ? submitAudio
-                  : submitMilestone
+              : mode === 'video' ? submitVideo
+                : mode === 'note' ? submitNote
+                  : mode === 'audio' ? submitAudio
+                    : submitMilestone
           }
           disabled={
             loading
             || (mode === 'photo' && !selectedFile)
+            || (mode === 'video' && !selectedVideoFile)
             || (mode === 'note' && !noteText.trim())
             || (mode === 'milestone' && !selectedMilestone)
             || (mode === 'audio' && !audioBlob)
@@ -439,6 +539,7 @@ function ModeButton({ children, color, onClick }) {
     blue: 'bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 hover:bg-blue-100 dark:hover:bg-blue-900/50',
     amber: 'bg-amber-50 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300 hover:bg-amber-100 dark:hover:bg-amber-900/50',
     rose: 'bg-rose-50 dark:bg-rose-900/30 text-rose-700 dark:text-rose-300 hover:bg-rose-100 dark:hover:bg-rose-900/50',
+    violet: 'bg-violet-50 dark:bg-violet-900/30 text-violet-700 dark:text-violet-300 hover:bg-violet-100 dark:hover:bg-violet-900/50',
   };
   return (
     <button
