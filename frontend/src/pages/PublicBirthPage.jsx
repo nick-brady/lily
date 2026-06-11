@@ -24,10 +24,13 @@ export default function PublicBirthPage() {
     );
   });
 
+  const theme = getTheme(birth?.theme);
+  const effectiveDark = darkMode || Boolean(theme.alwaysDark);
+
   useEffect(() => {
-    document.documentElement.classList.toggle('dark', darkMode);
+    document.documentElement.classList.toggle('dark', effectiveDark);
     localStorage.setItem('darkMode', darkMode);
-  }, [darkMode]);
+  }, [darkMode, effectiveDark]);
 
   useEffect(() => {
     let cancelled = false;
@@ -136,13 +139,11 @@ export default function PublicBirthPage() {
     return () => { document.title = 'lily'; };
   }, [birth?.child_name]);
 
-  const theme = getTheme(birth?.theme);
-
   return (
     <div
       className="min-h-screen transition-colors"
       style={{
-        ...themeVars(theme, darkMode),
+        ...themeVars(theme, effectiveDark),
         backgroundColor: 'var(--t-page-bg)',
         backgroundImage: 'var(--t-page-pattern)',
         backgroundSize: 'var(--t-pattern-size)',

@@ -470,6 +470,9 @@ export const THEMES = {
     id: 'starry',
     label: 'Starry Night',
     description: 'Navy & gold',
+    // Forces the page into dark mode so .dark-gated components (forms,
+    // comment threads) stay legible on the midnight surfaces.
+    alwaysDark: true,
     display: { family: "'Cormorant Garamond', serif", weight: 600, style: 'normal' },
     swatch: ['#e8cd8a', '#1e2c54'],
     // Inherently dark — both modes share the same midnight palette, so

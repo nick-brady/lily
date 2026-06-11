@@ -13,6 +13,7 @@ import StatsPanel from '../components/StatsPanel';
 import Timeline from '../components/Timeline';
 import TimeSeriesChart from '../components/TimeSeriesChart';
 import UpdateForm from '../components/UpdateForm';
+import { getTheme, themeVars } from '../utils/themes';
 
 export default function BirthManagePage() {
   const { slug } = useParams();
@@ -33,11 +34,6 @@ export default function BirthManagePage() {
     );
   });
 
-  useEffect(() => {
-    document.documentElement.classList.toggle('dark', darkMode);
-    localStorage.setItem('darkMode', darkMode);
-  }, [darkMode]);
-
   // Resolve the birth_id for `slug` from `/me` (the user must be a parent
   // of this birth in PR 2; PR 3 will add invitations).
   const birthFromMe = useMemo(() => {
@@ -49,6 +45,14 @@ export default function BirthManagePage() {
     }
     return null;
   }, [me, slug]);
+
+  const theme = getTheme((birth ?? birthFromMe)?.theme);
+  const effectiveDark = darkMode || Boolean(theme.alwaysDark);
+
+  useEffect(() => {
+    document.documentElement.classList.toggle('dark', effectiveDark);
+    localStorage.setItem('darkMode', darkMode);
+  }, [darkMode, effectiveDark]);
 
   useEffect(() => {
     if (!birthFromMe) return;
@@ -201,31 +205,42 @@ export default function BirthManagePage() {
     : 'Welcoming Baby';
 
   return (
-    <div className="min-h-screen bg-gray-100 dark:bg-gray-900 transition-colors">
-      <header className="bg-white dark:bg-gray-800 shadow-sm sticky top-0 z-10">
+    <div
+      className="min-h-screen transition-colors"
+      style={{
+        ...themeVars(theme, effectiveDark),
+        backgroundColor: 'var(--t-page-bg)',
+        backgroundImage: 'var(--t-page-pattern)',
+        backgroundSize: 'var(--t-pattern-size)',
+      }}
+    >
+      <header
+        className="shadow-sm sticky top-0 z-10"
+        style={{
+          backgroundColor: 'var(--t-header-bg)',
+          borderBottom: '1px solid var(--t-header-border)',
+          backdropFilter: 'blur(10px)',
+          WebkitBackdropFilter: 'blur(10px)',
+        }}
+      >
         <div className="max-w-4xl mx-auto px-4 py-4">
           <div className="flex items-center justify-between mb-2">
-            <h1
-              className="text-2xl sm:text-3xl text-primary-600 dark:text-primary-400"
-              style={{ fontFamily: "'Great Vibes', cursive" }}
-            >
+            <h1 className="t-display" style={{ fontSize: 'var(--t-title-size)' }}>
               {title}
             </h1>
             <div className="flex items-center gap-2">
               <Link
                 to={`/b/${slug}`}
-                className="px-3 py-2 text-sm rounded-lg bg-gray-100 dark:bg-gray-700
-                           text-gray-600 dark:text-gray-300 hover:bg-gray-200
-                           dark:hover:bg-gray-600 transition-colors"
+                className="px-3 py-2 text-sm rounded-lg transition-opacity hover:opacity-80"
+                style={{ backgroundColor: 'var(--t-soft-bg)', color: 'var(--t-soft-text)' }}
                 title="Open public view"
               >
                 Public view
               </Link>
               <button
                 onClick={logout}
-                className="px-3 py-2 text-sm rounded-lg bg-gray-100 dark:bg-gray-700
-                           text-gray-600 dark:text-gray-300 hover:bg-gray-200
-                           dark:hover:bg-gray-600 transition-colors"
+                className="px-3 py-2 text-sm rounded-lg transition-opacity hover:opacity-80"
+                style={{ backgroundColor: 'var(--t-soft-bg)', color: 'var(--t-soft-text)' }}
               >
                 Sign out
               </button>
@@ -291,8 +306,11 @@ export default function BirthManagePage() {
         )}
       </main>
 
-      <footer className="py-8 text-center text-sm text-gray-400 dark:text-gray-600">
-        <span style={{ fontFamily: "'Great Vibes', cursive", fontSize: '1.25rem' }}>
+      <footer
+        className="py-8 text-center text-sm"
+        style={{ borderTop: '1px solid var(--t-divider)' }}
+      >
+        <span className="t-display" style={{ fontSize: '1.25rem', opacity: 0.75 }}>
           Made with love
         </span>
       </footer>
@@ -401,16 +419,17 @@ function RangeSlider({ label, timeLabel, value, onChange }) {
 
 function TabSwitcher({ activeTab, setActiveTab }) {
   return (
-    <div className="flex bg-gray-100 dark:bg-gray-700 rounded-lg p-1">
+    <div className="flex rounded-lg p-1" style={{ backgroundColor: 'var(--t-soft-bg)' }}>
       {['timeline', 'stats'].map((tab) => (
         <button
           key={tab}
           onClick={() => setActiveTab(tab)}
           className={`px-4 py-1.5 text-sm font-medium rounded-md transition-colors capitalize ${
-            activeTab === tab
-              ? 'bg-white dark:bg-gray-600 text-gray-900 dark:text-white shadow-sm'
-              : 'text-gray-600 dark:text-gray-400'
+            activeTab === tab ? 'shadow-sm' : ''
           }`}
+          style={activeTab === tab
+            ? { backgroundColor: 'var(--t-card-bg)', color: 'var(--t-ink)' }
+            : { color: 'var(--t-soft-text)' }}
         >
           {tab}
         </button>
@@ -423,8 +442,8 @@ function DarkModeToggle({ darkMode, setDarkMode }) {
   return (
     <button
       onClick={() => setDarkMode(!darkMode)}
-      className="p-2 rounded-lg bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300
-                 hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors"
+      className="p-2 rounded-lg transition-opacity hover:opacity-80"
+      style={{ backgroundColor: 'var(--t-soft-bg)', color: 'var(--t-soft-text)' }}
     >
       {darkMode ? (
         <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
