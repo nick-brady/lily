@@ -49,22 +49,22 @@ function formatDate(timestamp) {
   return date.toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric' });
 }
 
-function ContractionItem({ event, canManage, onDelete, onToggleIgnore, accentColor }) {
+function ContractionItem({ event, canManage, onDelete, onToggleIgnore }) {
   const { duration_seconds, ignore_interval_before } = event.payload || {};
   return (
-    <div className="flex gap-4 py-3 border-b border-gray-100 dark:border-gray-700/50 last:border-0">
-      <div className="w-16 text-right text-sm text-gray-400 dark:text-gray-500 pt-1">
+    <div className="flex gap-4 py-3 t-row">
+      <div className="w-16 text-right text-sm t-faint pt-1">
         {formatTime(event.occurred_at)}
       </div>
       <div className="flex-1">
         <div className="flex items-center gap-2">
           <span
             className="w-2 h-2 rounded-full animate-pulse"
-            style={{ backgroundColor: accentColor || undefined }}
+            style={{ backgroundColor: 'var(--t-dot)' }}
           />
-          <span className="text-gray-700 dark:text-gray-300">Contraction</span>
+          <span className="t-ink">Contraction</span>
           {duration_seconds && (
-            <span className="text-sm text-gray-500 dark:text-gray-400">
+            <span className="text-sm t-muted">
               {formatDuration(duration_seconds)}
             </span>
           )}
@@ -111,20 +111,22 @@ function MilestoneItem({ event, canManage, onDelete, onEdit, engagementScope, is
   const { kind, title, body } = event.payload || {};
   const milestone = MILESTONES[kind] || MILESTONES.other;
   return (
-    <div className="flex gap-4 py-4 border-b border-gray-100 dark:border-gray-700/50 last:border-0">
-      <div className="w-16 text-right text-sm text-gray-400 dark:text-gray-500 pt-1">
+    <div className="flex gap-4 py-4 t-row">
+      <div className="w-16 text-right text-sm t-faint pt-1">
         {formatTime(event.occurred_at)}
       </div>
       <div className="flex-1">
-        <div className="bg-gradient-to-r from-primary-100 to-primary-50 dark:from-primary-900/30 dark:to-primary-800/20
-                        rounded-xl p-4 border border-primary-200 dark:border-primary-700/50">
+        <div
+          className="rounded-xl p-4 border"
+          style={{ backgroundColor: 'var(--t-milestone-bg)', borderColor: 'var(--t-milestone-border)' }}
+        >
           <div className="flex items-center gap-2 mb-1">
             <span className="text-2xl">{milestone.icon}</span>
-            <span className="font-semibold text-primary-700 dark:text-primary-300">
+            <span className="font-semibold" style={{ color: 'var(--t-milestone-text)' }}>
               {title || milestone.label}
             </span>
           </div>
-          {body && <p className="text-gray-600 dark:text-gray-400 text-sm mt-2">{body}</p>}
+          {body && <p className="t-muted text-sm mt-2">{body}</p>}
         </div>
         {canManage && (
           <ItemActions onEdit={() => onEdit(event)} onDelete={() => onDelete(event)} audienceScope={event.audience_scope} />
@@ -140,18 +142,19 @@ function MediaItem({ event, canManage, onDelete, onEdit, onPhotoClick, engagemen
   const url = api.mediaUrl(media_id);
   if (event.event_type === 'photo') {
     return (
-      <div className="flex gap-4 py-4 border-b border-gray-100 dark:border-gray-700/50 last:border-0">
-        <div className="w-16 text-right text-sm text-gray-400 dark:text-gray-500 pt-1">
+      <div className="flex gap-4 py-4 t-row">
+        <div className="w-16 text-right text-sm t-faint pt-1">
           {formatTime(event.occurred_at)}
         </div>
         <div className="flex-1">
           <div
-            className="rounded-xl overflow-hidden bg-gray-100 dark:bg-gray-700 cursor-pointer"
+            className="rounded-xl overflow-hidden cursor-pointer"
+            style={{ backgroundColor: 'var(--t-note-bg)' }}
             onClick={() => onPhotoClick(url, caption)}
           >
             <img src={url} alt={caption || 'Photo'} className="w-full max-h-96 object-cover hover:opacity-90 transition-opacity" />
           </div>
-          {caption && <p className="text-gray-600 dark:text-gray-400 text-sm mt-2">{caption}</p>}
+          {caption && <p className="t-muted text-sm mt-2">{caption}</p>}
           {canManage && (
             <ItemActions onEdit={() => onEdit(event)} onDelete={() => onDelete(event)} audienceScope={event.audience_scope} />
           )}
@@ -163,15 +166,15 @@ function MediaItem({ event, canManage, onDelete, onEdit, onPhotoClick, engagemen
 
   if (event.event_type === 'video') {
     return (
-      <div className="flex gap-4 py-4 border-b border-gray-100 dark:border-gray-700/50 last:border-0">
-        <div className="w-16 text-right text-sm text-gray-400 dark:text-gray-500 pt-1">
+      <div className="flex gap-4 py-4 t-row">
+        <div className="w-16 text-right text-sm t-faint pt-1">
           {formatTime(event.occurred_at)}
         </div>
         <div className="flex-1">
           <div className="rounded-xl overflow-hidden bg-black">
             <video src={url} controls className="w-full max-h-96" />
           </div>
-          {caption && <p className="text-gray-600 dark:text-gray-400 text-sm mt-2">{caption}</p>}
+          {caption && <p className="t-muted text-sm mt-2">{caption}</p>}
           {canManage && (
             <ItemActions onEdit={() => onEdit(event)} onDelete={() => onDelete(event)} audienceScope={event.audience_scope} />
           )}
@@ -183,23 +186,24 @@ function MediaItem({ event, canManage, onDelete, onEdit, onPhotoClick, engagemen
 
   // voice memo
   return (
-    <div className="flex gap-4 py-4 border-b border-gray-100 dark:border-gray-700/50 last:border-0">
-      <div className="w-16 text-right text-sm text-gray-400 dark:text-gray-500 pt-1">
+    <div className="flex gap-4 py-4 t-row">
+      <div className="w-16 text-right text-sm t-faint pt-1">
         {formatTime(event.occurred_at)}
       </div>
       <div className="flex-1">
-        <div className="bg-rose-50 dark:bg-rose-900/20 rounded-xl p-4 border border-rose-200 dark:border-rose-800/50">
-          <div className="flex items-center gap-2 mb-3">
-            <span className="text-rose-500">
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-                  d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z" />
-              </svg>
-            </span>
-            <span className="font-medium text-rose-700 dark:text-rose-300">Voice Memo</span>
+        <div
+          className="rounded-xl p-4 border"
+          style={{ backgroundColor: 'var(--t-memo-bg)', borderColor: 'var(--t-memo-border)' }}
+        >
+          <div className="flex items-center gap-2 mb-3" style={{ color: 'var(--t-memo-text)' }}>
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z" />
+            </svg>
+            <span className="font-medium">Voice Memo</span>
           </div>
           <audio src={url} controls className="w-full" />
-          {caption && <p className="text-gray-600 dark:text-gray-400 text-sm mt-3">{caption}</p>}
+          {caption && <p className="t-muted text-sm mt-3">{caption}</p>}
         </div>
         {canManage && (
           <ItemActions onEdit={() => onEdit(event)} onDelete={() => onDelete(event)} audienceScope={event.audience_scope} />
@@ -213,13 +217,13 @@ function MediaItem({ event, canManage, onDelete, onEdit, onPhotoClick, engagemen
 function TextNoteItem({ event, canManage, onDelete, onEdit, engagementScope, isUnlocked }) {
   const { body } = event.payload || {};
   return (
-    <div className="flex gap-4 py-4 border-b border-gray-100 dark:border-gray-700/50 last:border-0">
-      <div className="w-16 text-right text-sm text-gray-400 dark:text-gray-500 pt-1">
+    <div className="flex gap-4 py-4 t-row">
+      <div className="w-16 text-right text-sm t-faint pt-1">
         {formatTime(event.occurred_at)}
       </div>
       <div className="flex-1">
-        <div className="bg-gray-50 dark:bg-gray-700/50 rounded-xl p-4">
-          <p className="text-gray-700 dark:text-gray-300 whitespace-pre-wrap">{body}</p>
+        <div className="rounded-xl p-4" style={{ backgroundColor: 'var(--t-note-bg)' }}>
+          <p className="t-ink whitespace-pre-wrap">{body}</p>
         </div>
         {canManage && (
           <ItemActions onEdit={() => onEdit(event)} onDelete={() => onDelete(event)} audienceScope={event.audience_scope} />
@@ -299,7 +303,6 @@ export default function Timeline({
   birthId = null,
   slug = null,
   isUnlocked = true,
-  accentColor = null,
 }) {
   const engagementScope = birthId
     ? { birthId }
@@ -353,7 +356,7 @@ export default function Timeline({
   if (!events || events.length === 0) {
     return (
       <div className="card text-center py-12">
-        <p className="text-gray-500 dark:text-gray-400">
+        <p className="t-muted">
           No updates yet. The journey is about to begin!
         </p>
       </div>
@@ -459,10 +462,10 @@ export default function Timeline({
       <div className="space-y-6">
         {Object.entries(grouped).map(([date, items]) => (
           <div key={date} className="card">
-            <h3 className="text-sm font-medium text-gray-500 dark:text-gray-400 mb-4 uppercase tracking-wide">
+            <h3 className="text-sm font-medium t-muted mb-4 uppercase tracking-wide">
               {date}
             </h3>
-            <div className="divide-y divide-gray-100 dark:divide-gray-700/50">
+            <div>
               {items.map((event) => (
                 <TimelineItem
                   key={event.id}
@@ -474,7 +477,6 @@ export default function Timeline({
                   onToggleIgnore={toggleIgnore}
                   engagementScope={engagementScope}
                   isUnlocked={isUnlocked}
-                  accentColor={accentColor}
                 />
               ))}
             </div>

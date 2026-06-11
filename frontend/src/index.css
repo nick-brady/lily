@@ -10,6 +10,65 @@
   body {
     @apply min-h-screen;
   }
+
+  /* Theme tokens. The birth page overrides these with the family's
+     chosen theme (see utils/themes.js); everywhere else these neutral
+     defaults reproduce the standard light/dark look. */
+  :root {
+    --t-page-bg: #f3f4f6;
+    --t-page-pattern: none;
+    --t-pattern-size: auto;
+    --t-header-bg: rgba(255, 255, 255, 0.92);
+    --t-header-border: #e5e7eb;
+    --t-title: #a21caf;
+    --t-title-size: 1.875rem;
+    --t-display-font: 'Great Vibes', cursive;
+    --t-display-weight: 400;
+    --t-display-style: normal;
+    --t-card-bg: #ffffff;
+    --t-card-border: transparent;
+    --t-ink: #374151;
+    --t-ink-muted: #6b7280;
+    --t-ink-faint: #9ca3af;
+    --t-divider: #f3f4f6;
+    --t-accent: #c026d3;
+    --t-accent-hover: #a21caf;
+    --t-soft-bg: #fdf4ff;
+    --t-soft-text: #a21caf;
+    --t-soft-ring: #f5d0fe;
+    --t-milestone-bg: #fae8ff;
+    --t-milestone-border: #f5d0fe;
+    --t-milestone-text: #a21caf;
+    --t-memo-bg: #fff1f2;
+    --t-memo-border: #fecdd3;
+    --t-memo-text: #be123c;
+    --t-note-bg: #f9fafb;
+    --t-dot: #e879f9;
+  }
+
+  .dark {
+    --t-page-bg: #111827;
+    --t-header-bg: rgba(31, 41, 55, 0.92);
+    --t-header-border: #374151;
+    --t-title: #e879f9;
+    --t-card-bg: #1f2937;
+    --t-card-border: transparent;
+    --t-ink: #d1d5db;
+    --t-ink-muted: #9ca3af;
+    --t-ink-faint: #6b7280;
+    --t-divider: rgba(55, 65, 81, 0.5);
+    --t-soft-bg: rgba(112, 26, 117, 0.2);
+    --t-soft-text: #f0abfc;
+    --t-soft-ring: rgba(134, 25, 143, 0.6);
+    --t-milestone-bg: rgba(112, 26, 117, 0.3);
+    --t-milestone-border: rgba(162, 28, 175, 0.5);
+    --t-milestone-text: #f0abfc;
+    --t-memo-bg: rgba(136, 19, 55, 0.2);
+    --t-memo-border: rgba(159, 18, 57, 0.5);
+    --t-memo-text: #fda4af;
+    --t-note-bg: rgba(55, 65, 81, 0.5);
+    --t-dot: #e879f9;
+  }
 }
 
 @layer components {
@@ -24,7 +83,24 @@
   }
 
   .card {
-    @apply bg-white dark:bg-gray-800 rounded-2xl shadow-lg p-6;
+    @apply rounded-2xl shadow-lg p-6;
+    background-color: var(--t-card-bg);
+    border: 1px solid var(--t-card-border);
+  }
+
+  /* Themed text + surface helpers used on the birth timeline. */
+  .t-ink { color: var(--t-ink); }
+  .t-muted { color: var(--t-ink-muted); }
+  .t-faint { color: var(--t-ink-faint); }
+
+  .t-row { border-bottom: 1px solid var(--t-divider); }
+  .t-row:last-child { border-bottom: none; }
+
+  .t-display {
+    font-family: var(--t-display-font);
+    font-weight: var(--t-display-weight);
+    font-style: var(--t-display-style);
+    color: var(--t-title);
   }
 
   .animate-slide-up {

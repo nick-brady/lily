@@ -64,11 +64,13 @@ export default function ReactionBar({ event, scope }) {
             className={[
               'group inline-flex items-center gap-1 px-2 py-1 rounded-full text-sm',
               'transition-all duration-200 ease-out',
-              mine
-                ? 'bg-primary-50 dark:bg-primary-900/20 ring-1 ring-primary-200 dark:ring-primary-800'
-                : 'hover:bg-gray-100 dark:hover:bg-gray-700/50',
+              mine ? '' : 'hover:bg-gray-100 dark:hover:bg-gray-700/50',
               pending === kind ? 'opacity-60' : '',
             ].join(' ')}
+            style={mine ? {
+              backgroundColor: 'var(--t-soft-bg)',
+              boxShadow: 'inset 0 0 0 1px var(--t-soft-ring)',
+            } : undefined}
           >
             <span
               className={`text-base ${
@@ -79,11 +81,8 @@ export default function ReactionBar({ event, scope }) {
             </span>
             {isHot && (
               <span
-                className={`text-xs ${
-                  mine
-                    ? 'text-primary-700 dark:text-primary-300 font-medium'
-                    : 'text-gray-500 dark:text-gray-400'
-                }`}
+                className={mine ? 'text-xs font-medium' : 'text-xs t-muted'}
+                style={mine ? { color: 'var(--t-soft-text)' } : undefined}
               >
                 {count}
               </span>

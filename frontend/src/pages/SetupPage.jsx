@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { api } from '../api/client';
-import { THEMES, getTheme } from '../utils/themes';
+import { THEMES, getTheme, themeVars } from '../utils/themes';
 
 function toSlug(name) {
   return name
@@ -227,7 +227,7 @@ export default function SetupPage() {
                          disabled:opacity-40 disabled:cursor-not-allowed"
               style={{
                 background: slugStatus === 'available'
-                  ? `linear-gradient(135deg, ${theme.accentMid}, ${theme.accent})`
+                  ? `linear-gradient(135deg, ${theme.modes.light.accent}, ${theme.modes.light.accentHover})`
                   : undefined,
                 backgroundColor: slugStatus !== 'available' ? '#9ca3af' : undefined,
               }}
@@ -247,7 +247,13 @@ export default function SetupPage() {
               <p className="text-sm text-gray-500 dark:text-gray-400">
                 Sign in to create{' '}
                 <span
-                  style={{ fontFamily: "'Great Vibes', cursive", fontSize: '1.15em', color: theme.accent }}
+                  style={{
+                    fontFamily: theme.display.family,
+                    fontWeight: theme.display.weight,
+                    fontStyle: theme.display.style,
+                    fontSize: '1.15em',
+                    color: theme.modes.light.accent,
+                  }}
                 >
                   {displayName}
                 </span>
@@ -288,7 +294,7 @@ export default function SetupPage() {
                   disabled={authLoading || !identifier.trim()}
                   className="w-full py-3 rounded-xl text-white font-medium transition-colors
                              disabled:opacity-40 disabled:cursor-not-allowed"
-                  style={{ backgroundColor: theme.accent }}
+                  style={{ backgroundColor: theme.modes.light.accent }}
                 >
                   {authLoading ? 'Sending…' : 'Send code'}
                 </button>
@@ -338,7 +344,7 @@ export default function SetupPage() {
                   disabled={authLoading || code.length !== 6}
                   className="w-full py-3 rounded-xl text-white font-medium transition-colors
                              disabled:opacity-40 disabled:cursor-not-allowed"
-                  style={{ backgroundColor: theme.accent }}
+                  style={{ backgroundColor: theme.modes.light.accent }}
                 >
                   {authLoading ? 'Creating your page…' : 'Create my page'}
                 </button>
@@ -359,25 +365,36 @@ export default function SetupPage() {
 }
 
 function ThemeCard({ theme, displayName, selected, onSelect }) {
+  const t = theme.modes.light;
   return (
     <button
       type="button"
       onClick={onSelect}
       className={`relative rounded-2xl overflow-hidden transition-all duration-200 text-left ${
         selected
-          ? 'ring-2 shadow-lg scale-[1.02]'
+          ? 'shadow-lg scale-[1.02]'
           : 'ring-1 ring-gray-200 dark:ring-gray-700 hover:ring-2 hover:shadow-md'
       }`}
-      style={selected ? { ringColor: theme.accent, boxShadow: `0 4px 20px ${theme.accent}30` } : {}}
+      style={selected ? { boxShadow: `0 4px 20px ${t.accent}30` } : {}}
     >
-      {/* Color strip header */}
+      {/* Mini page header: real background, pattern, and display font */}
       <div
-        className="h-16 flex items-center justify-center px-3"
-        style={{ background: theme.previewGradient }}
+        className="h-16 flex items-center justify-center px-2"
+        style={{
+          backgroundColor: t.pageBg,
+          backgroundImage: t.pattern,
+          backgroundSize: `calc(${t.patternSize} / 1.6)`,
+        }}
       >
         <span
-          className="text-lg leading-tight text-center truncate"
-          style={{ fontFamily: "'Great Vibes', cursive", color: theme.scriptColor }}
+          className="leading-tight text-center truncate"
+          style={{
+            fontFamily: theme.display.family,
+            fontWeight: theme.display.weight,
+            fontStyle: theme.display.style,
+            fontSize: `calc(${t.titleSize} * 0.62)`,
+            color: t.title,
+          }}
         >
           {displayName}
         </span>
@@ -394,15 +411,15 @@ function ThemeCard({ theme, displayName, selected, onSelect }) {
         {/* Color swatch */}
         <div
           className="h-5 w-5 rounded-full flex-shrink-0 shadow-sm"
-          style={{ background: theme.swatchGradient }}
+          style={{ background: `linear-gradient(135deg, ${theme.swatch[0]}, ${theme.swatch[1]})` }}
         />
       </div>
 
       {/* Selected ring overlay */}
       {selected && (
         <div
-          className="absolute inset-0 rounded-2xl ring-2 pointer-events-none"
-          style={{ ringColor: theme.accent, outlineColor: theme.accent, outline: `2px solid ${theme.accent}` }}
+          className="absolute inset-0 rounded-2xl pointer-events-none"
+          style={{ outline: `2px solid ${t.accent}`, outlineOffset: '-2px' }}
         />
       )}
     </button>
@@ -412,44 +429,73 @@ function ThemeCard({ theme, displayName, selected, onSelect }) {
 function PagePreview({ theme, displayName }) {
   return (
     <div
-      className="rounded-2xl overflow-hidden shadow-md border"
-      style={{ borderColor: theme.accentBorder }}
+      className="rounded-2xl overflow-hidden shadow-md"
+      style={{ ...themeVars(theme, false), border: '1px solid var(--t-header-border)' }}
     >
-      {/* Mock header */}
+      {/* Mock page: themed background with pattern */}
       <div
-        className="px-4 py-3 border-b"
-        style={{ background: theme.accentLight, borderColor: theme.accentBorder }}
+        style={{
+          backgroundColor: 'var(--t-page-bg)',
+          backgroundImage: 'var(--t-page-pattern)',
+          backgroundSize: 'var(--t-pattern-size)',
+        }}
       >
-        <p
-          className="text-2xl"
-          style={{ fontFamily: "'Great Vibes', cursive", color: theme.scriptColor }}
+        {/* Mock header */}
+        <div
+          className="px-4 py-2.5"
+          style={{
+            backgroundColor: 'var(--t-header-bg)',
+            borderBottom: '1px solid var(--t-header-border)',
+          }}
         >
-          Welcoming {displayName}
-        </p>
-      </div>
-
-      {/* Mock timeline entry */}
-      <div className="bg-white dark:bg-gray-800 px-4 py-3 space-y-2">
-        <div className="flex items-center gap-2">
-          <div
-            className="h-2 w-2 rounded-full flex-shrink-0"
-            style={{ backgroundColor: theme.accentMid }}
-          />
-          <span className="text-xs text-gray-400">Contraction in progress · 0:42</span>
+          <p className="t-display" style={{ fontSize: 'calc(var(--t-title-size) * 0.8)' }}>
+            Welcoming {displayName}
+          </p>
         </div>
-        <p className="text-xs text-gray-600 dark:text-gray-300">
-          Contractions are 5 minutes apart 💪
-        </p>
-        <div className="flex gap-1.5 pt-0.5">
-          {['❤️ 14', '🙏 8', '🤩 5'].map((r) => (
-            <span
-              key={r}
-              className="text-xs rounded-full px-2 py-0.5"
-              style={{ backgroundColor: theme.accentLight, color: theme.accent }}
+
+        {/* Mock timeline card */}
+        <div className="px-3 py-3">
+          <div
+            className="rounded-xl shadow-sm px-3 py-3 space-y-2"
+            style={{
+              backgroundColor: 'var(--t-card-bg)',
+              border: '1px solid var(--t-card-border)',
+            }}
+          >
+            <div className="flex items-center gap-2">
+              <div
+                className="h-2 w-2 rounded-full flex-shrink-0"
+                style={{ backgroundColor: 'var(--t-dot)' }}
+              />
+              <span className="text-xs t-faint">Contraction in progress · 0:42</span>
+            </div>
+            <div
+              className="rounded-lg px-2.5 py-1.5 inline-flex items-center gap-1.5"
+              style={{
+                backgroundColor: 'var(--t-milestone-bg)',
+                border: '1px solid var(--t-milestone-border)',
+              }}
             >
-              {r}
-            </span>
-          ))}
+              <span className="text-sm">👶</span>
+              <span className="text-xs font-semibold" style={{ color: 'var(--t-milestone-text)' }}>
+                Baby Born!
+              </span>
+            </div>
+            <p className="text-xs t-ink">
+              Contractions are 5 minutes apart 💪
+            </p>
+            <div className="flex gap-1.5 pt-0.5">
+              {['💖 14', '🙏 8', '✨ 5'].map((r) => (
+                <span
+                  key={r}
+                  className="text-xs rounded-full px-2 py-0.5"
+                  style={{ backgroundColor: 'var(--t-soft-bg)', color: 'var(--t-soft-text)' }}
+                >
+                  {r}
+                </span>
+              ))}
+            </div>
+          </div>
         </div>
       </div>
     </div>

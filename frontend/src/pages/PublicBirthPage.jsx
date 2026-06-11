@@ -6,7 +6,7 @@ import { useSSE } from '../hooks/useSSE';
 import ConnectionStatus from '../components/ConnectionStatus';
 import Timeline from '../components/Timeline';
 import { bumpCommentCount, updateReaction } from '../utils/engagement';
-import { getTheme } from '../utils/themes';
+import { getTheme, themeVars } from '../utils/themes';
 
 export default function PublicBirthPage() {
   const { slug } = useParams();
@@ -139,17 +139,27 @@ export default function PublicBirthPage() {
   const theme = getTheme(birth?.theme);
 
   return (
-    <div className="min-h-screen bg-gray-100 dark:bg-gray-900 transition-colors">
+    <div
+      className="min-h-screen transition-colors"
+      style={{
+        ...themeVars(theme, darkMode),
+        backgroundColor: 'var(--t-page-bg)',
+        backgroundImage: 'var(--t-page-pattern)',
+        backgroundSize: 'var(--t-pattern-size)',
+      }}
+    >
       <header
-        className="bg-white dark:bg-gray-800 shadow-sm sticky top-0 z-10"
-        style={{ borderBottom: `3px solid ${theme.accentBorder}` }}
+        className="shadow-sm sticky top-0 z-10"
+        style={{
+          backgroundColor: 'var(--t-header-bg)',
+          borderBottom: '1px solid var(--t-header-border)',
+          backdropFilter: 'blur(10px)',
+          WebkitBackdropFilter: 'blur(10px)',
+        }}
       >
         <div className="max-w-4xl mx-auto px-4 py-4">
           <div className="flex items-center justify-between mb-2">
-            <h1
-              className="text-2xl sm:text-3xl"
-              style={{ fontFamily: "'Great Vibes', cursive", color: theme.scriptColor }}
-            >
+            <h1 className="t-display" style={{ fontSize: 'var(--t-title-size)' }}>
               {title}
             </h1>
             <div className="flex items-center gap-2">
@@ -157,7 +167,7 @@ export default function PublicBirthPage() {
                 <Link
                   to={`/b/${slug}/manage`}
                   className="px-3 py-2 text-sm rounded-lg text-white font-medium transition-colors"
-                  style={{ backgroundColor: theme.accent }}
+                  style={{ backgroundColor: 'var(--t-accent)' }}
                 >
                   Manage
                 </Link>
@@ -165,9 +175,8 @@ export default function PublicBirthPage() {
               {!isAuthenticated && (
                 <Link
                   to="/login"
-                  className="px-3 py-2 text-sm rounded-lg bg-gray-100 dark:bg-gray-700
-                             text-gray-600 dark:text-gray-300 hover:bg-gray-200
-                             dark:hover:bg-gray-600 transition-colors"
+                  className="px-3 py-2 text-sm rounded-lg transition-opacity hover:opacity-80"
+                  style={{ backgroundColor: 'var(--t-soft-bg)', color: 'var(--t-soft-text)' }}
                 >
                   Sign in
                 </Link>
@@ -186,7 +195,7 @@ export default function PublicBirthPage() {
           </div>
         )}
         {loading ? (
-          <p className="text-center text-gray-500 dark:text-gray-400 py-12">
+          <p className="text-center t-muted py-12">
             Loading timeline…
           </p>
         ) : (
@@ -194,15 +203,15 @@ export default function PublicBirthPage() {
             events={sortedEvents}
             slug={slug}
             isUnlocked={birth?.is_unlocked ?? false}
-            accentColor={theme.accentMid}
           />
         )}
       </main>
 
-      <footer className="py-8 text-center text-sm border-t border-gray-200 dark:border-gray-800">
-        <span
-          style={{ fontFamily: "'Great Vibes', cursive", fontSize: '1.25rem', color: theme.accentMid }}
-        >
+      <footer
+        className="py-8 text-center text-sm"
+        style={{ borderTop: '1px solid var(--t-divider)' }}
+      >
+        <span className="t-display" style={{ fontSize: '1.25rem', opacity: 0.75 }}>
           Made with love
         </span>
       </footer>
@@ -214,8 +223,8 @@ function DarkModeToggle({ darkMode, setDarkMode }) {
   return (
     <button
       onClick={() => setDarkMode(!darkMode)}
-      className="p-2 rounded-lg bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300
-                 hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors"
+      className="p-2 rounded-lg transition-opacity hover:opacity-80"
+      style={{ backgroundColor: 'var(--t-soft-bg)', color: 'var(--t-soft-text)' }}
     >
       {darkMode ? (
         <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
