@@ -22,7 +22,7 @@ function toDisplayName(raw) {
 }
 
 export default function SetupPage() {
-  const { isAuthenticated, loading, me, acceptToken } = useAuth();
+  const { isAuthenticated, loading, me, acceptToken, refreshMe } = useAuth();
   const navigate = useNavigate();
 
   const [step, setStep] = useState('name');
@@ -84,6 +84,9 @@ export default function SetupPage() {
       setError('');
       try {
         const birth = await api.createBirth({ babyName, slug, theme: selectedTheme });
+        // The manage page resolves the birth from `me`; refresh it so the
+        // new birth is present before we land there.
+        await refreshMe();
         navigate(`/b/${birth.slug}/manage`, { replace: true });
       } catch (err) {
         setError(err.message || 'Something went wrong');
@@ -116,6 +119,9 @@ export default function SetupPage() {
       const authResult = await api.verifyChallenge({ identifier, code });
       await acceptToken(authResult.access_token);
       const birth = await api.createBirth({ babyName, slug, theme: selectedTheme });
+      // acceptToken fetched /me before the birth existed; refresh so the
+      // manage page can resolve the new birth from `me`.
+      await refreshMe();
       navigate(`/b/${birth.slug}/manage`, { replace: true });
     } catch (err) {
       setError(err.message || 'Something went wrong');
