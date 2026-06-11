@@ -93,6 +93,15 @@
   .t-muted { color: var(--t-ink-muted); }
   .t-faint { color: var(--t-ink-faint); }
 
+  .t-btn-accent {
+    background-color: var(--t-accent);
+    color: #ffffff;
+  }
+  .t-btn-accent:hover { background-color: var(--t-accent-hover); }
+  .t-glow:hover {
+    box-shadow: 0 25px 50px -12px color-mix(in srgb, var(--t-accent) 50%, transparent);
+  }
+
   .t-row { border-bottom: 1px solid var(--t-divider); }
   .t-row:last-child { border-bottom: none; }
 

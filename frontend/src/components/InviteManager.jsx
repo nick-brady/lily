@@ -77,18 +77,17 @@ export default function InviteManager({ birthId }) {
     <section className="card">
       <div className="flex items-center justify-between mb-4">
         <div>
-          <h3 className="text-lg font-semibold text-gray-800 dark:text-gray-200">
+          <h3 className="text-lg font-semibold t-ink">
             Family viewers
           </h3>
-          <p className="text-sm text-gray-500 dark:text-gray-400">
+          <p className="text-sm t-muted">
             Invite people to follow along. They see public + family posts; not parent-only.
           </p>
         </div>
         <button
           onClick={handleCreate}
           disabled={creating}
-          className="px-3 py-2 text-sm rounded-lg bg-primary-600 text-white font-medium
-                     hover:bg-primary-700 disabled:opacity-50"
+          className="px-3 py-2 text-sm rounded-lg t-btn-accent font-medium disabled:opacity-50"
         >
           {creating ? 'Creating…' : 'New invite link'}
         </button>
@@ -101,21 +100,24 @@ export default function InviteManager({ birthId }) {
       )}
 
       {lastCreated && (
-        <div className="mb-4 p-3 rounded-lg bg-primary-50 dark:bg-primary-900/30 border border-primary-200 dark:border-primary-700/50">
-          <p className="text-sm font-medium text-primary-800 dark:text-primary-200 mb-2">
+        <div
+          className="mb-4 p-3 rounded-lg border"
+          style={{ backgroundColor: 'var(--t-soft-bg)', borderColor: 'var(--t-soft-ring)' }}
+        >
+          <p className="text-sm font-medium mb-2" style={{ color: 'var(--t-soft-text)' }}>
             New invite link ready
           </p>
           <div className="flex gap-2">
             <input
               readOnly
               value={lastCreated.invite_url}
-              className="flex-1 px-3 py-2 rounded border border-primary-200 dark:border-primary-700/50
-                         bg-white dark:bg-gray-900 text-sm text-gray-800 dark:text-gray-200"
+              className="flex-1 px-3 py-2 rounded border text-sm t-ink"
+              style={{ backgroundColor: 'var(--t-card-bg)', borderColor: 'var(--t-soft-ring)' }}
               onFocus={(e) => e.target.select()}
             />
             <button
               onClick={() => handleCopy(lastCreated.invite_url, lastCreated.id)}
-              className="px-3 py-2 text-sm rounded bg-primary-600 text-white hover:bg-primary-700"
+              className="px-3 py-2 text-sm rounded t-btn-accent"
             >
               {copiedId === lastCreated.id ? 'Copied' : 'Copy'}
             </button>
@@ -124,13 +126,13 @@ export default function InviteManager({ birthId }) {
       )}
 
       {loading ? (
-        <p className="text-sm text-gray-500 dark:text-gray-400">Loading invitations…</p>
+        <p className="text-sm t-muted">Loading invitations…</p>
       ) : invitations.length === 0 ? (
-        <p className="text-sm text-gray-500 dark:text-gray-400">
+        <p className="text-sm t-muted">
           No invites yet. Create one to share.
         </p>
       ) : (
-        <ul className="divide-y divide-gray-100 dark:divide-gray-700">
+        <ul>
           {invitations.map((invite) => {
             const isRevoked = Boolean(invite.revoked_at);
             const isExpired = !isRevoked && new Date(invite.expires_at) < new Date();
@@ -140,19 +142,19 @@ export default function InviteManager({ birthId }) {
                 ? 'Expired'
                 : `${invite.redemption_count} ${invite.redemption_count === 1 ? 'redemption' : 'redemptions'}`;
             return (
-              <li key={invite.id} className="py-3 flex items-center justify-between gap-3">
+              <li key={invite.id} className="py-3 flex items-center justify-between gap-3 t-row">
                 <div className="min-w-0">
-                  <div className="text-sm text-gray-800 dark:text-gray-200 truncate">
+                  <div className="text-sm t-ink truncate">
                     {invite.display_name_hint || invite.email_hint || invite.phone_hint || 'Anyone with the link'}
                   </div>
-                  <div className="text-xs text-gray-500 dark:text-gray-400">
+                  <div className="text-xs t-muted">
                     {status} · {formatRelative(invite.expires_at)}
                   </div>
                 </div>
                 {!isRevoked && !isExpired && (
                   <button
                     onClick={() => handleRevoke(invite.id)}
-                    className="text-xs text-gray-500 hover:text-red-500 dark:text-gray-400 dark:hover:text-red-400"
+                    className="text-xs t-muted hover:text-red-500 dark:hover:text-red-400"
                   >
                     Revoke
                   </button>

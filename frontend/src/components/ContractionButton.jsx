@@ -35,7 +35,7 @@ export default function ContractionButton({ onStart, onStop, startTime }) {
         >
           STOP
         </button>
-        <p className="text-gray-600 dark:text-gray-400 text-sm">
+        <p className="t-muted text-sm">
           Tap when contraction ends
         </p>
       </div>
@@ -44,18 +44,18 @@ export default function ContractionButton({ onStart, onStop, startTime }) {
 
   return (
     <div className="flex flex-col items-center gap-4">
-      <div className="text-6xl font-mono font-bold text-gray-300 dark:text-gray-600">
+      <div className="text-6xl font-mono font-bold t-faint">
         00:00
       </div>
       <button
         onClick={onStart}
-        className="w-48 h-48 rounded-full bg-primary-600 hover:bg-primary-700 text-white text-xl font-bold
-                   shadow-2xl hover:shadow-primary-500/50 transition-all duration-200 active:scale-95
+        className="w-48 h-48 rounded-full t-btn-accent t-glow text-xl font-bold
+                   shadow-2xl transition-all duration-200 active:scale-95
                    flex items-center justify-center"
       >
         START<br/>CONTRACTION
       </button>
-      <p className="text-gray-600 dark:text-gray-400 text-sm">
+      <p className="t-muted text-sm">
         Tap when contraction begins
       </p>
     </div>
