@@ -296,11 +296,11 @@ export const api = {
     return jsonOrThrow(res);
   },
 
-  async createBirth({ babyName, slug }) {
+  async createBirth({ babyName, slug, theme = 'lily' }) {
     const res = await fetch(`${API_URL}/births`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', ...authHeaders() },
-      body: JSON.stringify({ baby_name: babyName, slug }),
+      body: JSON.stringify({ baby_name: babyName, slug, theme }),
     });
     return jsonOrThrow(res);
   },

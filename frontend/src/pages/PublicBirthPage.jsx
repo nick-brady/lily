@@ -6,6 +6,7 @@ import { useSSE } from '../hooks/useSSE';
 import ConnectionStatus from '../components/ConnectionStatus';
 import Timeline from '../components/Timeline';
 import { bumpCommentCount, updateReaction } from '../utils/engagement';
+import { getTheme } from '../utils/themes';
 
 export default function PublicBirthPage() {
   const { slug } = useParams();
@@ -128,14 +129,26 @@ export default function PublicBirthPage() {
     ? `Welcoming ${birth.child_name}`
     : 'Welcoming Baby';
 
+  useEffect(() => {
+    if (birth?.child_name) {
+      document.title = `Welcoming ${birth.child_name}`;
+    }
+    return () => { document.title = 'lily'; };
+  }, [birth?.child_name]);
+
+  const theme = getTheme(birth?.theme);
+
   return (
     <div className="min-h-screen bg-gray-100 dark:bg-gray-900 transition-colors">
-      <header className="bg-white dark:bg-gray-800 shadow-sm sticky top-0 z-10">
+      <header
+        className="bg-white dark:bg-gray-800 shadow-sm sticky top-0 z-10"
+        style={{ borderBottom: `3px solid ${theme.accentBorder}` }}
+      >
         <div className="max-w-4xl mx-auto px-4 py-4">
           <div className="flex items-center justify-between mb-2">
             <h1
-              className="text-2xl sm:text-3xl text-primary-600 dark:text-primary-400"
-              style={{ fontFamily: "'Great Vibes', cursive" }}
+              className="text-2xl sm:text-3xl"
+              style={{ fontFamily: "'Great Vibes', cursive", color: theme.scriptColor }}
             >
               {title}
             </h1>
@@ -143,7 +156,8 @@ export default function PublicBirthPage() {
               {canManageThisBirth && (
                 <Link
                   to={`/b/${slug}/manage`}
-                  className="px-3 py-2 text-sm rounded-lg bg-primary-600 text-white font-medium hover:bg-primary-700 transition-colors"
+                  className="px-3 py-2 text-sm rounded-lg text-white font-medium transition-colors"
+                  style={{ backgroundColor: theme.accent }}
                 >
                   Manage
                 </Link>
@@ -180,12 +194,15 @@ export default function PublicBirthPage() {
             events={sortedEvents}
             slug={slug}
             isUnlocked={birth?.is_unlocked ?? false}
+            accentColor={theme.accentMid}
           />
         )}
       </main>
 
-      <footer className="py-8 text-center text-sm text-gray-400 dark:text-gray-600">
-        <span style={{ fontFamily: "'Great Vibes', cursive", fontSize: '1.25rem' }}>
+      <footer className="py-8 text-center text-sm border-t border-gray-200 dark:border-gray-800">
+        <span
+          style={{ fontFamily: "'Great Vibes', cursive", fontSize: '1.25rem', color: theme.accentMid }}
+        >
           Made with love
         </span>
       </footer>

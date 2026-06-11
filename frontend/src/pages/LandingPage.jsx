@@ -66,7 +66,7 @@ export default function LandingPage() {
             className="text-2xl text-primary-600 dark:text-primary-400 text-center mb-4"
             style={{ fontFamily: "'Great Vibes', cursive" }}
           >
-            Welcoming Lily Rose
+            Welcoming Lily Wren
           </h2>
           <div className="flex items-center gap-3 mb-4 p-3 bg-primary-50 dark:bg-primary-900/20 rounded-xl">
             <div className="h-2.5 w-2.5 rounded-full bg-primary-500 animate-pulse-slow flex-shrink-0" />

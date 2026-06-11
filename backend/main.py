@@ -260,6 +260,7 @@ def create_birth(
         family_id=family.id,
         child_name=payload.baby_name,
         slug=slug,
+        theme=payload.theme,
     )
     db.commit()
     db.refresh(birth)

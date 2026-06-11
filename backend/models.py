@@ -227,6 +227,9 @@ class Birth(Base):
     is_locked_to_invited: Mapped[bool] = mapped_column(
         sa.Boolean, nullable=False, server_default=sa.text("false")
     )
+    theme: Mapped[str] = mapped_column(
+        sa.Text, nullable=False, server_default="lily"
+    )
     deleted_at: Mapped[datetime | None] = mapped_column(
         sa.DateTime(timezone=True), nullable=True
     )

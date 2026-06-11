@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { api } from '../api/client';
+import { THEMES, getTheme } from '../utils/themes';
 
 function toSlug(name) {
   return name
@@ -13,26 +14,34 @@ function toSlug(name) {
     .replace(/^-|-$/g, '');
 }
 
+function toDisplayName(raw) {
+  return raw
+    .split(' ')
+    .map((w) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())
+    .join(' ');
+}
+
 export default function SetupPage() {
   const { isAuthenticated, loading, me, acceptToken } = useAuth();
   const navigate = useNavigate();
 
-  const [step, setStep] = useState('name'); // 'name' | 'auth'
+  const [step, setStep] = useState('name');
   const [babyName, setBabyName] = useState('');
   const [slug, setSlug] = useState('');
-  const [slugStatus, setSlugStatus] = useState(null); // null | 'checking' | 'available' | 'taken'
+  const [slugStatus, setSlugStatus] = useState(null);
   const [slugSuggestion, setSlugSuggestion] = useState('');
   const slugCheckTimeout = useRef(null);
 
-  // Auth step state
-  const [authStep, setAuthStep] = useState('identifier'); // 'identifier' | 'code'
+  const [selectedTheme, setSelectedTheme] = useState('blossom');
+
+  const [authStep, setAuthStep] = useState('identifier');
   const [identifier, setIdentifier] = useState('');
   const [identifierKind, setIdentifierKind] = useState(null);
   const [code, setCode] = useState('');
   const [authLoading, setAuthLoading] = useState(false);
   const [error, setError] = useState('');
 
-  // If already logged in with a birth, redirect away
+  // Redirect if already logged in with a birth
   useEffect(() => {
     if (loading) return;
     if (!isAuthenticated) return;
@@ -49,41 +58,32 @@ export default function SetupPage() {
     const generated = toSlug(babyName);
     setSlug(generated);
     setSlugSuggestion('');
-    if (!generated) {
-      setSlugStatus(null);
-      return;
-    }
+    if (!generated) { setSlugStatus(null); return; }
     setSlugStatus('checking');
     if (slugCheckTimeout.current) clearTimeout(slugCheckTimeout.current);
     slugCheckTimeout.current = setTimeout(async () => {
       try {
         const result = await api.checkSlugAvailable(generated);
         setSlugStatus(result.available ? 'available' : 'taken');
-        if (!result.available && result.suggestion) {
-          setSlugSuggestion(result.suggestion);
-        }
-      } catch {
-        setSlugStatus(null);
-      }
+        if (!result.available && result.suggestion) setSlugSuggestion(result.suggestion);
+      } catch { setSlugStatus(null); }
     }, 400);
-    return () => {
-      if (slugCheckTimeout.current) clearTimeout(slugCheckTimeout.current);
-    };
+    return () => { if (slugCheckTimeout.current) clearTimeout(slugCheckTimeout.current); };
   }, [babyName]);
 
-  const adoptSuggestion = () => {
-    setBabyName(slugSuggestion.replace(/-/g, ' '));
-  };
+  const theme = getTheme(selectedTheme);
+  const displayName = babyName ? toDisplayName(babyName) : '';
+
+  const adoptSuggestion = () => setBabyName(slugSuggestion.replace(/-/g, ' '));
 
   const goToAuth = async (e) => {
     e.preventDefault();
     if (slugStatus !== 'available') return;
-    // If already authenticated, skip auth and create directly
     if (isAuthenticated) {
       setAuthLoading(true);
       setError('');
       try {
-        const birth = await api.createBirth({ babyName, slug });
+        const birth = await api.createBirth({ babyName, slug, theme: selectedTheme });
         navigate(`/b/${birth.slug}/manage`, { replace: true });
       } catch (err) {
         setError(err.message || 'Something went wrong');
@@ -105,9 +105,7 @@ export default function SetupPage() {
       setAuthStep('code');
     } catch (err) {
       setError(err.message || 'Could not send code');
-    } finally {
-      setAuthLoading(false);
-    }
+    } finally { setAuthLoading(false); }
   };
 
   const submitCode = async (e) => {
@@ -117,19 +115,17 @@ export default function SetupPage() {
     try {
       const authResult = await api.verifyChallenge({ identifier, code });
       await acceptToken(authResult.access_token);
-      const birth = await api.createBirth({ babyName, slug });
+      const birth = await api.createBirth({ babyName, slug, theme: selectedTheme });
       navigate(`/b/${birth.slug}/manage`, { replace: true });
     } catch (err) {
       setError(err.message || 'Something went wrong');
-    } finally {
-      setAuthLoading(false);
-    }
+    } finally { setAuthLoading(false); }
   };
 
   if (loading) return null;
 
   return (
-    <div className="min-h-screen flex flex-col items-center justify-center bg-gradient-to-b from-primary-50 to-white dark:from-gray-900 dark:to-gray-950 px-4 py-12">
+    <div className="min-h-screen flex flex-col items-center justify-start bg-gradient-to-b from-primary-50 to-white dark:from-gray-900 dark:to-gray-950 px-4 py-12">
       {/* Logo */}
       <div
         className="text-4xl text-primary-600 dark:text-primary-400 mb-8"
@@ -144,20 +140,22 @@ export default function SetupPage() {
         <div className={`h-2 w-2 rounded-full transition-colors ${step === 'auth' ? 'bg-primary-500' : 'bg-primary-200 dark:bg-primary-700'}`} />
       </div>
 
-      <div className="w-full max-w-sm">
-        {/* Step 1: Baby's name */}
-        {step === 'name' && (
-          <form onSubmit={goToAuth} className="space-y-6">
-            <div className="text-center mb-2">
-              <h1 className="text-xl font-semibold text-gray-800 dark:text-white mb-1">
-                What's your baby's name?
-              </h1>
-              <p className="text-sm text-gray-500 dark:text-gray-400">
-                You can always change this later.
-              </p>
-            </div>
+      <div className="w-full max-w-md">
 
-            <div>
+        {/* ── Step 1: Name + Theme ── */}
+        {step === 'name' && (
+          <form onSubmit={goToAuth} className="space-y-8">
+
+            {/* Name input */}
+            <div className="space-y-2">
+              <div className="text-center">
+                <h1 className="text-xl font-semibold text-gray-800 dark:text-white mb-1">
+                  What's your baby's name?
+                </h1>
+                <p className="text-sm text-gray-500 dark:text-gray-400">
+                  You can always change this later.
+                </p>
+              </div>
               <input
                 type="text"
                 value={babyName}
@@ -170,50 +168,51 @@ export default function SetupPage() {
                            focus:ring-2 focus:ring-primary-500 focus:border-transparent
                            focus:outline-none transition-colors placeholder-gray-300 dark:placeholder-gray-600"
               />
-            </div>
-
-            {/* Slug preview */}
-            {slug && (
-              <div className="space-y-3">
+              {slug && (
                 <div className="flex items-center justify-between px-1">
                   <span className="text-xs text-gray-400 font-mono">/b/{slug}</span>
-                  {slugStatus === 'checking' && (
-                    <span className="text-xs text-gray-400">Checking…</span>
-                  )}
-                  {slugStatus === 'available' && (
-                    <span className="text-xs text-emerald-600 dark:text-emerald-400 font-medium">Available</span>
-                  )}
-                  {slugStatus === 'taken' && (
-                    <span className="text-xs text-red-500 dark:text-red-400 font-medium">Taken</span>
-                  )}
+                  {slugStatus === 'checking' && <span className="text-xs text-gray-400">Checking…</span>}
+                  {slugStatus === 'available' && <span className="text-xs text-emerald-600 dark:text-emerald-400 font-medium">Available ✓</span>}
+                  {slugStatus === 'taken' && <span className="text-xs text-red-500 dark:text-red-400 font-medium">Taken</span>}
                 </div>
+              )}
+              {slugStatus === 'taken' && slugSuggestion && (
+                <button
+                  type="button"
+                  onClick={adoptSuggestion}
+                  className="text-xs text-primary-600 dark:text-primary-400 hover:underline px-1"
+                >
+                  Use /b/{slugSuggestion} instead →
+                </button>
+              )}
+            </div>
 
-                {slugStatus === 'taken' && slugSuggestion && (
-                  <button
-                    type="button"
-                    onClick={adoptSuggestion}
-                    className="w-full text-xs text-primary-600 dark:text-primary-400 hover:underline text-left px-1"
-                  >
-                    Use /b/{slugSuggestion} instead →
-                  </button>
-                )}
-
-                {/* Mini page preview */}
-                <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-md border border-primary-100 dark:border-primary-900/40 p-4 text-center">
-                  <p
-                    className="text-2xl text-primary-600 dark:text-primary-400"
-                    style={{ fontFamily: "'Great Vibes', cursive" }}
-                  >
-                    Welcoming{' '}
-                    {babyName
-                      .split(' ')
-                      .map((w) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())
-                      .join(' ')}
-                  </p>
-                  <p className="text-xs text-gray-400 mt-1">Your page will look something like this</p>
-                </div>
+            {/* Theme picker */}
+            <div className="space-y-4">
+              <div className="text-center">
+                <h2 className="text-base font-semibold text-gray-800 dark:text-white">
+                  Pick a look for your page
+                </h2>
               </div>
-            )}
+
+              {/* Theme cards — all 6 in a 3-column grid */}
+              <div className="grid grid-cols-3 gap-2.5">
+                {Object.values(THEMES).map((t) => (
+                  <ThemeCard
+                    key={t.id}
+                    theme={t}
+                    displayName={displayName || 'Baby'}
+                    selected={selectedTheme === t.id}
+                    onSelect={() => setSelectedTheme(t.id)}
+                  />
+                ))}
+              </div>
+
+              {/* Live preview */}
+              {displayName && (
+                <PagePreview theme={theme} displayName={displayName} />
+              )}
+            </div>
 
             {error && (
               <div className="p-3 rounded-lg bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-300 text-sm">
@@ -224,16 +223,21 @@ export default function SetupPage() {
             <button
               type="submit"
               disabled={!slug || slugStatus !== 'available' || authLoading}
-              className="w-full py-3 rounded-xl bg-primary-600 hover:bg-primary-700
-                         text-white font-medium transition-colors
+              className="w-full py-3.5 rounded-xl font-medium transition-colors text-white
                          disabled:opacity-40 disabled:cursor-not-allowed"
+              style={{
+                background: slugStatus === 'available'
+                  ? `linear-gradient(135deg, ${theme.accentMid}, ${theme.accent})`
+                  : undefined,
+                backgroundColor: slugStatus !== 'available' ? '#9ca3af' : undefined,
+              }}
             >
               {authLoading ? 'Creating…' : isAuthenticated ? 'Create my page' : 'Next →'}
             </button>
           </form>
         )}
 
-        {/* Step 2: Auth */}
+        {/* ── Step 2: Auth ── */}
         {step === 'auth' && (
           <div className="space-y-6">
             <div className="text-center">
@@ -243,13 +247,9 @@ export default function SetupPage() {
               <p className="text-sm text-gray-500 dark:text-gray-400">
                 Sign in to create{' '}
                 <span
-                  className="text-primary-600 dark:text-primary-400"
-                  style={{ fontFamily: "'Great Vibes', cursive", fontSize: '1.1em' }}
+                  style={{ fontFamily: "'Great Vibes', cursive", fontSize: '1.15em', color: theme.accent }}
                 >
-                  {babyName
-                    .split(' ')
-                    .map((w) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())
-                    .join(' ')}
+                  {displayName}
                 </span>
                 's page.
               </p>
@@ -286,9 +286,9 @@ export default function SetupPage() {
                 <button
                   type="submit"
                   disabled={authLoading || !identifier.trim()}
-                  className="w-full py-3 rounded-xl bg-primary-600 hover:bg-primary-700
-                             text-white font-medium transition-colors
+                  className="w-full py-3 rounded-xl text-white font-medium transition-colors
                              disabled:opacity-40 disabled:cursor-not-allowed"
+                  style={{ backgroundColor: theme.accent }}
                 >
                   {authLoading ? 'Sending…' : 'Send code'}
                 </button>
@@ -336,9 +336,9 @@ export default function SetupPage() {
                 <button
                   type="submit"
                   disabled={authLoading || code.length !== 6}
-                  className="w-full py-3 rounded-xl bg-primary-600 hover:bg-primary-700
-                             text-white font-medium transition-colors
+                  className="w-full py-3 rounded-xl text-white font-medium transition-colors
                              disabled:opacity-40 disabled:cursor-not-allowed"
+                  style={{ backgroundColor: theme.accent }}
                 >
                   {authLoading ? 'Creating your page…' : 'Create my page'}
                 </button>
@@ -353,6 +353,104 @@ export default function SetupPage() {
             )}
           </div>
         )}
+      </div>
+    </div>
+  );
+}
+
+function ThemeCard({ theme, displayName, selected, onSelect }) {
+  return (
+    <button
+      type="button"
+      onClick={onSelect}
+      className={`relative rounded-2xl overflow-hidden transition-all duration-200 text-left ${
+        selected
+          ? 'ring-2 shadow-lg scale-[1.02]'
+          : 'ring-1 ring-gray-200 dark:ring-gray-700 hover:ring-2 hover:shadow-md'
+      }`}
+      style={selected ? { ringColor: theme.accent, boxShadow: `0 4px 20px ${theme.accent}30` } : {}}
+    >
+      {/* Color strip header */}
+      <div
+        className="h-16 flex items-center justify-center px-3"
+        style={{ background: theme.previewGradient }}
+      >
+        <span
+          className="text-lg leading-tight text-center truncate"
+          style={{ fontFamily: "'Great Vibes', cursive", color: theme.scriptColor }}
+        >
+          {displayName}
+        </span>
+      </div>
+
+      {/* Theme info */}
+      <div className="bg-white dark:bg-gray-800 px-3 py-2.5 flex items-center justify-between">
+        <div>
+          <p className="text-xs font-semibold text-gray-800 dark:text-white leading-tight">
+            {theme.label}
+          </p>
+          <p className="text-xs text-gray-400 leading-tight">{theme.description}</p>
+        </div>
+        {/* Color swatch */}
+        <div
+          className="h-5 w-5 rounded-full flex-shrink-0 shadow-sm"
+          style={{ background: theme.swatchGradient }}
+        />
+      </div>
+
+      {/* Selected ring overlay */}
+      {selected && (
+        <div
+          className="absolute inset-0 rounded-2xl ring-2 pointer-events-none"
+          style={{ ringColor: theme.accent, outlineColor: theme.accent, outline: `2px solid ${theme.accent}` }}
+        />
+      )}
+    </button>
+  );
+}
+
+function PagePreview({ theme, displayName }) {
+  return (
+    <div
+      className="rounded-2xl overflow-hidden shadow-md border"
+      style={{ borderColor: theme.accentBorder }}
+    >
+      {/* Mock header */}
+      <div
+        className="px-4 py-3 border-b"
+        style={{ background: theme.accentLight, borderColor: theme.accentBorder }}
+      >
+        <p
+          className="text-2xl"
+          style={{ fontFamily: "'Great Vibes', cursive", color: theme.scriptColor }}
+        >
+          Welcoming {displayName}
+        </p>
+      </div>
+
+      {/* Mock timeline entry */}
+      <div className="bg-white dark:bg-gray-800 px-4 py-3 space-y-2">
+        <div className="flex items-center gap-2">
+          <div
+            className="h-2 w-2 rounded-full flex-shrink-0"
+            style={{ backgroundColor: theme.accentMid }}
+          />
+          <span className="text-xs text-gray-400">Contraction in progress · 0:42</span>
+        </div>
+        <p className="text-xs text-gray-600 dark:text-gray-300">
+          Contractions are 5 minutes apart 💪
+        </p>
+        <div className="flex gap-1.5 pt-0.5">
+          {['❤️ 14', '🙏 8', '🤩 5'].map((r) => (
+            <span
+              key={r}
+              className="text-xs rounded-full px-2 py-0.5"
+              style={{ backgroundColor: theme.accentLight, color: theme.accent }}
+            >
+              {r}
+            </span>
+          ))}
+        </div>
       </div>
     </div>
   );

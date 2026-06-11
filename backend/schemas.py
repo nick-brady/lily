@@ -118,6 +118,7 @@ class BirthOut(BaseModel):
     birth_completed_at: Optional[datetime] = None
     is_unlocked: bool
     is_locked_to_invited: bool
+    theme: str = "lily"
 
 
 class ReactionCountOut(BaseModel):
@@ -307,6 +308,7 @@ class EditEventIn(BaseModel):
 class BirthCreateIn(BaseModel):
     baby_name: str = Field(..., min_length=1, max_length=100)
     slug: str = Field(..., min_length=1, max_length=100)
+    theme: str = Field(default="lily", max_length=50)
 
 
 class SlugAvailableOut(BaseModel):

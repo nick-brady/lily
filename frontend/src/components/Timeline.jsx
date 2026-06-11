@@ -49,7 +49,7 @@ function formatDate(timestamp) {
   return date.toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric' });
 }
 
-function ContractionItem({ event, canManage, onDelete, onToggleIgnore }) {
+function ContractionItem({ event, canManage, onDelete, onToggleIgnore, accentColor }) {
   const { duration_seconds, ignore_interval_before } = event.payload || {};
   return (
     <div className="flex gap-4 py-3 border-b border-gray-100 dark:border-gray-700/50 last:border-0">
@@ -58,7 +58,10 @@ function ContractionItem({ event, canManage, onDelete, onToggleIgnore }) {
       </div>
       <div className="flex-1">
         <div className="flex items-center gap-2">
-          <span className="w-2 h-2 rounded-full bg-primary-500 animate-pulse" />
+          <span
+            className="w-2 h-2 rounded-full animate-pulse"
+            style={{ backgroundColor: accentColor || undefined }}
+          />
           <span className="text-gray-700 dark:text-gray-300">Contraction</span>
           {duration_seconds && (
             <span className="text-sm text-gray-500 dark:text-gray-400">
@@ -296,6 +299,7 @@ export default function Timeline({
   birthId = null,
   slug = null,
   isUnlocked = true,
+  accentColor = null,
 }) {
   const engagementScope = birthId
     ? { birthId }
@@ -470,6 +474,7 @@ export default function Timeline({
                   onToggleIgnore={toggleIgnore}
                   engagementScope={engagementScope}
                   isUnlocked={isUnlocked}
+                  accentColor={accentColor}
                 />
               ))}
             </div>
