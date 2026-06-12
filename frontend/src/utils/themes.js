@@ -90,6 +90,107 @@ const dinos = (c, o) => pat(
   `</g></svg>`,
 );
 
+// A baby elephant, a baby giraffe, a drifting cloud, and sparkles.
+const safariAnimals = (c, o) => pat(
+  `<svg xmlns='http://www.w3.org/2000/svg' width='220' height='220' viewBox='0 0 220 220'>` +
+  `<g fill='${c}' fill-opacity='${o}'>` +
+  `<g transform='translate(18 34)'>` +
+  `<ellipse cx='42' cy='30' rx='21' ry='14'/>` +
+  `<circle cx='16' cy='22' r='11'/>` +
+  `<ellipse cx='22' cy='17' rx='6' ry='8'/>` +
+  `<path d='M8 28 C3 34 2 41 6 46 C8 48 11 47 10 44 C7 41 8 36 13 31 Z'/>` +
+  `<rect x='32' y='39' width='7' height='11' rx='3'/>` +
+  `<rect x='48' y='39' width='7' height='11' rx='3'/>` +
+  `<path d='M61 26 C65 28 66 32 64 35 L62 34 C63 31 62 29 59 28 Z'/>` +
+  `</g>` +
+  `<g transform='translate(130 108)'>` +
+  `<rect x='12' y='50' width='4.5' height='18' rx='2.2'/>` +
+  `<rect x='27' y='50' width='4.5' height='18' rx='2.2'/>` +
+  `<ellipse cx='21' cy='46' rx='14' ry='10'/>` +
+  `<path d='M28 40 L38 10 L45 12 L36 44 Z'/>` +
+  `<ellipse cx='42' cy='9' rx='6.5' ry='5' transform='rotate(15 42 9)'/>` +
+  `<circle cx='40' cy='1.5' r='1.5'/>` +
+  `<circle cx='46' cy='3' r='1.5'/>` +
+  `<ellipse cx='35.5' cy='6' rx='3' ry='2' transform='rotate(-32 35.5 6)'/>` +
+  `</g>` +
+  `<g transform='translate(146 38)'>` +
+  `<circle cx='0' cy='2' r='5'/><circle cx='9' cy='-2' r='7'/><circle cx='18' cy='2' r='5'/>` +
+  `<rect x='-5' y='2' width='28' height='5' rx='2.5'/>` +
+  `</g>` +
+  `<path transform='translate(50 150) scale(0.5)' d='M0 -9 C1.2 -2.5 2.5 -1.2 9 0 C2.5 1.2 1.2 2.5 0 9 C-1.2 2.5 -2.5 1.2 -9 0 C-2.5 -1.2 -1.2 -2.5 0 -9 Z'/>` +
+  `<path transform='translate(100 88) scale(0.4)' d='M0 -9 C1.2 -2.5 2.5 -1.2 9 0 C2.5 1.2 1.2 2.5 0 9 C-1.2 2.5 -2.5 1.2 -9 0 C-2.5 -1.2 -1.2 -2.5 0 -9 Z'/>` +
+  `<circle cx='196' cy='150' r='1.6'/><circle cx='28' cy='112' r='1.4'/><circle cx='112' cy='196' r='1.6'/>` +
+  `</g></svg>`,
+);
+
+// A sitting fox, a bunny, a spotted mushroom, and a sprig.
+const woodlandFriends = (c, o) => pat(
+  `<svg xmlns='http://www.w3.org/2000/svg' width='210' height='210' viewBox='0 0 210 210'>` +
+  `<g fill='${c}' fill-opacity='${o}'>` +
+  `<g transform='translate(20 30)'>` +
+  `<path d='M10 6 L7 -6 L17 2 Z'/>` +
+  `<path d='M30 6 L33 -6 L23 2 Z'/>` +
+  `<circle cx='20' cy='12' r='10'/>` +
+  `<path d='M20 18 C9 26 6 38 8 50 L32 50 C34 38 31 26 20 18 Z'/>` +
+  `<path d='M30 50 C46 51 53 40 49 27 C60 36 59 52 44 56 C37 58 31 54 30 50 Z'/>` +
+  `</g>` +
+  `<g transform='translate(150 44)'>` +
+  `<ellipse cx='8' cy='-8' rx='3' ry='10' transform='rotate(-15 8 -8)'/>` +
+  `<ellipse cx='15' cy='-8' rx='3' ry='10' transform='rotate(12 15 -8)'/>` +
+  `<circle cx='11' cy='4' r='7'/>` +
+  `<ellipse cx='14' cy='16' rx='11' ry='9'/>` +
+  `<circle cx='26' cy='18' r='3'/>` +
+  `</g>` +
+  `<g transform='translate(52 158)'>` +
+  `<path fill-rule='evenodd' d='M-14 0 C-14 -10 -6 -16 0 -16 C6 -16 14 -10 14 0 Z M-7 -8 a2 2 0 1 0 4 0 a2 2 0 1 0 -4 0 M3 -10 a1.6 1.6 0 1 0 3.2 0 a1.6 1.6 0 1 0 -3.2 0'/>` +
+  `<rect x='-4' y='0' width='8' height='12' rx='3'/>` +
+  `</g>` +
+  `<circle cx='110' cy='100' r='1.6'/><circle cx='186' cy='130' r='1.6'/><circle cx='30' cy='110' r='1.4'/>` +
+  `</g>` +
+  `<g stroke='${c}' stroke-opacity='${o}' fill='none' stroke-width='1.3' stroke-linecap='round' transform='translate(158 156)'>` +
+  `<path d='M0 26 C2 13 2 6 0 0'/>` +
+  `<path d='M0.5 8 C-4 6 -7 3 -8 -1'/><path d='M0.5 8 C5 6 8 3 9 -1'/>` +
+  `<path d='M0.5 17 C-5 16 -9 13 -11 9'/><path d='M0.5 17 C6 16 10 13 12 9'/>` +
+  `</g></svg>`,
+);
+
+// A kite with bow-tie tail, a toy train, and alphabet blocks.
+const vintageToys = (c, o) => pat(
+  `<svg xmlns='http://www.w3.org/2000/svg' width='210' height='210' viewBox='0 0 210 210'>` +
+  `<g fill='${c}' fill-opacity='${o}'>` +
+  `<g transform='translate(42 38) rotate(14)'>` +
+  `<path d='M0 -16 L11 0 L0 18 L-11 0 Z'/>` +
+  `<path transform='translate(-3 32)' d='M0 0 L-6 -3 L-6 3 Z'/>` +
+  `<path transform='translate(-3 32)' d='M0 0 L6 -3 L6 3 Z'/>` +
+  `<path transform='translate(4 45)' d='M0 0 L-5 -2.5 L-5 2.5 Z'/>` +
+  `<path transform='translate(4 45)' d='M0 0 L5 -2.5 L5 2.5 Z'/>` +
+  `</g>` +
+  `<g transform='translate(110 134)'>` +
+  `<rect x='0' y='-2' width='11' height='24' rx='2'/>` +
+  `<rect x='0' y='12' width='36' height='11' rx='2'/>` +
+  `<rect x='28' y='3' width='5' height='8' rx='1.5'/>` +
+  `<circle cx='30.5' cy='-2' r='3'/>` +
+  `<circle cx='8' cy='26' r='4'/>` +
+  `<circle cx='19' cy='26' r='4'/>` +
+  `<circle cx='30' cy='26' r='4'/>` +
+  `</g>` +
+  `<path transform='translate(30 150) scale(0.55)' d='M0 -9 C1.2 -2.5 2.5 -1.2 9 0 C2.5 1.2 1.2 2.5 0 9 C-1.2 2.5 -2.5 1.2 -9 0 C-2.5 -1.2 -1.2 -2.5 0 -9 Z'/>` +
+  `<path transform='translate(100 70) scale(0.4)' d='M0 -9 C1.2 -2.5 2.5 -1.2 9 0 C2.5 1.2 1.2 2.5 0 9 C-1.2 2.5 -2.5 1.2 -9 0 C-2.5 -1.2 -1.2 -2.5 0 -9 Z'/>` +
+  `<circle cx='190' cy='180' r='1.6'/><circle cx='70' cy='196' r='1.4'/>` +
+  `</g>` +
+  `<g stroke='${c}' stroke-opacity='${o}' fill='none' stroke-width='1.4' stroke-linecap='round' stroke-linejoin='round'>` +
+  `<g transform='translate(42 38) rotate(14)'><path d='M0 18 C-6 28 4 36 4 45 C4 48 2 52 -2 55'/></g>` +
+  `<g transform='translate(158 48)'>` +
+  `<rect x='-9' y='-9' width='18' height='18' rx='2.5'/>` +
+  `<path d='M-3.5 5 L0 -4.5 L3.5 5 M-2 1.5 L2 1.5'/>` +
+  `</g>` +
+  `<g transform='translate(176 70) rotate(12)'>` +
+  `<rect x='-7.5' y='-7.5' width='15' height='15' rx='2.2'/>` +
+  `<path d='M-2.5 -4 L-2.5 4 M-2.5 -4 C2 -4 2 0 -2.5 0 C2.5 0 2.5 4 -2.5 4'/>` +
+  `</g>` +
+  `</g></svg>`,
+);
+
 // Sparkle stars, dust, and a crescent moon.
 const stars = (c, o) => pat(
   `<svg xmlns='http://www.w3.org/2000/svg' width='190' height='190' viewBox='0 0 190 190'>` +
@@ -330,6 +431,204 @@ export const THEMES = {
         memoText: '#f3d489',
         noteBg: 'rgba(46, 68, 53, 0.45)',
         dot: '#6fd198',
+      },
+    },
+  },
+
+  safari: {
+    id: 'safari',
+    label: 'Little Safari',
+    description: 'Savanna sunset',
+    display: { family: "'Baloo 2', sans-serif", weight: 600, style: 'normal' },
+    swatch: ['#f0d9bb', '#c2622f'],
+    modes: {
+      light: {
+        pageBg: '#fbf6ee',
+        pattern: safariAnimals('#a05c2c', 0.15),
+        patternSize: '220px',
+        headerBg: 'rgba(255, 252, 246, 0.88)',
+        headerBorder: '#f0e2cd',
+        title: '#8a4b25',
+        titleSize: '1.7rem',
+        cardBg: '#ffffff',
+        cardBorder: '#f0e4d2',
+        ink: '#4a3a2c',
+        inkMuted: '#8c7a64',
+        inkFaint: '#bcab93',
+        divider: '#f2e8d8',
+        accent: '#c2622f',
+        accentHover: '#a8511f',
+        softBg: '#f9eddd',
+        softText: '#a8551f',
+        softRing: '#f0d9bb',
+        milestoneBg: '#faf0dc',
+        milestoneBorder: '#eedcb4',
+        milestoneText: '#96601c',
+        memoBg: '#eef4e6',
+        memoBorder: '#d5e3c4',
+        memoText: '#5a7a3a',
+        noteBg: '#f7f0e3',
+        dot: '#d98e4a',
+      },
+      dark: {
+        pageBg: '#221a11',
+        pattern: safariAnimals('#dca06a', 0.1),
+        patternSize: '220px',
+        headerBg: 'rgba(34, 26, 17, 0.88)',
+        headerBorder: '#43331f',
+        title: '#ecc89a',
+        titleSize: '1.7rem',
+        cardBg: '#2c2316',
+        cardBorder: '#41331f',
+        ink: '#ecdfc9',
+        inkMuted: '#b3a187',
+        inkFaint: '#7d6c52',
+        divider: '#3b2e1c',
+        accent: '#dd8a4e',
+        accentHover: '#c97335',
+        softBg: 'rgba(221, 138, 78, 0.15)',
+        softText: '#ecc89a',
+        softRing: 'rgba(221, 138, 78, 0.35)',
+        milestoneBg: 'rgba(150, 96, 28, 0.25)',
+        milestoneBorder: 'rgba(194, 98, 47, 0.45)',
+        milestoneText: '#f0c98f',
+        memoBg: 'rgba(90, 122, 58, 0.2)',
+        memoBorder: 'rgba(141, 177, 103, 0.35)',
+        memoText: '#bcd99a',
+        noteBg: 'rgba(65, 51, 31, 0.45)',
+        dot: '#dd8a4e',
+      },
+    },
+  },
+
+  woodland: {
+    id: 'woodland',
+    label: 'Woodland',
+    description: 'Sage & rust',
+    display: { family: "'Alice', serif", weight: 400, style: 'normal' },
+    swatch: ['#c7d2a8', '#b0552f'],
+    modes: {
+      light: {
+        pageBg: '#f3f4ec',
+        pattern: woodlandFriends('#9c5f3f', 0.14),
+        patternSize: '210px',
+        headerBg: 'rgba(251, 252, 247, 0.88)',
+        headerBorder: '#e2e6d4',
+        title: '#8c4a2a',
+        titleSize: '1.8rem',
+        cardBg: '#ffffff',
+        cardBorder: '#e6e9d9',
+        ink: '#3f4536',
+        inkMuted: '#7c8370',
+        inkFaint: '#aab39b',
+        divider: '#e9ecdd',
+        accent: '#b0552f',
+        accentHover: '#96431f',
+        softBg: '#eef0e2',
+        softText: '#5f6f4a',
+        softRing: '#d8dec2',
+        milestoneBg: '#f7ede2',
+        milestoneBorder: '#ecd5bd',
+        milestoneText: '#8c4a2a',
+        memoBg: '#ecf0df',
+        memoBorder: '#d3dcb8',
+        memoText: '#56683b',
+        noteBg: '#f1f2e8',
+        dot: '#c4683e',
+      },
+      dark: {
+        pageBg: '#191d15',
+        pattern: woodlandFriends('#d2a075', 0.1),
+        patternSize: '210px',
+        headerBg: 'rgba(25, 29, 21, 0.88)',
+        headerBorder: '#323a29',
+        title: '#e3b48d',
+        titleSize: '1.8rem',
+        cardBg: '#222719',
+        cardBorder: '#343b28',
+        ink: '#e0e4d6',
+        inkMuted: '#a2ab93',
+        inkFaint: '#6e7860',
+        divider: '#303826',
+        accent: '#cf7244',
+        accentHover: '#b85e33',
+        softBg: 'rgba(143, 165, 107, 0.16)',
+        softText: '#c4d3a4',
+        softRing: 'rgba(143, 165, 107, 0.35)',
+        milestoneBg: 'rgba(176, 85, 47, 0.2)',
+        milestoneBorder: 'rgba(207, 114, 68, 0.4)',
+        milestoneText: '#eab48f',
+        memoBg: 'rgba(86, 104, 59, 0.25)',
+        memoBorder: 'rgba(143, 165, 107, 0.4)',
+        memoText: '#c9d8a9',
+        noteBg: 'rgba(52, 59, 40, 0.5)',
+        dot: '#cf7244',
+      },
+    },
+  },
+
+  heritage: {
+    id: 'heritage',
+    label: 'Toy Chest',
+    description: 'Vintage toys',
+    display: { family: "'Chelsea Market', cursive", weight: 400, style: 'normal' },
+    swatch: ['#9db8d9', '#bf4a3a'],
+    modes: {
+      light: {
+        pageBg: '#faf6ee',
+        pattern: vintageToys('#41608c', 0.13),
+        patternSize: '210px',
+        headerBg: 'rgba(254, 251, 244, 0.88)',
+        headerBorder: '#ecdfc8',
+        title: '#34527c',
+        titleSize: '1.55rem',
+        cardBg: '#fffdf7',
+        cardBorder: '#ece4d2',
+        ink: '#433f36',
+        inkMuted: '#857d6d',
+        inkFaint: '#b5ac99',
+        divider: '#eee6d6',
+        accent: '#bf4a3a',
+        accentHover: '#a63a2b',
+        softBg: '#eaeff5',
+        softText: '#41608c',
+        softRing: '#cdd9e8',
+        milestoneBg: '#f7e9e0',
+        milestoneBorder: '#ecccba',
+        milestoneText: '#a04432',
+        memoBg: '#f2f0e0',
+        memoBorder: '#e2dab2',
+        memoText: '#8a7019',
+        noteBg: '#f5f1e6',
+        dot: '#cd5b4a',
+      },
+      dark: {
+        pageBg: '#201c15',
+        pattern: vintageToys('#d6c79e', 0.1),
+        patternSize: '210px',
+        headerBg: 'rgba(32, 28, 21, 0.88)',
+        headerBorder: '#3e3727',
+        title: '#a8c0e0',
+        titleSize: '1.55rem',
+        cardBg: '#2a251c',
+        cardBorder: '#3f3828',
+        ink: '#e8e2d4',
+        inkMuted: '#ada390',
+        inkFaint: '#766d5b',
+        divider: '#3a3325',
+        accent: '#d96c59',
+        accentHover: '#c55543',
+        softBg: 'rgba(120, 150, 190, 0.16)',
+        softText: '#a8c0e0',
+        softRing: 'rgba(120, 150, 190, 0.35)',
+        milestoneBg: 'rgba(191, 74, 58, 0.2)',
+        milestoneBorder: 'rgba(217, 108, 89, 0.4)',
+        milestoneText: '#efb0a3',
+        memoBg: 'rgba(138, 112, 25, 0.18)',
+        memoBorder: 'rgba(211, 164, 37, 0.35)',
+        memoText: '#e6c96a',
+        noteBg: 'rgba(63, 56, 40, 0.5)',
+        dot: '#d96c59',
       },
     },
   },
