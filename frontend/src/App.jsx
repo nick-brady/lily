@@ -1,5 +1,6 @@
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom';
 import { AuthProvider } from './contexts/AuthContext';
+import AccountPage from './pages/AccountPage';
 import AuthPage from './pages/AuthPage';
 import AuthVerifyPage from './pages/AuthVerifyPage';
 import BirthManagePage from './pages/BirthManagePage';
@@ -14,6 +15,7 @@ export default function App() {
       <BrowserRouter>
         <Routes>
           <Route path="/" element={<LandingPage />} />
+          <Route path="/account" element={<AccountPage />} />
           <Route path="/setup" element={<SetupPage />} />
           <Route path="/login" element={<AuthPage />} />
           <Route path="/auth/verify" element={<AuthVerifyPage />} />

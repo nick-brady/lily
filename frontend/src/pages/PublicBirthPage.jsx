@@ -173,7 +173,16 @@ export default function PublicBirthPage() {
                   Manage
                 </Link>
               )}
-              {!isAuthenticated && (
+              {isAuthenticated ? (
+                <Link
+                  to="/account"
+                  className="px-3 py-2 text-sm rounded-lg transition-opacity hover:opacity-80"
+                  style={{ backgroundColor: 'var(--t-soft-bg)', color: 'var(--t-soft-text)' }}
+                  title="Back to your account"
+                >
+                  Home
+                </Link>
+              ) : (
                 <Link
                   to="/login"
                   className="px-3 py-2 text-sm rounded-lg transition-opacity hover:opacity-80"

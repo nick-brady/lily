@@ -305,6 +305,15 @@ export const api = {
     return jsonOrThrow(res);
   },
 
+  async updateBirth(birthId, { theme }) {
+    const res = await fetch(`${API_URL}/birth/${birthId}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json', ...authHeaders() },
+      body: JSON.stringify({ theme }),
+    });
+    return jsonOrThrow(res);
+  },
+
   mediaUrl(mediaId) {
     return `${API_URL}/media/${mediaId}`;
   },

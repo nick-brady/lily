@@ -3,8 +3,6 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { api } from '../api/client';
 
-const DEFAULT_BIRTH_SLUG = import.meta.env.VITE_DEFAULT_BIRTH_SLUG || 'lily-wren';
-
 export default function AuthVerifyPage() {
   const [params] = useSearchParams();
   const navigate = useNavigate();
@@ -28,18 +26,8 @@ export default function AuthVerifyPage() {
           navigate(nextPath, { replace: true });
           return;
         }
-        const firstBirth = profile?.families?.[0]?.births?.[0];
-        if (firstBirth) {
-          const isParent =
-            profile.families[0].role === 'owner'
-            || profile.families[0].role === 'co_parent';
-          navigate(
-            isParent ? `/b/${firstBirth.slug}/manage` : `/b/${firstBirth.slug}`,
-            { replace: true },
-          );
-          return;
-        }
-        navigate(`/b/${DEFAULT_BIRTH_SLUG}`, { replace: true });
+        const hasBirth = profile?.families?.some((f) => f.births?.length > 0);
+        navigate(hasBirth ? '/account' : '/setup', { replace: true });
       } catch (err) {
         if (!cancelled) setError(err.message || 'This link is invalid or expired.');
       }

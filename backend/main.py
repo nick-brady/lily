@@ -82,6 +82,7 @@ from schemas import (
     AuthVerifyIn,
     BirthCreateIn,
     BirthOut,
+    BirthUpdateIn,
     SlugAvailableOut,
     CommentCreateIn,
     CommentEditIn,
@@ -272,6 +273,18 @@ def create_birth(
 
 @app.get("/birth/{birth_id}", response_model=BirthOut)
 def get_birth(access: BirthAccess = Depends(require_birth_access)) -> BirthOut:
+    return BirthOut.model_validate(access.birth)
+
+
+@app.patch("/birth/{birth_id}", response_model=BirthOut)
+def update_birth(
+    payload: BirthUpdateIn,
+    access: BirthAccess = Depends(require_parent_access),
+    db: Session = Depends(get_db),
+) -> BirthOut:
+    births_repo.update_birth(db, birth=access.birth, theme=payload.theme)
+    db.commit()
+    db.refresh(access.birth)
     return BirthOut.model_validate(access.birth)
 
 

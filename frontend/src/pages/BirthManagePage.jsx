@@ -17,7 +17,7 @@ import { getTheme, themeVars } from '../utils/themes';
 
 export default function BirthManagePage() {
   const { slug } = useParams();
-  const { isAuthenticated, me, logout, loading: authLoading } = useAuth();
+  const { isAuthenticated, me, loading: authLoading } = useAuth();
   const [events, setEvents] = useState(() => new Map());
   const [birth, setBirth] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -237,13 +237,14 @@ export default function BirthManagePage() {
               >
                 Public view
               </Link>
-              <button
-                onClick={logout}
+              <Link
+                to="/account"
                 className="px-3 py-2 text-sm rounded-lg transition-opacity hover:opacity-80"
                 style={{ backgroundColor: 'var(--t-soft-bg)', color: 'var(--t-soft-text)' }}
+                title="Back to your account"
               >
-                Sign out
-              </button>
+                Home
+              </Link>
               <DarkModeToggle darkMode={darkMode} setDarkMode={setDarkMode} />
             </div>
           </div>

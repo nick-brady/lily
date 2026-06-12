@@ -9,14 +9,8 @@ export default function LandingPage() {
   useEffect(() => {
     if (loading) return;
     if (!isAuthenticated) return;
-    const firstFamily = me?.families?.[0];
-    const firstBirth = firstFamily?.births?.[0];
-    if (firstBirth) {
-      const isParent = firstFamily.role === 'owner' || firstFamily.role === 'co_parent';
-      navigate(isParent ? `/b/${firstBirth.slug}/manage` : `/b/${firstBirth.slug}`, { replace: true });
-    } else {
-      navigate('/setup', { replace: true });
-    }
+    const hasBirth = me?.families?.some((f) => f.births?.length > 0);
+    navigate(hasBirth ? '/account' : '/setup', { replace: true });
   }, [isAuthenticated, loading, me, navigate]);
 
   if (loading) return null;

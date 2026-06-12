@@ -55,6 +55,13 @@ def create_birth(
     return birth
 
 
+def update_birth(db: Session, *, birth: Birth, theme: str | None = None) -> Birth:
+    if theme is not None:
+        birth.theme = theme
+    db.flush()
+    return birth
+
+
 def get_birth(db: Session, birth_id: uuid.UUID) -> Birth | None:
     return db.get(Birth, birth_id)
 

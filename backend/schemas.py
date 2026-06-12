@@ -10,7 +10,7 @@ import uuid
 from datetime import datetime
 from typing import Annotated, Literal, Optional, Union
 
-from pydantic import BaseModel, ConfigDict, EmailStr, Field
+from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
 
 from models import (
     AudienceScope,
@@ -305,10 +305,28 @@ class EditEventIn(BaseModel):
     transcript_optional: Optional[str] = None
 
 
+# Keep in sync with frontend/src/utils/themes.js THEMES (current ids only,
+# not the legacy read-side aliases).
+ALLOWED_THEMES = frozenset(
+    {"lily", "blossom", "dino", "safari", "woodland", "heritage", "ocean", "golden", "starry"}
+)
+
+
 class BirthCreateIn(BaseModel):
     baby_name: str = Field(..., min_length=1, max_length=100)
     slug: str = Field(..., min_length=1, max_length=100)
     theme: str = Field(default="lily", max_length=50)
+
+
+class BirthUpdateIn(BaseModel):
+    theme: Optional[str] = Field(default=None, max_length=50)
+
+    @field_validator("theme")
+    @classmethod
+    def _validate_theme(cls, value: Optional[str]) -> Optional[str]:
+        if value is not None and value not in ALLOWED_THEMES:
+            raise ValueError("Unknown theme")
+        return value
 
 
 class SlugAvailableOut(BaseModel):

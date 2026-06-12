@@ -40,25 +40,14 @@ export default function AuthPage() {
       // After sign-in we land in this order:
       // 1. `?next=` if the user was redirected here from a guarded action
       //    (e.g. tapping a reaction while anonymous on the keepsake page).
-      // 2. The first family they're a member of (the spec calls this
-      //    "their" birth — parents land in their dashboard).
-      // 3. A sensible default slug.
+      // 2. The account page if they have any births.
+      // 3. Setup for brand-new users.
       if (nextPath) {
         navigate(nextPath, { replace: true });
         return;
       }
-      const firstFamily = profile?.families?.[0];
-      const firstBirth = firstFamily?.births?.[0];
-      if (firstBirth) {
-        const isParent =
-          firstFamily.role === 'owner' || firstFamily.role === 'co_parent';
-        navigate(
-          isParent ? `/b/${firstBirth.slug}/manage` : `/b/${firstBirth.slug}`,
-          { replace: true },
-        );
-        return;
-      }
-      navigate('/setup', { replace: true });
+      const hasBirth = profile?.families?.some((f) => f.births?.length > 0);
+      navigate(hasBirth ? '/account' : '/setup', { replace: true });
     } catch (err) {
       setError(err.message || 'Invalid code');
     } finally {
