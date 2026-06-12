@@ -307,9 +307,7 @@ class EditEventIn(BaseModel):
 
 # Keep in sync with frontend/src/utils/themes.js THEMES (current ids only,
 # not the legacy read-side aliases).
-ALLOWED_THEMES = frozenset(
-    {"lily", "blossom", "dino", "safari", "woodland", "heritage", "ocean", "golden", "starry"}
-)
+ALLOWED_THEMES = frozenset({"lily", "blossom", "dino", "ocean", "golden", "starry"})
 
 
 class BirthCreateIn(BaseModel):
