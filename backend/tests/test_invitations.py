@@ -89,20 +89,25 @@ class _FakeScalarResult:
 
 
 class _FakeSession:
-    """Minimal stand-in for a Session covering only what `redeem` touches:
-    a single membership lookup plus no-op add/flush.
+    """Minimal stand-in for a Session covering what `redeem` touches.
+
+    `redeem` issues two lookups: first the membership, then the prior
+    redemption. We answer the first with the seeded membership and the
+    second with None, so a redemption row is always recorded in tests.
     """
 
     def __init__(self, membership):
         self._membership = membership
+        self._scalar_calls = 0
         self.added: list = []
 
     def scalars(self, _stmt):
-        return _FakeScalarResult(self._membership)
+        self._scalar_calls += 1
+        value = self._membership if self._scalar_calls == 1 else None
+        return _FakeScalarResult(value)
 
     def add(self, obj):
         self.added.append(obj)
-        self._membership = obj
 
     def flush(self):
         pass
