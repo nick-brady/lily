@@ -103,6 +103,7 @@ from schemas import (
     InvitationCreatedOut,
     InvitationOut,
     MeOut,
+    MeUpdateIn,
     PendingCoParentInviteOut,
     ReactionCountOut,
     ReactionToggleIn,
@@ -185,6 +186,19 @@ def me(
         memberships=[FamilyMembershipOut.model_validate(m) for m in memberships],
         families=families,
     )
+
+
+@app.patch("/me", response_model=UserOut)
+def update_me(
+    payload: MeUpdateIn,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> UserOut:
+    """Set the name family sees on your comments and in the family list."""
+    users_repo.set_display_name(db, user=current_user, name=payload.display_name)
+    db.commit()
+    db.refresh(current_user)
+    return UserOut.model_validate(current_user)
 
 
 # ============ Birth access dependency ============
@@ -851,6 +865,22 @@ def _comment_locked_response(birth: Birth) -> HTTPException:
     )
 
 
+def _comment_out(comment, author_name: str | None) -> CommentOut:
+    out = CommentOut.model_validate(comment)
+    out.author_name = author_name
+    return out
+
+
+def _author_name_map(db: Session, comments: list) -> dict[uuid.UUID, str | None]:
+    user_ids = {c.user_id for c in comments}
+    if not user_ids:
+        return {}
+    rows = db.execute(
+        select(User.id, User.display_name).where(User.id.in_(user_ids))
+    ).all()
+    return {uid: name for uid, name in rows}
+
+
 async def _do_create_comment(
     db: Session,
     *,
@@ -878,7 +908,7 @@ async def _do_create_comment(
         body=comment.body,
         user_id=user.id,
     )
-    return CommentOut.model_validate(comment)
+    return _comment_out(comment, user.display_name)
 
 
 async def _do_edit_comment(
@@ -910,7 +940,7 @@ async def _do_edit_comment(
         comment_id=comment.id,
         body=comment.body,
     )
-    return CommentOut.model_validate(comment)
+    return _comment_out(comment, user.display_name)
 
 
 async def _do_delete_comment(
@@ -955,7 +985,8 @@ def list_event_comments(
         db, event_id, birth=access.birth, role=access.role
     )
     rows = comments_repo.list_for_event(db, event_id=event.id)
-    return [CommentOut.model_validate(r) for r in rows]
+    names = _author_name_map(db, rows)
+    return [_comment_out(r, names.get(r.user_id)) for r in rows]
 
 
 @app.get(
@@ -981,7 +1012,8 @@ def public_list_event_comments(
     ):
         raise HTTPException(status_code=404, detail="Event not found")
     rows = comments_repo.list_for_event(db, event_id=event.id)
-    return [CommentOut.model_validate(r) for r in rows]
+    names = _author_name_map(db, rows)
+    return [_comment_out(r, names.get(r.user_id)) for r in rows]
 
 
 @app.post(
@@ -1306,6 +1338,9 @@ def redeem_invitation_authed(
     if invitation is None or not invitations_repo.is_redeemable(invitation):
         raise HTTPException(status_code=404, detail="Invitation is invalid or expired")
     invitations_repo.redeem(db, invitation=invitation, user_id=current_user.id)
+    users_repo.set_display_name_if_empty(
+        db, user=current_user, name=invitation.display_name_hint
+    )
     db.commit()
     return Response(status_code=204)
 

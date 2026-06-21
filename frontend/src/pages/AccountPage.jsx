@@ -1,4 +1,6 @@
+import { useState } from 'react';
 import { Link, Navigate, useNavigate } from 'react-router-dom';
+import { api } from '../api/client';
 import { useAuth } from '../contexts/AuthContext';
 import { getTheme, themeVars } from '../utils/themes';
 import CoParentManager from '../components/CoParentManager';
@@ -80,8 +82,82 @@ function BirthCard({ birth }) {
 
 const PARENT_ROLES = ['owner', 'co_parent'];
 
+function NameField({ user, onSaved }) {
+  const [editing, setEditing] = useState(false);
+  const [value, setValue] = useState(user?.display_name || '');
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
+
+  const save = async () => {
+    if (!value.trim()) return;
+    setSaving(true);
+    setError('');
+    try {
+      await api.updateMe({ displayName: value.trim() });
+      await onSaved?.();
+      setEditing(false);
+    } catch (err) {
+      setError(err.message || 'Could not save your name');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  if (!editing) {
+    return (
+      <p className="text-sm text-gray-500 dark:text-gray-400">
+        {user?.display_name ? (
+          <>
+            Friends and family see you as{' '}
+            <span className="font-medium text-gray-700 dark:text-gray-200">{user.display_name}</span>
+          </>
+        ) : (
+          <span className="text-amber-600 dark:text-amber-400">No name set — friends and family won't know who you are</span>
+        )}
+        <button
+          type="button"
+          onClick={() => { setValue(user?.display_name || ''); setEditing(true); }}
+          className="ml-2 text-primary-600 dark:text-primary-400 hover:underline"
+        >
+          {user?.display_name ? 'Edit' : 'Add your name'}
+        </button>
+      </p>
+    );
+  }
+
+  return (
+    <div className="flex flex-wrap items-center gap-2">
+      <input
+        value={value}
+        onChange={(e) => setValue(e.target.value)}
+        autoFocus
+        maxLength={80}
+        placeholder="Your name"
+        onKeyDown={(e) => e.key === 'Enter' && save()}
+        className="px-3 py-1.5 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-sm text-gray-900 dark:text-white"
+      />
+      <button
+        type="button"
+        onClick={save}
+        disabled={saving || !value.trim()}
+        className="px-3 py-1.5 text-sm rounded-lg bg-primary-600 hover:bg-primary-700 text-white font-medium disabled:opacity-50"
+      >
+        {saving ? 'Saving…' : 'Save'}
+      </button>
+      <button
+        type="button"
+        onClick={() => setEditing(false)}
+        className="px-2 py-1.5 text-sm text-gray-500 dark:text-gray-400 hover:opacity-80"
+      >
+        Cancel
+      </button>
+      {error && <span className="text-xs text-red-500">{error}</span>}
+    </div>
+  );
+}
+
 export default function AccountPage() {
-  const { isAuthenticated, loading, me, user, logout } = useAuth();
+  const { isAuthenticated, loading, me, user, logout, refreshMe } = useAuth();
   const navigate = useNavigate();
 
   if (loading) return null;
@@ -128,7 +204,7 @@ export default function AccountPage() {
           <h1 className="text-xl font-semibold text-gray-800 dark:text-white">
             Welcome back{user?.display_name ? `, ${user.display_name}` : ''}
           </h1>
-          <p className="text-sm text-gray-500 dark:text-gray-400">Your family's pages</p>
+          <NameField user={user} onSaved={refreshMe} />
         </div>
 
         {/* Family / co-parent management */}

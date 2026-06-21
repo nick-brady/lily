@@ -92,6 +92,22 @@ class FamilyMembershipOut(BaseModel):
     role: FamilyRole
 
 
+class MeUpdateIn(BaseModel):
+    """Edit your own profile. Today just the display name family sees on
+    comments; room to grow (avatar, contact prefs).
+    """
+
+    display_name: str = Field(..., min_length=1, max_length=80)
+
+    @field_validator("display_name")
+    @classmethod
+    def _strip(cls, value: str) -> str:
+        cleaned = value.strip()
+        if not cleaned:
+            raise ValueError("Name can't be blank")
+        return cleaned
+
+
 class MeOut(BaseModel):
     user: UserOut
     memberships: list[FamilyMembershipOut]
@@ -158,6 +174,7 @@ class CommentOut(BaseModel):
     id: uuid.UUID
     event_id: uuid.UUID
     user_id: uuid.UUID
+    author_name: Optional[str] = None
     body: str
     created_at: datetime
     updated_at: datetime

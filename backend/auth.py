@@ -31,6 +31,7 @@ from db import get_db
 from messenger import ConsoleMessenger, Messenger
 from models import AuthChallenge, AuthIdentifierKind, User
 from repositories import invitations as invitations_repo
+from repositories import users as users_repo
 from schemas import AuthRequestIn, AuthRequestOut, AuthVerifyIn, TokenOut, UserOut
 
 
@@ -171,6 +172,12 @@ def verify_challenge(payload: AuthVerifyIn, db: Session) -> TokenOut:
         invitation = invitations_repo.lookup_by_token(db, payload.invite_token)
         if invitation is not None and invitations_repo.is_redeemable(invitation):
             invitations_repo.redeem(db, invitation=invitation, user_id=user.id)
+            # Carry "Grandma Rose" from the invite onto the new account so
+            # her comments are attributed immediately. Never overwrites a
+            # name she already chose.
+            users_repo.set_display_name_if_empty(
+                db, user=user, name=invitation.display_name_hint
+            )
         # Silently ignore unredeemable invites: the sign-in itself
         # succeeded; the user can ask their inviter for a fresh link.
 
