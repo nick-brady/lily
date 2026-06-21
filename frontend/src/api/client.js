@@ -180,6 +180,34 @@ export const api = {
     return jsonOrThrow(res);
   },
 
+  async listCoParents(familyId) {
+    const res = await fetch(`${API_URL}/family/${familyId}/co-parents`, {
+      headers: authHeaders(),
+    });
+    return jsonOrThrow(res);
+  },
+
+  async inviteCoParent(familyId, payload = {}) {
+    const res = await fetch(`${API_URL}/family/${familyId}/co-parents/invitations`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...authHeaders() },
+      body: JSON.stringify({
+        display_name_hint: payload.displayNameHint,
+        email_hint: payload.emailHint,
+        phone_hint: payload.phoneHint,
+      }),
+    });
+    return jsonOrThrow(res);
+  },
+
+  async revokeCoParentInvite(familyId, invitationId) {
+    const res = await fetch(
+      `${API_URL}/family/${familyId}/co-parents/invitations/${invitationId}`,
+      { method: 'DELETE', headers: authHeaders() },
+    );
+    return jsonOrThrow(res);
+  },
+
   async lookupInvitation(token) {
     const res = await fetch(`${API_URL}/invite/${token}`);
     return jsonOrThrow(res);

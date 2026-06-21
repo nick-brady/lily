@@ -1,8 +1,7 @@
-import { useState } from 'react';
 import { Link, Navigate, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { getTheme, themeVars } from '../utils/themes';
-import ThemePickerSheet from '../components/ThemePickerSheet';
+import CoParentManager from '../components/CoParentManager';
 
 const STATUS_LABELS = {
   preparing: 'Preparing',
@@ -21,7 +20,7 @@ function formatBornDate(birth) {
   });
 }
 
-function BirthCard({ birth, onChangeTheme }) {
+function BirthCard({ birth }) {
   const theme = getTheme(birth.theme);
   const isParent = birth.role === 'owner' || birth.role === 'co_parent';
   const bornDate = birth.status === 'born' ? formatBornDate(birth) : null;
@@ -66,24 +65,24 @@ function BirthCard({ birth, onChangeTheme }) {
           style={{ borderTop: '1px solid var(--t-divider)' }}
         >
           <span className="text-xs font-mono t-faint">/b/{birth.slug}</span>
-          <button
-            type="button"
-            onClick={() => onChangeTheme(birth)}
+          <Link
+            to={`/b/${birth.slug}/settings`}
             className="text-xs font-medium hover:underline"
             style={{ color: 'var(--t-soft-text)' }}
           >
-            Change theme
-          </button>
+            Settings
+          </Link>
         </div>
       )}
     </div>
   );
 }
 
+const PARENT_ROLES = ['owner', 'co_parent'];
+
 export default function AccountPage() {
-  const { isAuthenticated, loading, me, user, logout, refreshMe } = useAuth();
+  const { isAuthenticated, loading, me, user, logout } = useAuth();
   const navigate = useNavigate();
-  const [pickerBirth, setPickerBirth] = useState(null);
 
   if (loading) return null;
   if (!isAuthenticated) return <Navigate to="/login" replace />;
@@ -91,6 +90,10 @@ export default function AccountPage() {
   const births = (me?.families || []).flatMap((family) =>
     (family.births || []).map((birth) => ({ ...birth, role: family.role }))
   );
+
+  // Families where you're a parent get a "Your family" block to manage
+  // co-parents. Name the block only when there's more than one.
+  const parentFamilies = (me?.families || []).filter((f) => PARENT_ROLES.includes(f.role));
 
   if (births.length === 0) return <Navigate to="/setup" replace />;
 
@@ -128,10 +131,23 @@ export default function AccountPage() {
           <p className="text-sm text-gray-500 dark:text-gray-400">Your family's pages</p>
         </div>
 
+        {/* Family / co-parent management */}
+        {parentFamilies.length > 0 && (
+          <div className="mb-6 space-y-4">
+            {parentFamilies.map((family) => (
+              <CoParentManager
+                key={family.id}
+                familyId={family.id}
+                familyName={parentFamilies.length > 1 ? family.display_name : undefined}
+              />
+            ))}
+          </div>
+        )}
+
         {/* Birth cards */}
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           {births.map((birth) => (
-            <BirthCard key={birth.id} birth={birth} onChangeTheme={setPickerBirth} />
+            <BirthCard key={birth.id} birth={birth} />
           ))}
 
           <Link
@@ -158,14 +174,6 @@ export default function AccountPage() {
           </p>
         </div>
       </div>
-
-      {pickerBirth && (
-        <ThemePickerSheet
-          birth={pickerBirth}
-          onClose={() => setPickerBirth(null)}
-          onSaved={refreshMe}
-        />
-      )}
     </div>
   );
 }

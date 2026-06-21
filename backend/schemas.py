@@ -284,6 +284,40 @@ class InvitationContextOut(BaseModel):
     role: FamilyRole
 
 
+class CoParentInviteCreateIn(BaseModel):
+    """Invite a co-parent to the family. The grant is family-wide; the
+    backend attaches it to a representative birth for the welcome screen.
+    """
+
+    display_name_hint: Optional[str] = None
+    email_hint: Optional[str] = None
+    phone_hint: Optional[str] = None
+
+
+class CoParentMemberOut(BaseModel):
+    user_id: uuid.UUID
+    display_name: Optional[str] = None
+    contact: Optional[str] = None
+    role: FamilyRole
+    is_self: bool
+
+
+class PendingCoParentInviteOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    display_name_hint: Optional[str] = None
+    email_hint: Optional[str] = None
+    phone_hint: Optional[str] = None
+    expires_at: datetime
+    redemption_count: int
+
+
+class CoParentsOut(BaseModel):
+    members: list[CoParentMemberOut]
+    pending: list[PendingCoParentInviteOut]
+
+
 class InvitationRedeemIn(BaseModel):
     """Used by an already-authenticated user to attach themselves to a
     family via an invite link. The unauthenticated redeem path goes

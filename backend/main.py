@@ -70,6 +70,7 @@ from models import (
 )
 from repositories import births as births_repo
 from repositories import comments as comments_repo
+from repositories import families as families_repo
 from repositories import invitations as invitations_repo
 from repositories import media as media_repo
 from repositories import reactions as reactions_repo
@@ -87,6 +88,9 @@ from schemas import (
     CommentCreateIn,
     CommentEditIn,
     CommentOut,
+    CoParentInviteCreateIn,
+    CoParentMemberOut,
+    CoParentsOut,
     CreateMilestoneIn,
     CreateTextNoteIn,
     EditEventIn,
@@ -97,6 +101,7 @@ from schemas import (
     InvitationCreatedOut,
     InvitationOut,
     MeOut,
+    PendingCoParentInviteOut,
     ReactionCountOut,
     ReactionToggleIn,
     StartContractionIn,
@@ -207,6 +212,32 @@ def require_parent_access(access: BirthAccess = Depends(require_birth_access)) -
     if not births_repo.is_parent(access.role):
         raise HTTPException(status_code=403, detail="Parents only")
     return access
+
+
+@dataclass
+class FamilyAccess:
+    family: Family
+    membership: FamilyMembership
+
+
+def require_family_parent(
+    family_id: uuid.UUID = PathParam(...),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> FamilyAccess:
+    """Family-scoped sibling of `require_parent_access`. Co-parent
+    management acts on a whole family (the grant is family-wide), so it
+    gates on family membership rather than a single birth.
+    """
+    family = db.get(Family, family_id)
+    if family is None:
+        raise HTTPException(status_code=404, detail="Family not found")
+    membership = families_repo.get_membership(
+        db, family_id=family_id, user_id=current_user.id
+    )
+    if membership is None or not births_repo.is_parent(membership.role):
+        raise HTTPException(status_code=403, detail="Parents only")
+    return FamilyAccess(family=family, membership=membership)
 
 
 # ============ Birth creation ============
@@ -1227,6 +1258,93 @@ def redeem_invitation_authed(
     if invitation is None or not invitations_repo.is_redeemable(invitation):
         raise HTTPException(status_code=404, detail="Invitation is invalid or expired")
     invitations_repo.redeem(db, invitation=invitation, user_id=current_user.id)
+    db.commit()
+    return Response(status_code=204)
+
+
+# ============ Co-parents (family-scoped) ============
+
+
+@app.get("/family/{family_id}/co-parents", response_model=CoParentsOut)
+def list_co_parents(
+    access: FamilyAccess = Depends(require_family_parent),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> CoParentsOut:
+    parents = families_repo.list_parents(db, family_id=access.family.id)
+    members = [
+        CoParentMemberOut(
+            user_id=user.id,
+            display_name=user.display_name,
+            contact=user.email or user.phone,
+            role=membership.role,
+            is_self=user.id == current_user.id,
+        )
+        for membership, user in parents
+    ]
+    now = datetime.now(timezone.utc)
+    pending = [
+        PendingCoParentInviteOut.model_validate(inv)
+        for inv in invitations_repo.list_for_family(
+            db, family_id=access.family.id, role=FamilyRole.co_parent
+        )
+        if inv.revoked_at is None and inv.expires_at > now
+    ]
+    return CoParentsOut(members=members, pending=pending)
+
+
+@app.post(
+    "/family/{family_id}/co-parents/invitations",
+    response_model=InvitationCreatedOut,
+)
+def invite_co_parent(
+    payload: CoParentInviteCreateIn = Body(default=CoParentInviteCreateIn()),
+    access: FamilyAccess = Depends(require_family_parent),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> InvitationCreatedOut:
+    birth = births_repo.primary_birth_for_family(db, access.family.id)
+    if birth is None:
+        raise HTTPException(
+            status_code=400,
+            detail="Add a birth before inviting a co-parent",
+        )
+    invitation, plaintext_token = invitations_repo.create_invitation(
+        db,
+        family_id=access.family.id,
+        birth_id=birth.id,
+        invited_by_user_id=current_user.id,
+        display_name_hint=payload.display_name_hint,
+        email_hint=payload.email_hint,
+        phone_hint=payload.phone_hint,
+        role=FamilyRole.co_parent,
+    )
+    db.commit()
+    db.refresh(invitation)
+    return InvitationCreatedOut(
+        **InvitationOut.model_validate(invitation).model_dump(),
+        token=plaintext_token,
+        invite_url=_invitation_url(plaintext_token),
+    )
+
+
+@app.delete(
+    "/family/{family_id}/co-parents/invitations/{invitation_id}",
+    status_code=204,
+)
+def revoke_co_parent_invitation(
+    invitation_id: uuid.UUID,
+    access: FamilyAccess = Depends(require_family_parent),
+    db: Session = Depends(get_db),
+) -> Response:
+    invitation = db.get(ViewerInvitation, invitation_id)
+    if (
+        invitation is None
+        or invitation.family_id != access.family.id
+        or invitation.role != FamilyRole.co_parent
+    ):
+        raise HTTPException(status_code=404, detail="Invitation not found")
+    invitations_repo.revoke(db, invitation)
     db.commit()
     return Response(status_code=204)
 
