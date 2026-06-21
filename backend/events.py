@@ -96,6 +96,32 @@ async def publish_event_change(birth_id: uuid.UUID, kind: str, event) -> None:
     )
 
 
+async def publish_birth_update(birth_id: uuid.UUID, birth) -> None:
+    """Broadcast a birth-level status change (preparing -> in_labor ->
+    born) to everyone watching. Carries no audience scope — birth status
+    is public — and a negative sequence_id so it never collides with
+    timeline `Last-Event-ID` replay.
+    """
+    await broker.publish(
+        birth_id,
+        BroadcastedEvent(
+            sequence_id=-1,
+            kind="birth_update",
+            payload={
+                "id": str(birth.id),
+                "status": birth.status.value if hasattr(birth.status, "value") else birth.status,
+                "child_name": birth.child_name,
+                "birth_started_at": birth.birth_started_at.isoformat()
+                if birth.birth_started_at
+                else None,
+                "birth_completed_at": birth.birth_completed_at.isoformat()
+                if birth.birth_completed_at
+                else None,
+            },
+        ),
+    )
+
+
 async def publish_event_deleted(birth_id: uuid.UUID, sequence_id: int, event_id: uuid.UUID) -> None:
     await broker.publish(
         birth_id,

@@ -48,6 +48,7 @@ from auth import (
 from db import get_db
 from events import (
     broker,
+    publish_birth_update,
     publish_comment_change,
     publish_event_change,
     publish_event_deleted,
@@ -81,6 +82,7 @@ from schemas import (
     AuthRequestIn,
     AuthRequestOut,
     AuthVerifyIn,
+    BabyBornIn,
     BirthCreateIn,
     BirthOut,
     BirthUpdateIn,
@@ -471,10 +473,56 @@ async def start_contraction(
         occurred_at=occurred_at,
         audience_scope=payload.audience_scope,
     )
+    # The first contraction is what tips a birth into labor — the gentle
+    # "something's happening" signal family viewers see.
+    labor_began = births_repo.begin_labor(db, birth=access.birth, when=occurred_at)
     db.commit()
     db.refresh(event)
     await publish_event_change(access.birth.id, "appended", event)
+    if labor_began:
+        db.refresh(access.birth)
+        await publish_birth_update(access.birth.id, access.birth)
     return _serialize_event_out(event)
+
+
+@app.post("/birth/{birth_id}/born", response_model=BirthOut)
+async def mark_baby_born(
+    payload: BabyBornIn = Body(default=BabyBornIn()),
+    access: BirthAccess = Depends(require_parent_access),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> BirthOut:
+    """The Baby Born! moment — the experience the product was built for.
+    Flips the birth to `born`, records the arrival time, and drops a
+    public `born` milestone onto the timeline so it becomes the story's
+    center of gravity. The status broadcast is what triggers the live
+    celebration for everyone watching.
+    """
+    if access.birth.status is BirthStatus.born:
+        raise HTTPException(status_code=409, detail="Already marked born")
+
+    when = payload.occurred_at or datetime.now(timezone.utc)
+    births_repo.mark_born(db, birth=access.birth, when=when)
+    event = timeline_repo.append_event(
+        db,
+        birth_id=access.birth.id,
+        event_type=TimelineEventType.milestone,
+        payload={
+            "type": "milestone",
+            "kind": "born",
+            "title": "Baby Born!",
+            "body": payload.body,
+        },
+        posted_by_user_id=current_user.id,
+        occurred_at=when,
+        audience_scope=AudienceScope.public,
+    )
+    db.commit()
+    db.refresh(event)
+    db.refresh(access.birth)
+    await publish_event_change(access.birth.id, "appended", event)
+    await publish_birth_update(access.birth.id, access.birth)
+    return BirthOut.model_validate(access.birth)
 
 
 @app.post(

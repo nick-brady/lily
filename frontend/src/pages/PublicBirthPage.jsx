@@ -3,6 +3,7 @@ import { Link, useParams } from 'react-router-dom';
 import { api, getToken } from '../api/client';
 import { useAuth } from '../contexts/AuthContext';
 import { useSSE } from '../hooks/useSSE';
+import CelebrationOverlay from '../components/CelebrationOverlay';
 import ConnectionStatus from '../components/ConnectionStatus';
 import Timeline from '../components/Timeline';
 import { bumpCommentCount, updateReaction } from '../utils/engagement';
@@ -15,6 +16,7 @@ export default function PublicBirthPage() {
   const [events, setEvents] = useState(() => new Map());
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [celebration, setCelebration] = useState(null);
 
   const [darkMode, setDarkMode] = useState(() => {
     if (typeof window === 'undefined') return false;
@@ -57,6 +59,21 @@ export default function PublicBirthPage() {
   const currentUserId = me?.user?.id;
 
   const handleSSE = useCallback((kind, data) => {
+    if (kind === 'birth_update') {
+      setBirth((prev) => {
+        if (!prev) return prev;
+        if (data.status === 'born' && prev.status !== 'born') {
+          setCelebration({ name: data.child_name || prev.child_name });
+        }
+        return {
+          ...prev,
+          status: data.status,
+          birth_started_at: data.birth_started_at,
+          birth_completed_at: data.birth_completed_at,
+        };
+      });
+      return;
+    }
     if (kind === 'deleted') {
       const id = data?.id;
       setEvents((prev) => {
@@ -204,6 +221,35 @@ export default function PublicBirthPage() {
             {error}
           </div>
         )}
+        {!loading && birth?.status === 'in_labor' && (
+          <div
+            className="card flex items-center gap-3 py-3"
+            style={{ backgroundColor: 'var(--t-soft-bg)' }}
+          >
+            <span className="h-2.5 w-2.5 rounded-full animate-pulse" style={{ backgroundColor: 'var(--t-dot)' }} />
+            <p className="text-sm" style={{ color: 'var(--t-soft-text)' }}>
+              Something's happening — {birth.child_name ? `${birth.child_name}'s` : 'the'} family is timing contractions. Following along 🤍
+            </p>
+          </div>
+        )}
+
+        {!loading && birth?.status === 'born' && (
+          <section className="card text-center py-8">
+            <div className="text-4xl mb-2">👶</div>
+            <h2 className="t-display" style={{ fontSize: '2rem', lineHeight: 1.15 }}>
+              {birth.child_name ? `${birth.child_name} is here` : 'Baby is here'} 🤍
+            </h2>
+            {birth.birth_completed_at && (
+              <p className="text-sm t-muted mt-2">
+                Born {new Date(birth.birth_completed_at).toLocaleString([], {
+                  dateStyle: 'long',
+                  timeStyle: 'short',
+                })}
+              </p>
+            )}
+          </section>
+        )}
+
         {loading ? (
           <p className="text-center t-muted py-12">
             Loading timeline…
@@ -225,6 +271,13 @@ export default function PublicBirthPage() {
           Made with love
         </span>
       </footer>
+
+      {celebration && (
+        <CelebrationOverlay
+          childName={celebration.name}
+          onDone={() => setCelebration(null)}
+        />
+      )}
     </div>
   );
 }

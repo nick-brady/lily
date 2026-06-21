@@ -180,6 +180,18 @@ export const api = {
     return jsonOrThrow(res);
   },
 
+  async markBorn(birthId, payload = {}) {
+    const res = await fetch(`${API_URL}/birth/${birthId}/born`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...authHeaders() },
+      body: JSON.stringify({
+        occurred_at: payload.occurredAt,
+        body: payload.body,
+      }),
+    });
+    return jsonOrThrow(res);
+  },
+
   async listCoParents(familyId) {
     const res = await fetch(`${API_URL}/family/${familyId}/co-parents`, {
       headers: authHeaders(),

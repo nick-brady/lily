@@ -284,6 +284,15 @@ class InvitationContextOut(BaseModel):
     role: FamilyRole
 
 
+class BabyBornIn(BaseModel):
+    """The Baby Born! action. `occurred_at` defaults to now; `body` is an
+    optional note that rides along on the milestone (e.g. weight, time).
+    """
+
+    occurred_at: Optional[datetime] = None
+    body: Optional[str] = None
+
+
 class CoParentInviteCreateIn(BaseModel):
     """Invite a co-parent to the family. The grant is family-wide; the
     backend attaches it to a representative birth for the welcome screen.
