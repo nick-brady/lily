@@ -7,7 +7,7 @@ import { contractionsFromEvents } from '../utils/statistics';
 import { bumpCommentCount, updateReaction } from '../utils/engagement';
 import ConnectionStatus from '../components/ConnectionStatus';
 import ContractionButton from '../components/ContractionButton';
-import InviteManager from '../components/InviteManager';
+import HeaderMenu from '../components/HeaderMenu';
 import Predictions from '../components/Predictions';
 import StatsPanel from '../components/StatsPanel';
 import Timeline from '../components/Timeline';
@@ -237,15 +237,13 @@ export default function BirthManagePage() {
               >
                 Public view
               </Link>
-              <Link
-                to="/account"
-                className="px-3 py-2 text-sm rounded-lg transition-opacity hover:opacity-80"
-                style={{ backgroundColor: 'var(--t-soft-bg)', color: 'var(--t-soft-text)' }}
-                title="Back to your account"
-              >
-                Home
-              </Link>
               <DarkModeToggle darkMode={darkMode} setDarkMode={setDarkMode} />
+              <HeaderMenu
+                items={[
+                  { label: 'Account', to: '/account' },
+                  { label: 'Birth settings', to: `/b/${slug}/settings` },
+                ]}
+              />
             </div>
           </div>
           <div className="flex items-center justify-between">
@@ -291,7 +289,6 @@ export default function BirthManagePage() {
               birthId={birth.id}
               isUnlocked={birth.is_unlocked}
             />
-            <InviteManager birthId={birth.id} />
           </>
         )}
 

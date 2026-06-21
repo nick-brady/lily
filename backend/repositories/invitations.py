@@ -25,6 +25,15 @@ from models import (
 
 INVITATION_TTL = timedelta(days=90)
 
+# Higher rank = more privilege. Used by `redeem` to upgrade an existing
+# membership (e.g. a family viewer who later accepts a co-parent invite)
+# without ever downgrading one.
+_ROLE_RANK: dict[FamilyRole, int] = {
+    FamilyRole.family_viewer: 0,
+    FamilyRole.co_parent: 1,
+    FamilyRole.owner: 2,
+}
+
 
 def _random_salt() -> str:
     return secrets.token_hex(16)
@@ -109,6 +118,18 @@ def list_for_birth(db: Session, *, birth_id: uuid.UUID) -> list[ViewerInvitation
     )
 
 
+def list_for_family(
+    db: Session,
+    *,
+    family_id: uuid.UUID,
+    role: FamilyRole | None = None,
+) -> list[ViewerInvitation]:
+    stmt = select(ViewerInvitation).where(ViewerInvitation.family_id == family_id)
+    if role is not None:
+        stmt = stmt.where(ViewerInvitation.role == role)
+    return list(db.scalars(stmt.order_by(ViewerInvitation.created_at.desc())).all())
+
+
 def revoke(db: Session, invitation: ViewerInvitation) -> ViewerInvitation:
     if invitation.revoked_at is None:
         invitation.revoked_at = datetime.now(timezone.utc)
@@ -123,9 +144,12 @@ def redeem(
     user_id: uuid.UUID,
 ) -> FamilyMembership:
     """Attach `user_id` to the invitation's family with the invitation
-    role. Idempotent — if the membership exists, we don't change its
-    role (preserve existing higher privileges), but still bump
-    `redemption_count` so parents can see the link was followed.
+    role. Idempotent — if the membership already exists we keep it, but
+    *upgrade* its role when the invitation grants a higher one (e.g. a
+    family viewer who later accepts a co-parent invite). We never
+    downgrade, so an owner who follows a viewer link stays an owner.
+    Either way we bump `redemption_count` so parents can see the link
+    was followed.
     """
     membership = db.scalars(
         select(FamilyMembership).where(
@@ -140,6 +164,9 @@ def redeem(
             role=invitation.role,
         )
         db.add(membership)
+        db.flush()
+    elif _ROLE_RANK[invitation.role] > _ROLE_RANK[membership.role]:
+        membership.role = invitation.role
         db.flush()
     invitation.redemption_count += 1
     db.flush()

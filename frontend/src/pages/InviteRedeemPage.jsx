@@ -93,6 +93,7 @@ export default function InviteRedeemPage() {
     return <Centered>Loading invitation…</Centered>;
   }
 
+  const isCoParent = context.role === 'co_parent';
   const childPart = context.birth_child_name
     ? `${context.birth_child_name}'s birth`
     : 'a birth';
@@ -102,13 +103,20 @@ export default function InviteRedeemPage() {
       <div className="w-full max-w-sm bg-white dark:bg-gray-800 rounded-2xl shadow-xl p-6">
         <p className="text-sm text-gray-500 dark:text-gray-400 text-center mb-1">
           {context.family_display_name} invited you to
+          {isCoParent ? ' help welcome' : ''}
         </p>
         <h1
-          className="text-3xl text-center text-primary-600 dark:text-primary-400 mb-6"
+          className="text-3xl text-center text-primary-600 dark:text-primary-400 mb-2"
           style={{ fontFamily: "'Great Vibes', cursive" }}
         >
-          Welcome {childPart}
+          {isCoParent ? childPart : `Welcome ${childPart}`}
         </h1>
+        {isCoParent && (
+          <p className="text-sm text-gray-500 dark:text-gray-400 text-center mb-6">
+            As a co-parent, you'll be able to post updates, time contractions, and run the page.
+          </p>
+        )}
+        {!isCoParent && <div className="mb-4" />}
 
         {error && (
           <div className="mb-4 p-3 rounded-lg bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-300 text-sm">

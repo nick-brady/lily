@@ -70,6 +70,19 @@ def get_birth_by_slug(db: Session, slug: str) -> Birth | None:
     return db.scalars(select(Birth).where(Birth.slug == slug)).first()
 
 
+def primary_birth_for_family(db: Session, family_id: uuid.UUID) -> Birth | None:
+    """The birth used as welcome-screen context for a co-parent invite.
+    The membership a co-parent invite grants is family-wide regardless;
+    we just pick the most recent non-deleted birth so the redeem screen
+    names a real child.
+    """
+    return db.scalars(
+        select(Birth)
+        .where(Birth.family_id == family_id, Birth.deleted_at.is_(None))
+        .order_by(Birth.created_at.desc())
+    ).first()
+
+
 def user_role_for_birth(
     db: Session, *, user_id: uuid.UUID, birth: Birth
 ) -> FamilyRole | None:
