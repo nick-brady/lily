@@ -77,7 +77,10 @@ services:
     volumes:
       - ./backend:/app
       - uploads:/app/uploads
-    command: sh -c "uvicorn main:app --host 0.0.0.0 --port 8000 --reload"
+    # --timeout-graceful-shutdown: on --reload, don't hang waiting for the
+    # long-lived SSE stream to close; force-close lingering connections
+    # after 1s so code edits actually restart the server.
+    command: sh -c "uvicorn main:app --host 0.0.0.0 --port 8000 --reload --timeout-graceful-shutdown 1"
 
   frontend:
     build:
