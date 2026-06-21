@@ -183,21 +183,21 @@ def redeem(
         db.add(
             ViewerInvitationRedemption(invitation_id=invitation.id, user_id=user_id)
         )
+        # Count distinct people, not clicks — re-following a link you've
+        # already redeemed shouldn't inflate the number.
+        invitation.redemption_count += 1
         db.flush()
-
-    invitation.redemption_count += 1
-    db.flush()
     return membership
 
 
 def list_redemptions(
     db: Session, *, invitation_id: uuid.UUID
 ) -> list[tuple[ViewerInvitationRedemption, User]]:
-    """Who redeemed this link, with their user, newest first."""
+    """Who redeemed this link, with their user, in the order they joined."""
     rows = db.execute(
         select(ViewerInvitationRedemption, User)
         .join(User, User.id == ViewerInvitationRedemption.user_id)
         .where(ViewerInvitationRedemption.invitation_id == invitation_id)
-        .order_by(ViewerInvitationRedemption.redeemed_at.desc())
+        .order_by(ViewerInvitationRedemption.redeemed_at.asc())
     ).all()
     return [(r, u) for r, u in rows]
