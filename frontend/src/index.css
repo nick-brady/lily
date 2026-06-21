@@ -126,4 +126,42 @@
       opacity: 1;
     }
   }
+
+  /* Birth celebration — floating hearts/confetti drifting upward. */
+  .animate-float-up {
+    animation: floatUp var(--float-dur, 5s) ease-in forwards;
+  }
+
+  @keyframes floatUp {
+    0% {
+      transform: translateY(0) scale(0.5) rotate(0deg);
+      opacity: 0;
+    }
+    12% {
+      opacity: 1;
+    }
+    100% {
+      transform: translateY(-92vh) scale(1.15) rotate(var(--float-rot, 20deg));
+      opacity: 0;
+    }
+  }
+
+  .animate-celebrate-pop {
+    animation: celebratePop 0.7s cubic-bezier(0.18, 0.89, 0.32, 1.28) both;
+  }
+
+  @keyframes celebratePop {
+    0% {
+      transform: scale(0.5);
+      opacity: 0;
+    }
+    60% {
+      transform: scale(1.06);
+      opacity: 1;
+    }
+    100% {
+      transform: scale(1);
+      opacity: 1;
+    }
+  }
 }

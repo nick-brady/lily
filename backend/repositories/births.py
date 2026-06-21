@@ -70,6 +70,31 @@ def get_birth_by_slug(db: Session, slug: str) -> Birth | None:
     return db.scalars(select(Birth).where(Birth.slug == slug)).first()
 
 
+def begin_labor(db: Session, *, birth: Birth, when: datetime) -> bool:
+    """Move a birth from `preparing` into `in_labor` (the gentle
+    "something's happening" state). No-op once labor has begun or the
+    baby is born. Returns True if it actually transitioned.
+    """
+    if birth.status is not BirthStatus.preparing:
+        return False
+    birth.status = BirthStatus.in_labor
+    if birth.birth_started_at is None:
+        birth.birth_started_at = when
+    db.flush()
+    return True
+
+
+def mark_born(db: Session, *, birth: Birth, when: datetime) -> None:
+    """The Baby Born! moment. Records arrival time and fills in a labor
+    start if we never saw a contraction (e.g. a fast or unattended labor).
+    """
+    birth.status = BirthStatus.born
+    birth.birth_completed_at = when
+    if birth.birth_started_at is None:
+        birth.birth_started_at = when
+    db.flush()
+
+
 def primary_birth_for_family(db: Session, family_id: uuid.UUID) -> Birth | None:
     """The birth used as welcome-screen context for a co-parent invite.
     The membership a co-parent invite grants is family-wide regardless;

@@ -381,7 +381,9 @@ export default function UpdateForm({ birthId, onSuccess }) {
       {mode === 'milestone' && (
         <div className="space-y-4">
           <div className="grid grid-cols-2 gap-2">
-            {Object.entries(MILESTONES).map(([key, { label, icon }]) => (
+            {Object.entries(MILESTONES)
+              .filter(([key]) => key !== 'born')
+              .map(([key, { label, icon }]) => (
               <button
                 key={key}
                 onClick={() => setSelectedMilestone(key)}

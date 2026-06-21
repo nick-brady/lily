@@ -5,6 +5,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { useSSE } from '../hooks/useSSE';
 import { contractionsFromEvents } from '../utils/statistics';
 import { bumpCommentCount, updateReaction } from '../utils/engagement';
+import CelebrationOverlay from '../components/CelebrationOverlay';
 import ConnectionStatus from '../components/ConnectionStatus';
 import ContractionButton from '../components/ContractionButton';
 import HeaderMenu from '../components/HeaderMenu';
@@ -17,12 +18,15 @@ import { getTheme, themeVars } from '../utils/themes';
 
 export default function BirthManagePage() {
   const { slug } = useParams();
-  const { isAuthenticated, me, loading: authLoading } = useAuth();
+  const { isAuthenticated, me, loading: authLoading, refreshMe } = useAuth();
   const [events, setEvents] = useState(() => new Map());
   const [birth, setBirth] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [activeTab, setActiveTab] = useState('timeline');
+  const [celebration, setCelebration] = useState(null); // { name } when playing
+  const [confirmingBorn, setConfirmingBorn] = useState(false);
+  const [markingBorn, setMarkingBorn] = useState(false);
   const [statsTimeRange, setStatsTimeRange] = useState('all');
   const [customRange, setCustomRange] = useState({ start: 0, end: 100 });
 
@@ -70,6 +74,21 @@ export default function BirthManagePage() {
   const currentUserId = me?.user?.id;
 
   const handleSSE = useCallback((kind, data) => {
+    if (kind === 'birth_update') {
+      setBirth((prev) => {
+        if (!prev) return prev;
+        if (data.status === 'born' && prev.status !== 'born') {
+          setCelebration({ name: data.child_name || prev.child_name });
+        }
+        return {
+          ...prev,
+          status: data.status,
+          birth_started_at: data.birth_started_at,
+          birth_completed_at: data.birth_completed_at,
+        };
+      });
+      return;
+    }
     if (kind === 'deleted') {
       const id = data?.id;
       setEvents((prev) => {
@@ -182,6 +201,26 @@ export default function BirthManagePage() {
     }
   };
 
+  const handleBorn = async () => {
+    setMarkingBorn(true);
+    setError('');
+    try {
+      const updated = await api.markBorn(birth.id);
+      // Celebrate immediately for the parent who tapped — don't rely on
+      // our own SSE echo, which can lose the race against refreshMe().
+      // Viewers get the same moment via the birth_update broadcast.
+      setBirth((prev) => (prev ? { ...prev, ...updated } : prev));
+      setCelebration({ name: updated.child_name || birth.child_name });
+      // Refresh /me so the account page badge updates too.
+      await refreshMe();
+    } catch (err) {
+      setError(err.message || 'Failed to mark baby born');
+    } finally {
+      setMarkingBorn(false);
+      setConfirmingBorn(false);
+    }
+  };
+
   if (authLoading || (isAuthenticated && !me)) {
     return <CenteredMessage>Loading…</CenteredMessage>;
   }
@@ -280,6 +319,56 @@ export default function BirthManagePage() {
           />
         </section>
 
+        {birth.status !== 'born' ? (
+          <section className="card flex flex-col items-center gap-3 py-5">
+            {confirmingBorn ? (
+              <>
+                <p className="text-sm t-ink text-center">
+                  Announce the arrival to everyone watching?
+                </p>
+                <div className="flex gap-2">
+                  <button
+                    onClick={handleBorn}
+                    disabled={markingBorn}
+                    className="px-5 py-2.5 rounded-full t-btn-accent font-medium disabled:opacity-50"
+                  >
+                    {markingBorn ? 'Announcing…' : '🎉 Baby Born!'}
+                  </button>
+                  <button
+                    onClick={() => setConfirmingBorn(false)}
+                    disabled={markingBorn}
+                    className="px-4 py-2.5 rounded-full text-sm t-muted hover:opacity-80"
+                  >
+                    Not yet
+                  </button>
+                </div>
+              </>
+            ) : (
+              <button
+                onClick={() => setConfirmingBorn(true)}
+                className="px-6 py-3 rounded-full font-semibold text-base transition-opacity hover:opacity-90"
+                style={{ backgroundColor: 'var(--t-accent)', color: '#fff' }}
+              >
+                👶 Baby Born!
+              </button>
+            )}
+          </section>
+        ) : (
+          <section className="card text-center py-5">
+            <p className="t-display" style={{ fontSize: '1.5rem' }}>
+              {birth.child_name || 'Baby'} is here 🤍
+            </p>
+            {birth.birth_completed_at && (
+              <p className="text-sm t-muted mt-1">
+                Born {new Date(birth.birth_completed_at).toLocaleString([], {
+                  dateStyle: 'medium',
+                  timeStyle: 'short',
+                })}
+              </p>
+            )}
+          </section>
+        )}
+
         {activeTab === 'timeline' && (
           <>
             <UpdateForm birthId={birth.id} />
@@ -312,6 +401,13 @@ export default function BirthManagePage() {
           Made with love
         </span>
       </footer>
+
+      {celebration && (
+        <CelebrationOverlay
+          childName={celebration.name}
+          onDone={() => setCelebration(null)}
+        />
+      )}
     </div>
   );
 }
