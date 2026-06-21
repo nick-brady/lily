@@ -260,10 +260,15 @@ function InviteRow({ invite, birthId, onRevoke }) {
           {redemptions && redemptions.length > 0 && (
             <ul className="space-y-1.5">
               {redemptions.map((r) => (
-                <li key={r.user_id} className="flex items-baseline justify-between gap-3">
-                  <span className="text-sm t-ink truncate">
+                <li key={r.user_id} className="flex items-baseline gap-2">
+                  <span className="text-sm t-ink truncate min-w-0">
                     {r.display_name || r.contact || 'Someone'}
                   </span>
+                  <span
+                    aria-hidden="true"
+                    className="flex-1 border-b border-dotted opacity-40 -translate-y-0.5"
+                    style={{ borderColor: 'var(--t-divider)' }}
+                  />
                   <span className="text-xs t-muted shrink-0">{formatJoined(r.redeemed_at)}</span>
                 </li>
               ))}
