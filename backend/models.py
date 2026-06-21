@@ -368,6 +368,11 @@ class ViewerInvitation(Base):
     )
     salt: Mapped[str] = mapped_column(sa.Text, nullable=False)
     token_hash: Mapped[str] = mapped_column(sa.Text, nullable=False)
+    # Plaintext token, kept so parents can re-copy the link to re-share.
+    # A deliberate exception to the hash-only rule: a viewer link is
+    # low-stakes (multi-use, expiring, revocable, view-only access), unlike
+    # auth magic links. Null for invitations created before this existed.
+    token: Mapped[str | None] = mapped_column(sa.Text, nullable=True)
     display_name_hint: Mapped[str | None] = mapped_column(sa.Text, nullable=True)
     email_hint: Mapped[str | None] = mapped_column(sa.Text, nullable=True)
     phone_hint: Mapped[str | None] = mapped_column(sa.Text, nullable=True)

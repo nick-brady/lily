@@ -159,11 +159,24 @@ function InviteRow({ invite, birthId, onRevoke }) {
   const [redemptions, setRedemptions] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [copied, setCopied] = useState(false);
 
   const isRevoked = Boolean(invite.revoked_at);
   const isExpired = !isRevoked && new Date(invite.expires_at) < new Date();
   const count = invite.redemption_count;
   const canExpand = count > 0;
+  const isActive = !isRevoked && !isExpired;
+
+  const copyLink = async () => {
+    if (!invite.invite_url) return;
+    try {
+      await navigator.clipboard.writeText(invite.invite_url);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      window.prompt('Copy this link', invite.invite_url);
+    }
+  };
 
   const status = isRevoked
     ? 'Revoked'
@@ -216,13 +229,24 @@ function InviteRow({ invite, birthId, onRevoke }) {
             </span>
           </span>
         </button>
-        {!isRevoked && !isExpired && (
-          <button
-            onClick={onRevoke}
-            className="text-xs t-muted hover:text-red-500 dark:hover:text-red-400 shrink-0"
-          >
-            Revoke
-          </button>
+        {isActive && (
+          <div className="flex items-center gap-3 shrink-0">
+            {invite.invite_url && (
+              <button
+                onClick={copyLink}
+                className="text-xs font-medium hover:opacity-80"
+                style={{ color: 'var(--t-soft-text)' }}
+              >
+                {copied ? 'Copied' : 'Copy link'}
+              </button>
+            )}
+            <button
+              onClick={onRevoke}
+              className="text-xs t-muted hover:text-red-500 dark:hover:text-red-400"
+            >
+              Revoke
+            </button>
+          </div>
         )}
       </div>
 

@@ -1272,7 +1272,7 @@ def create_invitation(
     db.commit()
     db.refresh(invitation)
     return InvitationCreatedOut(
-        **InvitationOut.model_validate(invitation).model_dump(),
+        **InvitationOut.model_validate(invitation).model_dump(exclude={"invite_url"}),
         token=plaintext_token,
         invite_url=_invitation_url(plaintext_token),
     )
@@ -1287,7 +1287,12 @@ def list_invitations(
     db: Session = Depends(get_db),
 ) -> list[InvitationOut]:
     rows = invitations_repo.list_for_birth(db, birth_id=access.birth.id)
-    return [InvitationOut.model_validate(r) for r in rows]
+    out = []
+    for r in rows:
+        item = InvitationOut.model_validate(r)
+        item.invite_url = _invitation_url(r.token) if r.token else None
+        out.append(item)
+    return out
 
 
 @app.delete("/birth/{birth_id}/invitations/{invitation_id}", status_code=204)
@@ -1431,7 +1436,7 @@ def invite_co_parent(
     db.commit()
     db.refresh(invitation)
     return InvitationCreatedOut(
-        **InvitationOut.model_validate(invitation).model_dump(),
+        **InvitationOut.model_validate(invitation).model_dump(exclude={"invite_url"}),
         token=plaintext_token,
         invite_url=_invitation_url(plaintext_token),
     )

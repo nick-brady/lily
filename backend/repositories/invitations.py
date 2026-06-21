@@ -82,6 +82,9 @@ def create_invitation(
     db.add(invitation)
     db.flush()
     plaintext_token = f"{invitation.id}.{secret}"
+    # Keep the plaintext so the link can be re-copied later (see model note).
+    invitation.token = plaintext_token
+    db.flush()
     return invitation, plaintext_token
 
 

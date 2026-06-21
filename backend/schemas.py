@@ -273,6 +273,8 @@ class InvitationOut(BaseModel):
     revoked_at: Optional[datetime] = None
     redemption_count: int
     created_at: datetime
+    # Re-copyable share link, present when the plaintext token was stored.
+    invite_url: Optional[str] = None
 
 
 class InvitationCreatedOut(InvitationOut):
