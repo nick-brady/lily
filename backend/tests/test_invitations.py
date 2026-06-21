@@ -110,6 +110,7 @@ class _FakeSession:
 
 class _FakeInvitation:
     def __init__(self, role):
+        self.id = uuid.uuid4()
         self.family_id = uuid.uuid4()
         self.role = role
         self.redemption_count = 0

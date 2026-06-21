@@ -285,6 +285,15 @@ class InvitationCreatedOut(InvitationOut):
     invite_url: str
 
 
+class InvitationRedemptionOut(BaseModel):
+    """Who joined through an invite link, and when."""
+
+    user_id: uuid.UUID
+    display_name: Optional[str] = None
+    contact: Optional[str] = None
+    redeemed_at: datetime
+
+
 class InvitationContextOut(BaseModel):
     """Public lookup payload for `GET /invite/{token}`. Just enough to
     render a meaningful redeem screen without leaking family internals.

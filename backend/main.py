@@ -102,6 +102,7 @@ from schemas import (
     InvitationCreateIn,
     InvitationCreatedOut,
     InvitationOut,
+    InvitationRedemptionOut,
     MeOut,
     MeUpdateIn,
     PendingCoParentInviteOut,
@@ -1301,6 +1302,31 @@ def revoke_invitation(
     invitations_repo.revoke(db, invitation)
     db.commit()
     return Response(status_code=204)
+
+
+@app.get(
+    "/birth/{birth_id}/invitations/{invitation_id}/redemptions",
+    response_model=list[InvitationRedemptionOut],
+)
+def list_invitation_redemptions(
+    invitation_id: uuid.UUID,
+    access: BirthAccess = Depends(require_parent_access),
+    db: Session = Depends(get_db),
+) -> list[InvitationRedemptionOut]:
+    invitation = db.get(ViewerInvitation, invitation_id)
+    if invitation is None or invitation.birth_id != access.birth.id:
+        raise HTTPException(status_code=404, detail="Invitation not found")
+    return [
+        InvitationRedemptionOut(
+            user_id=user.id,
+            display_name=user.display_name,
+            contact=user.email or user.phone,
+            redeemed_at=redemption.redeemed_at,
+        )
+        for redemption, user in invitations_repo.list_redemptions(
+            db, invitation_id=invitation.id
+        )
+    ]
 
 
 @app.get("/invite/{token}", response_model=InvitationContextOut)

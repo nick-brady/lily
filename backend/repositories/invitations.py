@@ -19,7 +19,9 @@ from sqlalchemy.orm import Session
 from models import (
     FamilyMembership,
     FamilyRole,
+    User,
     ViewerInvitation,
+    ViewerInvitationRedemption,
 )
 
 
@@ -168,6 +170,34 @@ def redeem(
     elif _ROLE_RANK[invitation.role] > _ROLE_RANK[membership.role]:
         membership.role = invitation.role
         db.flush()
+
+    # Record *who* redeemed, once per person per link, so parents can see
+    # the names behind the redemption count.
+    already = db.scalars(
+        select(ViewerInvitationRedemption).where(
+            ViewerInvitationRedemption.invitation_id == invitation.id,
+            ViewerInvitationRedemption.user_id == user_id,
+        )
+    ).first()
+    if already is None:
+        db.add(
+            ViewerInvitationRedemption(invitation_id=invitation.id, user_id=user_id)
+        )
+        db.flush()
+
     invitation.redemption_count += 1
     db.flush()
     return membership
+
+
+def list_redemptions(
+    db: Session, *, invitation_id: uuid.UUID
+) -> list[tuple[ViewerInvitationRedemption, User]]:
+    """Who redeemed this link, with their user, newest first."""
+    rows = db.execute(
+        select(ViewerInvitationRedemption, User)
+        .join(User, User.id == ViewerInvitationRedemption.user_id)
+        .where(ViewerInvitationRedemption.invitation_id == invitation_id)
+        .order_by(ViewerInvitationRedemption.redeemed_at.desc())
+    ).all()
+    return [(r, u) for r, u in rows]
