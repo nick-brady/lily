@@ -181,6 +181,14 @@ export const api = {
     return jsonOrThrow(res);
   },
 
+  async listInvitationRedemptions(birthId, invitationId) {
+    const res = await fetch(
+      `${API_URL}/birth/${birthId}/invitations/${invitationId}/redemptions`,
+      { headers: authHeaders() },
+    );
+    return jsonOrThrow(res);
+  },
+
   async revokeInvitation(birthId, invitationId) {
     const res = await fetch(
       `${API_URL}/birth/${birthId}/invitations/${invitationId}`,

@@ -387,6 +387,38 @@ class ViewerInvitation(Base):
     )
 
 
+class ViewerInvitationRedemption(Base):
+    """One person's redemption of a specific invite link. Lets parents see
+    *who* came in through a link and *when* — the `redemption_count` on the
+    invitation only ever counted clicks, never identities.
+
+    Unique on (invitation_id, user_id): re-following the same link doesn't
+    create a second row, so the list shows distinct people.
+    """
+
+    __tablename__ = "viewer_invitation_redemptions"
+
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    invitation_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        sa.ForeignKey("viewer_invitations.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        sa.ForeignKey("users.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    redeemed_at: Mapped[datetime] = _created_at()
+
+    __table_args__ = (
+        sa.UniqueConstraint(
+            "invitation_id", "user_id", name="uq_invitation_redemption"
+        ),
+        sa.Index("ix_invitation_redemptions_invitation", "invitation_id"),
+    )
+
+
 class TimelineEventReaction(Base):
     """One user's reaction-of-a-given-kind on a specific event. The unique
     constraint on (event_id, user_id, kind) makes the API idempotent — a

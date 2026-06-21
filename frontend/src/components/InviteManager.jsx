@@ -133,37 +133,120 @@ export default function InviteManager({ birthId }) {
         </p>
       ) : (
         <ul>
-          {invitations.map((invite) => {
-            const isRevoked = Boolean(invite.revoked_at);
-            const isExpired = !isRevoked && new Date(invite.expires_at) < new Date();
-            const status = isRevoked
-              ? 'Revoked'
-              : isExpired
-                ? 'Expired'
-                : `${invite.redemption_count} ${invite.redemption_count === 1 ? 'redemption' : 'redemptions'}`;
-            return (
-              <li key={invite.id} className="py-3 flex items-center justify-between gap-3 t-row">
-                <div className="min-w-0">
-                  <div className="text-sm t-ink truncate">
-                    {invite.display_name_hint || invite.email_hint || invite.phone_hint || 'Anyone with the link'}
-                  </div>
-                  <div className="text-xs t-muted">
-                    {status} · {formatRelative(invite.expires_at)}
-                  </div>
-                </div>
-                {!isRevoked && !isExpired && (
-                  <button
-                    onClick={() => handleRevoke(invite.id)}
-                    className="text-xs t-muted hover:text-red-500 dark:hover:text-red-400"
-                  >
-                    Revoke
-                  </button>
-                )}
-              </li>
-            );
-          })}
+          {invitations.map((invite) => (
+            <InviteRow
+              key={invite.id}
+              invite={invite}
+              birthId={birthId}
+              onRevoke={() => handleRevoke(invite.id)}
+            />
+          ))}
         </ul>
       )}
     </section>
+  );
+}
+
+function formatJoined(timestamp) {
+  return new Date(timestamp).toLocaleString([], {
+    dateStyle: 'medium',
+    timeStyle: 'short',
+  });
+}
+
+function InviteRow({ invite, birthId, onRevoke }) {
+  const [expanded, setExpanded] = useState(false);
+  const [redemptions, setRedemptions] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+
+  const isRevoked = Boolean(invite.revoked_at);
+  const isExpired = !isRevoked && new Date(invite.expires_at) < new Date();
+  const count = invite.redemption_count;
+  const canExpand = count > 0;
+
+  const status = isRevoked
+    ? 'Revoked'
+    : isExpired
+      ? 'Expired'
+      : `${count} ${count === 1 ? 'redemption' : 'redemptions'}`;
+
+  const toggle = async () => {
+    if (!canExpand) return;
+    const next = !expanded;
+    setExpanded(next);
+    if (next && redemptions === null && !loading) {
+      setLoading(true);
+      setError('');
+      try {
+        setRedemptions(await api.listInvitationRedemptions(birthId, invite.id));
+      } catch (err) {
+        setError(err.message || 'Could not load who joined');
+      } finally {
+        setLoading(false);
+      }
+    }
+  };
+
+  return (
+    <li className="py-3 t-row">
+      <div className="flex items-center justify-between gap-3">
+        <button
+          type="button"
+          onClick={toggle}
+          disabled={!canExpand}
+          className={`min-w-0 flex items-center gap-2 text-left ${canExpand ? '' : 'cursor-default'}`}
+        >
+          {canExpand && (
+            <svg
+              className={`w-3.5 h-3.5 t-muted shrink-0 transition-transform ${expanded ? 'rotate-90' : ''}`}
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+            </svg>
+          )}
+          <span className="min-w-0">
+            <span className="block text-sm t-ink truncate">
+              {invite.display_name_hint || invite.email_hint || invite.phone_hint || 'Anyone with the link'}
+            </span>
+            <span className="block text-xs t-muted">
+              {status} · {formatRelative(invite.expires_at)}
+            </span>
+          </span>
+        </button>
+        {!isRevoked && !isExpired && (
+          <button
+            onClick={onRevoke}
+            className="text-xs t-muted hover:text-red-500 dark:hover:text-red-400 shrink-0"
+          >
+            Revoke
+          </button>
+        )}
+      </div>
+
+      {expanded && (
+        <div className="mt-2 ml-6">
+          {loading && <p className="text-xs t-muted">Loading…</p>}
+          {error && <p className="text-xs text-red-500">{error}</p>}
+          {redemptions && redemptions.length === 0 && (
+            <p className="text-xs t-muted">No one has joined through this link yet.</p>
+          )}
+          {redemptions && redemptions.length > 0 && (
+            <ul className="space-y-1.5">
+              {redemptions.map((r) => (
+                <li key={r.user_id} className="flex items-baseline justify-between gap-3">
+                  <span className="text-sm t-ink truncate">
+                    {r.display_name || r.contact || 'Someone'}
+                  </span>
+                  <span className="text-xs t-muted shrink-0">{formatJoined(r.redeemed_at)}</span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      )}
+    </li>
   );
 }
