@@ -66,6 +66,15 @@ export const api = {
     return jsonOrThrow(res);
   },
 
+  async updateMe({ displayName }) {
+    const res = await fetch(`${API_URL}/me`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json', ...authHeaders() },
+      body: JSON.stringify({ display_name: displayName }),
+    });
+    return jsonOrThrow(res);
+  },
+
   async getBirth(birthId) {
     const res = await fetch(`${API_URL}/birth/${birthId}`, { headers: authHeaders() });
     return jsonOrThrow(res);

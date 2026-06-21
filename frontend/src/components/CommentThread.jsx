@@ -23,7 +23,7 @@ export default function CommentThread({
   isUnlocked,
   countOverride = null,
 }) {
-  const { isAuthenticated, user } = useAuth();
+  const { isAuthenticated, user, refreshMe } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
   const [expanded, setExpanded] = useState(false);
@@ -32,6 +32,9 @@ export default function CommentThread({
   const [body, setBody] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [lockedPrompt, setLockedPrompt] = useState(false);
+  const [needName, setNeedName] = useState(false);
+  const [nameValue, setNameValue] = useState('');
+  const [savingName, setSavingName] = useState(false);
   const textareaRef = useRef(null);
 
   const displayedCount = countOverride ?? event.comment_count ?? 0;
@@ -66,12 +69,7 @@ export default function CommentThread({
     navigate(`/login?next=${next}`);
   }
 
-  async function submit() {
-    if (!body.trim()) return;
-    if (!isAuthenticated) {
-      promptSignIn();
-      return;
-    }
+  async function postComment() {
     setSubmitting(true);
     try {
       const created = await api.createComment({
@@ -91,6 +89,38 @@ export default function CommentThread({
       }
     } finally {
       setSubmitting(false);
+    }
+  }
+
+  async function submit() {
+    if (!body.trim()) return;
+    if (!isAuthenticated) {
+      promptSignIn();
+      return;
+    }
+    // Their words get attributed forever — make sure they have a name
+    // before the first comment posts.
+    if (!user?.display_name) {
+      setNameValue(user?.display_name || '');
+      setNeedName(true);
+      return;
+    }
+    await postComment();
+  }
+
+  async function saveNameThenPost() {
+    if (!nameValue.trim()) return;
+    setSavingName(true);
+    try {
+      await api.updateMe({ displayName: nameValue.trim() });
+      await refreshMe();
+      setNeedName(false);
+      await postComment();
+    } catch (err) {
+      // eslint-disable-next-line no-console
+      console.error(err);
+    } finally {
+      setSavingName(false);
     }
   }
 
@@ -148,6 +178,33 @@ export default function CommentThread({
             </p>
           )}
 
+          {needName && (
+            <div className="rounded-lg border border-primary-200 dark:border-primary-800 bg-primary-50 dark:bg-primary-900/20 p-3 space-y-2">
+              <p className="text-xs text-primary-800 dark:text-primary-200">
+                First, what should we call you? This is the name friends and family see on your note.
+              </p>
+              <div className="flex gap-2">
+                <input
+                  value={nameValue}
+                  onChange={(e) => setNameValue(e.target.value)}
+                  autoFocus
+                  maxLength={80}
+                  placeholder="e.g. Grandma Rose"
+                  onKeyDown={(e) => e.key === 'Enter' && saveNameThenPost()}
+                  className="flex-1 px-3 py-2 rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-sm text-gray-900 dark:text-gray-100"
+                />
+                <button
+                  type="button"
+                  onClick={saveNameThenPost}
+                  disabled={savingName || !nameValue.trim()}
+                  className="px-3 py-2 text-sm rounded bg-primary-600 hover:bg-primary-700 text-white font-medium disabled:opacity-50"
+                >
+                  {savingName ? 'Saving…' : 'Save & post'}
+                </button>
+              </div>
+            </div>
+          )}
+
           <Composer
             body={body}
             setBody={setBody}
@@ -170,6 +227,10 @@ function Comment({ comment, canDelete, onDelete }) {
     <div className="bg-gray-50 dark:bg-gray-700/40 rounded-lg p-3">
       <div className="flex items-baseline justify-between gap-2">
         <span className="text-xs text-gray-500 dark:text-gray-400">
+          <span className="font-medium text-gray-700 dark:text-gray-200">
+            {comment.author_name || 'Someone'}
+          </span>
+          {' · '}
           {relativeTime(comment.created_at)}
         </span>
         {canDelete && (
