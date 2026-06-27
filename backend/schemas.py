@@ -288,11 +288,20 @@ class InvitationCreatedOut(InvitationOut):
 
 
 class InvitationRedemptionOut(BaseModel):
-    """Who joined through an invite link, and when."""
+    """Who joined through an invite link, and when.
+
+    Email and phone are shown in full to the parents managing the link —
+    these are family members the parents already know, and the contact
+    detail helps them recognise who's behind a name. `role` lets the UI
+    only offer "remove" for plain viewers (never for a co-parent/owner who
+    happened to follow a viewer link).
+    """
 
     user_id: uuid.UUID
     display_name: Optional[str] = None
-    contact: Optional[str] = None
+    email: Optional[str] = None
+    phone: Optional[str] = None
+    role: FamilyRole
     redeemed_at: datetime
 
 

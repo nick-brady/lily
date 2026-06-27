@@ -197,6 +197,14 @@ export const api = {
     return jsonOrThrow(res);
   },
 
+  async removeViewer(birthId, userId) {
+    const res = await fetch(
+      `${API_URL}/birth/${birthId}/viewers/${userId}`,
+      { method: 'DELETE', headers: authHeaders() },
+    );
+    return jsonOrThrow(res);
+  },
+
   async markBorn(birthId, payload = {}) {
     const res = await fetch(`${API_URL}/birth/${birthId}/born`, {
       method: 'POST',
