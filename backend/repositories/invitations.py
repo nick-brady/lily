@@ -194,13 +194,65 @@ def redeem(
 
 
 def list_redemptions(
-    db: Session, *, invitation_id: uuid.UUID
-) -> list[tuple[ViewerInvitationRedemption, User]]:
-    """Who redeemed this link, with their user, in the order they joined."""
+    db: Session, *, invitation: ViewerInvitation
+) -> list[tuple[ViewerInvitationRedemption, User, FamilyRole | None]]:
+    """Who redeemed this link, with their user and *current* family role,
+    in the order they joined. The role comes from a left join on the
+    membership so the UI can tell a plain viewer (removable) apart from a
+    co-parent/owner who happened to follow the link. It's None only if the
+    membership is somehow gone while a redemption row lingers.
+    """
     rows = db.execute(
-        select(ViewerInvitationRedemption, User)
+        select(ViewerInvitationRedemption, User, FamilyMembership.role)
         .join(User, User.id == ViewerInvitationRedemption.user_id)
-        .where(ViewerInvitationRedemption.invitation_id == invitation_id)
+        .outerjoin(
+            FamilyMembership,
+            (FamilyMembership.user_id == ViewerInvitationRedemption.user_id)
+            & (FamilyMembership.family_id == invitation.family_id),
+        )
+        .where(ViewerInvitationRedemption.invitation_id == invitation.id)
         .order_by(ViewerInvitationRedemption.redeemed_at.asc())
     ).all()
-    return [(r, u) for r, u in rows]
+    return [(r, u, role) for r, u, role in rows]
+
+
+def remove_viewer(
+    db: Session, *, family_id: uuid.UUID, user_id: uuid.UUID
+) -> bool:
+    """Remove a family viewer's access. Deletes their family membership
+    (access is re-derived from membership on every request, so this cuts
+    them off immediately) and drops their redemption rows across all of
+    this family's links — keeping each link's `redemption_count` honest
+    and making them vanish from every "who joined" list.
+
+    Only plain `family_viewer` memberships are removable here; a co-parent
+    or owner who followed a viewer link is left untouched. The invite link
+    itself is *not* revoked — if they still have it they can rejoin, which
+    re-inserts the redemption row and re-increments the count. Returns
+    True if a viewer was removed, False otherwise.
+    """
+    membership = db.scalars(
+        select(FamilyMembership).where(
+            FamilyMembership.family_id == family_id,
+            FamilyMembership.user_id == user_id,
+        )
+    ).first()
+    if membership is None or membership.role != FamilyRole.family_viewer:
+        return False
+    db.delete(membership)
+    redemptions = db.execute(
+        select(ViewerInvitationRedemption, ViewerInvitation)
+        .join(
+            ViewerInvitation,
+            ViewerInvitation.id == ViewerInvitationRedemption.invitation_id,
+        )
+        .where(
+            ViewerInvitation.family_id == family_id,
+            ViewerInvitationRedemption.user_id == user_id,
+        )
+    ).all()
+    for redemption, invitation in redemptions:
+        invitation.redemption_count = max(0, invitation.redemption_count - 1)
+        db.delete(redemption)
+    db.flush()
+    return True

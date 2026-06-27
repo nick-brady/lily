@@ -32,6 +32,12 @@ def test_create_and_list_invitations_require_parent_auth() -> None:
         assert response.status_code == 401, f"{method} {path} should require auth"
 
 
+def test_remove_viewer_route_requires_auth() -> None:
+    fake_id = "00000000-0000-0000-0000-000000000000"
+    response = _client().request("DELETE", f"/birth/{fake_id}/viewers/{fake_id}")
+    assert response.status_code == 401
+
+
 def test_co_parent_routes_require_auth() -> None:
     fake_id = "00000000-0000-0000-0000-000000000000"
     client = _client()
@@ -161,3 +167,79 @@ def test_redeem_creates_membership_for_new_user() -> None:
     assert membership.role is FamilyRole.co_parent
     assert membership in db.added
     assert invitation.redemption_count == 1
+
+
+# --- remove_viewer() logic (no real DB) ------------------------------------
+
+
+class _FakeRemoveSession:
+    """Stand-in for `remove_viewer`: one `scalars().first()` for the
+    membership, then one `execute().all()` for the (redemption, invitation)
+    rows to clean up. Records what gets deleted.
+    """
+
+    def __init__(self, membership, redemption_rows):
+        self._membership = membership
+        self._redemption_rows = redemption_rows
+        self.deleted: list = []
+
+    def scalars(self, _stmt):
+        return _FakeScalarResult(self._membership)
+
+    def execute(self, _stmt):
+        class _Result:
+            def __init__(self, rows):
+                self._rows = rows
+
+            def all(self):
+                return self._rows
+
+        return _Result(self._redemption_rows)
+
+    def delete(self, obj):
+        self.deleted.append(obj)
+
+    def flush(self):
+        pass
+
+
+def test_remove_viewer_deletes_membership_and_redemptions() -> None:
+    family_id = uuid.uuid4()
+    user_id = uuid.uuid4()
+    membership = FamilyMembership(
+        family_id=family_id, user_id=user_id, role=FamilyRole.family_viewer
+    )
+    invitation = _FakeInvitation(FamilyRole.family_viewer)
+    invitation.redemption_count = 1
+    redemption = object()
+    db = _FakeRemoveSession(membership, [(redemption, invitation)])
+
+    removed = invitations_repo.remove_viewer(db, family_id=family_id, user_id=user_id)
+
+    assert removed is True
+    assert membership in db.deleted
+    assert redemption in db.deleted
+    assert invitation.redemption_count == 0
+
+
+def test_remove_viewer_refuses_co_parent() -> None:
+    family_id = uuid.uuid4()
+    user_id = uuid.uuid4()
+    membership = FamilyMembership(
+        family_id=family_id, user_id=user_id, role=FamilyRole.co_parent
+    )
+    db = _FakeRemoveSession(membership, [])
+
+    removed = invitations_repo.remove_viewer(db, family_id=family_id, user_id=user_id)
+
+    assert removed is False
+    assert db.deleted == []
+
+
+def test_remove_viewer_missing_membership_returns_false() -> None:
+    db = _FakeRemoveSession(None, [])
+    removed = invitations_repo.remove_viewer(
+        db, family_id=uuid.uuid4(), user_id=uuid.uuid4()
+    )
+    assert removed is False
+    assert db.deleted == []

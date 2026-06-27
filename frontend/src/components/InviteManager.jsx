@@ -19,6 +19,10 @@ export default function InviteManager({ birthId }) {
   const [creating, setCreating] = useState(false);
   const [lastCreated, setLastCreated] = useState(null);
   const [copiedId, setCopiedId] = useState(null);
+  // Bumped after a viewer is removed. Removal drops that person across
+  // every link, so all rows' cached redemption lists go stale at once —
+  // this forces each one to refetch.
+  const [reloadKey, setReloadKey] = useState(0);
 
   const refresh = useCallback(async () => {
     setError('');
@@ -57,6 +61,19 @@ export default function InviteManager({ birthId }) {
       await refresh();
     } catch (err) {
       setError(err.message || 'Could not revoke invitation');
+    }
+  };
+
+  const handleRemoveViewer = async (userId) => {
+    setError('');
+    try {
+      await api.removeViewer(birthId, userId);
+      // Refresh the link list (counts changed) and tell every row to
+      // refetch who joined.
+      await refresh();
+      setReloadKey((k) => k + 1);
+    } catch (err) {
+      setError(err.message || 'Could not remove viewer');
     }
   };
 
@@ -138,7 +155,9 @@ export default function InviteManager({ birthId }) {
               key={invite.id}
               invite={invite}
               birthId={birthId}
+              reloadKey={reloadKey}
               onRevoke={() => handleRevoke(invite.id)}
+              onRemoveViewer={handleRemoveViewer}
             />
           ))}
         </ul>
@@ -154,12 +173,34 @@ function formatJoined(timestamp) {
   });
 }
 
-function InviteRow({ invite, birthId, onRevoke }) {
+function InviteRow({ invite, birthId, reloadKey, onRevoke, onRemoveViewer }) {
   const [expanded, setExpanded] = useState(false);
   const [redemptions, setRedemptions] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [copied, setCopied] = useState(false);
+  const [removingId, setRemovingId] = useState(null);
+
+  const loadRedemptions = useCallback(async () => {
+    setLoading(true);
+    setError('');
+    try {
+      setRedemptions(await api.listInvitationRedemptions(birthId, invite.id));
+    } catch (err) {
+      setError(err.message || 'Could not load who joined');
+    } finally {
+      setLoading(false);
+    }
+  }, [birthId, invite.id]);
+
+  // A removal elsewhere invalidates this row's cached list. Drop the cache;
+  // if we're open, refetch now so the change shows immediately.
+  useEffect(() => {
+    if (reloadKey === 0) return;
+    setRedemptions(null);
+    if (expanded) loadRedemptions();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [reloadKey]);
 
   const isRevoked = Boolean(invite.revoked_at);
   const isExpired = !isRevoked && new Date(invite.expires_at) < new Date();
@@ -189,15 +230,16 @@ function InviteRow({ invite, birthId, onRevoke }) {
     const next = !expanded;
     setExpanded(next);
     if (next && redemptions === null && !loading) {
-      setLoading(true);
-      setError('');
-      try {
-        setRedemptions(await api.listInvitationRedemptions(birthId, invite.id));
-      } catch (err) {
-        setError(err.message || 'Could not load who joined');
-      } finally {
-        setLoading(false);
-      }
+      await loadRedemptions();
+    }
+  };
+
+  const handleRemove = async (userId) => {
+    setRemovingId(userId);
+    try {
+      await onRemoveViewer(userId);
+    } finally {
+      setRemovingId(null);
     }
   };
 
@@ -258,20 +300,62 @@ function InviteRow({ invite, birthId, onRevoke }) {
             <p className="text-xs t-muted">No one has joined through this link yet.</p>
           )}
           {redemptions && redemptions.length > 0 && (
-            <ul className="space-y-1.5">
-              {redemptions.map((r) => (
-                <li key={r.user_id} className="flex items-baseline gap-2">
-                  <span className="text-sm t-ink truncate min-w-0">
-                    {r.display_name || r.contact || 'Someone'}
-                  </span>
-                  <span
-                    aria-hidden="true"
-                    className="flex-1 border-b border-dotted opacity-40 -translate-y-0.5"
-                    style={{ borderColor: 'var(--t-divider)' }}
-                  />
-                  <span className="text-xs t-muted shrink-0">{formatJoined(r.redeemed_at)}</span>
-                </li>
-              ))}
+            <ul className="space-y-2.5">
+              {redemptions.map((r) => {
+                const contacts = [r.email, r.phone].filter(Boolean);
+                const hasName = Boolean(r.display_name);
+                // If there's no display name we fall back to the first
+                // contact as the title — so don't repeat it below.
+                const title = hasName ? r.display_name : contacts[0] || 'Someone';
+                const subContacts = hasName ? contacts : contacts.slice(1);
+                const isViewer = r.role === 'family_viewer';
+                return (
+                  <li key={r.user_id} className="flex items-start gap-2">
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-baseline gap-2">
+                        <span className="text-sm t-ink truncate min-w-0">
+                          {title}
+                        </span>
+                        <span
+                          aria-hidden="true"
+                          className="flex-1 border-b border-dotted opacity-40 -translate-y-0.5"
+                          style={{ borderColor: 'var(--t-divider)' }}
+                        />
+                        <span className="text-xs t-muted shrink-0">
+                          {formatJoined(r.redeemed_at)}
+                        </span>
+                      </div>
+                      {subContacts.length > 0 && (
+                        <div className="text-xs t-muted truncate">
+                          {subContacts.join(' · ')}
+                        </div>
+                      )}
+                    </div>
+                    {isViewer ? (
+                      <button
+                        type="button"
+                        onClick={() => handleRemove(r.user_id)}
+                        disabled={removingId === r.user_id}
+                        title="Remove this viewer's access"
+                        aria-label={`Remove ${r.display_name || contacts[0] || 'viewer'}`}
+                        className="shrink-0 mt-0.5 p-1 rounded t-muted hover:text-red-500 dark:hover:text-red-400 disabled:opacity-40"
+                      >
+                        {removingId === r.user_id ? (
+                          <span className="text-xs">Removing…</span>
+                        ) : (
+                          <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                          </svg>
+                        )}
+                      </button>
+                    ) : (
+                      <span className="shrink-0 mt-0.5 text-xs t-muted capitalize">
+                        {r.role === 'co_parent' ? 'co-parent' : r.role}
+                      </span>
+                    )}
+                  </li>
+                );
+              })}
             </ul>
           )}
         </div>

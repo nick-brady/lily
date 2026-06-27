@@ -1325,13 +1325,36 @@ def list_invitation_redemptions(
         InvitationRedemptionOut(
             user_id=user.id,
             display_name=user.display_name,
-            contact=user.email or user.phone,
+            email=user.email,
+            phone=user.phone,
+            role=role or FamilyRole.family_viewer,
             redeemed_at=redemption.redeemed_at,
         )
-        for redemption, user in invitations_repo.list_redemptions(
-            db, invitation_id=invitation.id
+        for redemption, user, role in invitations_repo.list_redemptions(
+            db, invitation=invitation
         )
     ]
+
+
+@app.delete("/birth/{birth_id}/viewers/{user_id}", status_code=204)
+def remove_birth_viewer(
+    user_id: uuid.UUID,
+    access: BirthAccess = Depends(require_parent_access),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> Response:
+    """Remove a family viewer's access to this family. Parents only. The
+    invite link is left active — see `invitations_repo.remove_viewer`.
+    """
+    if user_id == current_user.id:
+        raise HTTPException(status_code=400, detail="You can't remove yourself")
+    removed = invitations_repo.remove_viewer(
+        db, family_id=access.birth.family_id, user_id=user_id
+    )
+    if not removed:
+        raise HTTPException(status_code=404, detail="Viewer not found")
+    db.commit()
+    return Response(status_code=204)
 
 
 @app.get("/invite/{token}", response_model=InvitationContextOut)
