@@ -19,6 +19,7 @@ from pathlib import Path
 from typing import Annotated, AsyncIterator, Literal, Union
 
 from fastapi import (
+    BackgroundTasks,
     Body,
     Depends,
     FastAPI,
@@ -72,6 +73,7 @@ from models import (
 from repositories import births as births_repo
 from repositories import comments as comments_repo
 from repositories import families as families_repo
+from repositories import gifts as gifts_repo
 from repositories import invitations as invitations_repo
 from repositories import media as media_repo
 from repositories import reactions as reactions_repo
@@ -98,6 +100,9 @@ from schemas import (
     EditEventIn,
     FamilyMembershipOut,
     FamilyWithBirthsOut,
+    GiftItemOut,
+    GiftRenderingOut,
+    GiftRenderingPatchIn,
     InvitationContextOut,
     InvitationCreateIn,
     InvitationCreatedOut,
@@ -1397,6 +1402,131 @@ def redeem_invitation_authed(
     )
     db.commit()
     return Response(status_code=204)
+
+
+# ============ Gifts ============
+
+
+def _serialize_rendering(rendering) -> GiftRenderingOut:
+    return GiftRenderingOut(
+        id=rendering.id,
+        template_id=rendering.template_id,
+        status=rendering.status,
+        artwork_url=gifts_repo.artwork_url(rendering),
+        is_visible_to_viewers=rendering.is_visible_to_viewers,
+    )
+
+
+def _serialize_gift_items(db, birth_id, *, is_parent: bool) -> list[GiftItemOut]:
+    items = gifts_repo.list_active_catalog(db)
+    renderings = gifts_repo.list_renderings_for_birth(db, birth_id=birth_id)
+    by_item: dict = {}
+    for r in renderings:
+        if not is_parent and not r.is_visible_to_viewers:
+            continue
+        by_item.setdefault(r.gift_catalog_item_id, []).append(r)
+    return [
+        GiftItemOut(
+            id=item.id,
+            kind=item.kind,
+            product_kind=item.product_kind,
+            display_name=item.display_name,
+            base_price_cents=item.base_price_cents,
+            storage_years_granted=item.storage_years_granted,
+            renderings=[_serialize_rendering(r) for r in by_item.get(item.id, [])],
+        )
+        for item in items
+    ]
+
+
+@app.get("/gifts/catalog", response_model=list[GiftItemOut])
+def gift_catalog(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> list[GiftItemOut]:
+    return [
+        GiftItemOut(
+            id=item.id,
+            kind=item.kind,
+            product_kind=item.product_kind,
+            display_name=item.display_name,
+            base_price_cents=item.base_price_cents,
+            storage_years_granted=item.storage_years_granted,
+            renderings=[],
+        )
+        for item in gifts_repo.list_active_catalog(db)
+    ]
+
+
+@app.get("/birth/{birth_id}/gifts", response_model=list[GiftItemOut])
+def list_gifts(
+    background_tasks: BackgroundTasks,
+    access: BirthAccess = Depends(require_birth_access),
+    db: Session = Depends(get_db),
+) -> list[GiftItemOut]:
+    """The gift gallery. Lazily ensures a rendering exists per (physical item
+    × template) and schedules a background render for newly-created ones."""
+    _, new_ids = gifts_repo.ensure_renderings(db, birth=access.birth)
+    for rendering_id in new_ids:
+        background_tasks.add_task(gifts_repo.render_rendering, rendering_id)
+    return _serialize_gift_items(
+        db, access.birth.id, is_parent=births_repo.is_parent(access.role)
+    )
+
+
+@app.post("/birth/{birth_id}/gifts/generate", response_model=list[GiftItemOut])
+def generate_gifts(
+    background_tasks: BackgroundTasks,
+    rendering_id: uuid.UUID | None = None,
+    access: BirthAccess = Depends(require_parent_access),
+    db: Session = Depends(get_db),
+) -> list[GiftItemOut]:
+    """Force a (re)render — all of the birth's gift artwork, or a single
+    rendering when `rendering_id` is given. Parents only."""
+    gifts_repo.ensure_renderings(db, birth=access.birth)
+    ids = gifts_repo.reset_to_pending(
+        db, birth_id=access.birth.id, rendering_id=rendering_id
+    )
+    for rid in ids:
+        background_tasks.add_task(gifts_repo.render_rendering, rid)
+    return _serialize_gift_items(db, access.birth.id, is_parent=True)
+
+
+@app.get(
+    "/birth/{birth_id}/gifts/{rendering_id}", response_model=GiftRenderingOut
+)
+def get_gift_rendering(
+    rendering_id: uuid.UUID,
+    access: BirthAccess = Depends(require_birth_access),
+    db: Session = Depends(get_db),
+) -> GiftRenderingOut:
+    rendering = gifts_repo.get_rendering(
+        db, birth_id=access.birth.id, rendering_id=rendering_id
+    )
+    is_parent = births_repo.is_parent(access.role)
+    if rendering is None or (not is_parent and not rendering.is_visible_to_viewers):
+        raise HTTPException(status_code=404, detail="Rendering not found")
+    return _serialize_rendering(rendering)
+
+
+@app.patch(
+    "/birth/{birth_id}/gifts/{rendering_id}", response_model=GiftRenderingOut
+)
+def patch_gift_rendering(
+    rendering_id: uuid.UUID,
+    payload: GiftRenderingPatchIn,
+    access: BirthAccess = Depends(require_parent_access),
+    db: Session = Depends(get_db),
+) -> GiftRenderingOut:
+    rendering = gifts_repo.get_rendering(
+        db, birth_id=access.birth.id, rendering_id=rendering_id
+    )
+    if rendering is None:
+        raise HTTPException(status_code=404, detail="Rendering not found")
+    rendering.is_visible_to_viewers = payload.is_visible_to_viewers
+    db.commit()
+    db.refresh(rendering)
+    return _serialize_rendering(rendering)
 
 
 # ============ Co-parents (family-scoped) ============

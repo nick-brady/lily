@@ -17,6 +17,8 @@ from models import (
     AuthIdentifierKind,
     BirthStatus,
     FamilyRole,
+    GiftKind,
+    GiftRenderingStatus,
     MediaKind,
     ReactionKind,
     TimelineEventType,
@@ -410,6 +412,33 @@ class BirthUpdateIn(BaseModel):
 class SlugAvailableOut(BaseModel):
     available: bool
     suggestion: Optional[str] = None
+
+
+class GiftRenderingOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    template_id: str
+    status: GiftRenderingStatus
+    artwork_url: Optional[str] = None
+    is_visible_to_viewers: bool
+
+
+class GiftItemOut(BaseModel):
+    """A catalog item plus its generated renderings for a birth. Storage
+    gifts (no artwork) come back with an empty `renderings` list."""
+
+    id: uuid.UUID
+    kind: GiftKind
+    product_kind: str
+    display_name: str
+    base_price_cents: int
+    storage_years_granted: Optional[int] = None
+    renderings: list[GiftRenderingOut] = []
+
+
+class GiftRenderingPatchIn(BaseModel):
+    is_visible_to_viewers: bool
 
 
 # Convenience for tests / fixtures that need to validate an EmailStr-shaped

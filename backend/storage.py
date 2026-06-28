@@ -99,3 +99,8 @@ def presigned_get_url(key: str, *, expires_in: int | None = None) -> str:
         Params={"Bucket": _bucket_name(), "Key": key},
         ExpiresIn=ttl,
     )
+
+
+def get_object_bytes(key: str) -> bytes:
+    response = _internal_client().get_object(Bucket=_bucket_name(), Key=key)
+    return response["Body"].read()

@@ -66,6 +66,18 @@ class AuthIdentifierKind(str, enum.Enum):
     phone = "phone"
 
 
+class GiftKind(str, enum.Enum):
+    physical = "physical"
+    storage_gift = "storage_gift"
+    free_digital = "free_digital"
+
+
+class GiftRenderingStatus(str, enum.Enum):
+    pending = "pending"
+    ready = "ready"
+    failed = "failed"
+
+
 class ReactionKind(str, enum.Enum):
     """The curated set of feelings we let people express on an event.
 
@@ -534,4 +546,97 @@ class AuthChallenge(Base):
 
     __table_args__ = (
         sa.Index("ix_auth_challenges_identifier", "identifier"),
+    )
+
+
+class GiftCatalogItem(Base):
+    """A purchasable gift product (mug, announcement cards, storage gift).
+
+    `product_kind` is plain text, not an enum: adding a new product is a
+    seed row, not a migration. `template_metadata` lists which template ids
+    (see `gift_templates.py`) are valid for this product plus product-level
+    render params. Price / SKU / `surfaces_in` are stored now but unused
+    until the payment + Gelato + day-two-prompt phases land.
+    """
+
+    __tablename__ = "gift_catalog_items"
+
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    kind: Mapped[GiftKind] = mapped_column(
+        sa.Enum(GiftKind, name="gift_kind", native_enum=True),
+        nullable=False,
+    )
+    product_kind: Mapped[str] = mapped_column(sa.Text, nullable=False)
+    display_name: Mapped[str] = mapped_column(sa.Text, nullable=False)
+    base_price_cents: Mapped[int] = mapped_column(
+        sa.Integer, nullable=False, server_default=sa.text("0")
+    )
+    fulfillment_partner: Mapped[str | None] = mapped_column(sa.Text, nullable=True)
+    fulfillment_sku: Mapped[str | None] = mapped_column(sa.Text, nullable=True)
+    template_metadata: Mapped[dict] = mapped_column(
+        JSONB, nullable=False, server_default=sa.text("'{}'::jsonb")
+    )
+    storage_years_granted: Mapped[int | None] = mapped_column(sa.Integer, nullable=True)
+    surfaces_in: Mapped[list] = mapped_column(
+        JSONB, nullable=False, server_default=sa.text("'[]'::jsonb")
+    )
+    is_active: Mapped[bool] = mapped_column(
+        sa.Boolean, nullable=False, server_default=sa.text("true")
+    )
+    created_at: Mapped[datetime] = _created_at()
+    updated_at: Mapped[datetime] = _updated_at()
+
+
+class GiftRendering(Base):
+    """One generated artwork for a (birth, catalog item, template).
+
+    The artwork is the design that goes *on* the product, generated from the
+    birth's timeline + a hero photo. `artwork_s3_key` is the storage key —
+    presign at read, never store a URL. Storage gifts have no artwork and
+    never get a rendering row.
+    """
+
+    __tablename__ = "gift_renderings"
+
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    birth_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        sa.ForeignKey("births.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    gift_catalog_item_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        sa.ForeignKey("gift_catalog_items.id", ondelete="RESTRICT"),
+        nullable=False,
+    )
+    template_id: Mapped[str] = mapped_column(sa.Text, nullable=False)
+    status: Mapped[GiftRenderingStatus] = mapped_column(
+        sa.Enum(GiftRenderingStatus, name="gift_rendering_status", native_enum=True),
+        nullable=False,
+        server_default=GiftRenderingStatus.pending.value,
+    )
+    artwork_s3_key: Mapped[str | None] = mapped_column(sa.Text, nullable=True)
+    rendering_metadata: Mapped[dict] = mapped_column(
+        JSONB, nullable=False, server_default=sa.text("'{}'::jsonb")
+    )
+    failure_reason: Mapped[str | None] = mapped_column(sa.Text, nullable=True)
+    is_visible_to_viewers: Mapped[bool] = mapped_column(
+        sa.Boolean, nullable=False, server_default=sa.text("true")
+    )
+    deleted_at: Mapped[datetime | None] = mapped_column(
+        sa.DateTime(timezone=True), nullable=True
+    )
+    created_at: Mapped[datetime] = _created_at()
+    updated_at: Mapped[datetime] = _updated_at()
+
+    __table_args__ = (
+        sa.Index("ix_gift_renderings_birth", "birth_id"),
+        sa.Index(
+            "uq_gift_renderings_birth_item_template",
+            "birth_id",
+            "gift_catalog_item_id",
+            "template_id",
+            unique=True,
+            postgresql_where=sa.text("deleted_at IS NULL"),
+        ),
     )

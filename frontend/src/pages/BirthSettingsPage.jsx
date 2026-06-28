@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { Link, Navigate, useParams } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { getTheme, themeVars } from '../utils/themes';
+import GiftGallery from '../components/GiftGallery';
 import HeaderMenu from '../components/HeaderMenu';
 import InviteManager from '../components/InviteManager';
 import ThemePickerSheet from '../components/ThemePickerSheet';
@@ -141,6 +142,9 @@ export default function BirthSettingsPage() {
 
         {/* Family viewers */}
         <InviteManager birthId={birth.id} />
+
+        {/* Keepsake gifts */}
+        <GiftGallery birthId={birth.id} />
 
         {/* Birth details */}
         <section className="card">
