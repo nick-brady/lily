@@ -120,14 +120,17 @@ function GiftItemCard({ item }) {
 }
 
 function RenderingTile({ rendering }) {
+  // Prefer the product mockup (artwork on the real mug/card) when ready;
+  // otherwise show the flat artwork.
+  const src = rendering.mockup_url || rendering.artwork_url;
   return (
     <div
       className="rounded-lg border overflow-hidden"
       style={{ borderColor: 'var(--t-soft-ring)' }}
     >
-      {rendering.status === 'ready' && rendering.artwork_url ? (
+      {rendering.status === 'ready' && src ? (
         <img
-          src={rendering.artwork_url}
+          src={src}
           alt={`${rendering.template_id} design`}
           className="w-full block"
           style={{ backgroundColor: 'var(--t-soft-bg)' }}

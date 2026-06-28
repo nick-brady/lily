@@ -616,6 +616,13 @@ class GiftRendering(Base):
         server_default=GiftRenderingStatus.pending.value,
     )
     artwork_s3_key: Mapped[str | None] = mapped_column(sa.Text, nullable=True)
+    # Product mockup from the fulfillment partner (e.g. Printful) — the
+    # artwork rendered onto the real product. Downloaded into our S3 for
+    # permanence. mockup_status: 'none' | 'pending' | 'ready' | 'failed'.
+    mockup_s3_key: Mapped[str | None] = mapped_column(sa.Text, nullable=True)
+    mockup_status: Mapped[str] = mapped_column(
+        sa.Text, nullable=False, server_default="none"
+    )
     rendering_metadata: Mapped[dict] = mapped_column(
         JSONB, nullable=False, server_default=sa.text("'{}'::jsonb")
     )

@@ -421,6 +421,8 @@ class GiftRenderingOut(BaseModel):
     template_id: str
     status: GiftRenderingStatus
     artwork_url: Optional[str] = None
+    mockup_url: Optional[str] = None
+    mockup_status: str = "none"
     is_visible_to_viewers: bool
 
 

@@ -13,6 +13,7 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+import fulfillment
 import gift_artwork
 import gift_templates
 from db import SessionLocal
@@ -132,6 +133,12 @@ def artwork_url(rendering: GiftRendering) -> str | None:
     return presigned_get_url(rendering.artwork_s3_key)
 
 
+def mockup_url(rendering: GiftRendering) -> str | None:
+    if rendering.mockup_status != "ready" or not rendering.mockup_s3_key:
+        return None
+    return presigned_get_url(rendering.mockup_s3_key)
+
+
 # ── background render job ─────────────────────────────────────────────────
 
 
@@ -166,6 +173,11 @@ def render_rendering(rendering_id: uuid.UUID) -> None:
         rendering.status = GiftRenderingStatus.ready
         rendering.failure_reason = None
         db.commit()
+
+        # Then try to turn the flat artwork into a product mockup via the
+        # fulfillment partner. Best-effort: a failure here never fails the
+        # rendering — the gallery just keeps showing the flat artwork.
+        _try_generate_mockup(db, rendering)
     except Exception as exc:  # never let a background task crash silently
         db.rollback()
         rendering = db.get(GiftRendering, rendering_id)
@@ -173,6 +185,44 @@ def render_rendering(rendering_id: uuid.UUID) -> None:
             _fail(db, rendering, f"unexpected: {exc}")
     finally:
         db.close()
+
+
+def _try_generate_mockup(db: Session, rendering: GiftRendering) -> None:
+    """Generate a product mockup for a ready rendering, if a fulfillment
+    partner is configured and supports the product. Records mockup_status;
+    never raises."""
+    adapter = fulfillment.get_adapter()
+    if adapter is None or not rendering.artwork_s3_key:
+        return
+    item = db.get(GiftCatalogItem, rendering.gift_catalog_item_id)
+    birth = db.get(Birth, rendering.birth_id)
+    if item is None or birth is None or not adapter.supports(item.product_kind):
+        return
+
+    rendering.mockup_status = "pending"
+    db.commit()
+    try:
+        # The partner fetches the artwork by URL, so it must be publicly
+        # reachable (real S3 in prod — a localhost dev MinIO URL won't work).
+        artwork = presigned_get_url(rendering.artwork_s3_key, expires_in=3600)
+        result = adapter.generate_mockup(
+            artwork_url=artwork, product_kind=item.product_kind
+        )
+        key = object_key(
+            family_id=birth.family_id,
+            birth_id=birth.id,
+            filename=f"gifts/{rendering.id}-mockup.png",
+        )
+        put_object(key=key, body=result.image_bytes, content_type=result.content_type)
+        rendering.mockup_s3_key = key
+        rendering.mockup_status = "ready"
+        db.commit()
+    except Exception:  # MockupError or any transport error
+        db.rollback()
+        rendering = db.get(GiftRendering, rendering.id)
+        if rendering is not None:
+            rendering.mockup_status = "failed"
+            db.commit()
 
 
 def _fail(db: Session, rendering: GiftRendering, reason: str) -> None:

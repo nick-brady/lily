@@ -1413,6 +1413,8 @@ def _serialize_rendering(rendering) -> GiftRenderingOut:
         template_id=rendering.template_id,
         status=rendering.status,
         artwork_url=gifts_repo.artwork_url(rendering),
+        mockup_url=gifts_repo.mockup_url(rendering),
+        mockup_status=rendering.mockup_status,
         is_visible_to_viewers=rendering.is_visible_to_viewers,
     )
 
