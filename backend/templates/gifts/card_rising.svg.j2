@@ -1,0 +1,50 @@
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink"
+     width="{{ w }}" height="{{ h }}" viewBox="0 0 {{ w }} {{ h }}">
+
+{% macro polaroid(p, font, pw=300, ph=350) %}
+  <g transform="translate({{ p.x }},{{ p.y }}) rotate({{ p.rot }})">
+    <rect x="{{ 8 - pw/2 }}" y="{{ 13 - ph/2 }}" width="{{ pw }}" height="{{ ph }}" rx="5" fill="#000000" opacity="0.10"/>
+    <rect x="{{ -pw/2 }}" y="{{ -ph/2 }}" width="{{ pw }}" height="{{ ph }}" rx="5" fill="#ffffff" stroke="#e6e6e6" stroke-width="2"/>
+    <image x="{{ 16 - pw/2 }}" y="{{ 16 - ph/2 }}" width="{{ pw - 32 }}" height="{{ ph - 94 }}"
+           preserveAspectRatio="xMidYMid slice" xlink:href="{{ p.href }}"/>
+    {% if p.caption %}
+    <text x="0" y="{{ ph/2 - 28 }}" text-anchor="middle" font-family="{{ font }}"
+          font-size="32" font-style="italic" fill="#555555">{{ p.caption }}</text>
+    {% endif %}
+  </g>
+{% endmacro %}
+
+  <rect x="0" y="0" width="{{ w }}" height="{{ h }}" fill="{{ p.bg }}"/>
+
+  <!-- title -->
+  <text x="{{ w // 2 }}" y="220" text-anchor="middle" font-family="{{ p.body_font }}"
+        font-size="40" letter-spacing="8" fill="{{ p.accent }}">HER STORY, FROM THE START</text>
+  <text x="{{ w // 2 }}" y="400" text-anchor="middle" font-family="{{ p.display_font }}"
+        font-size="180" font-style="italic" fill="{{ p.ink }}">{{ child_name }}</text>
+  <text x="{{ w // 2 }}" y="480" text-anchor="middle" font-family="{{ p.body_font }}"
+        font-size="46" fill="{{ p.ink }}" opacity="0.7">born {{ birth_date }} · {{ birth_time }}</text>
+
+  <!-- the timeline, rising from the bottom -->
+  <path d="{{ path_d }}" fill="none" stroke="{{ p.accent }}" stroke-width="5"
+        stroke-linecap="round" opacity="0.5"/>
+  <circle cx="{{ w // 2 }}" cy="{{ y_start }}" r="14" fill="{{ p.accent }}"/>
+
+  <!-- photos along the way -->
+  {% for pl in polaroids %}{{ polaroid(pl, p.display_font) }}{% endfor %}
+
+  <!-- footer: where it began -->
+  <text x="{{ w // 2 }}" y="{{ h - 250 }}" text-anchor="middle" font-family="{{ p.body_font }}"
+        font-size="38" fill="{{ p.ink }}" opacity="0.6">where it began</text>
+  {% for note in notes %}
+  <text x="{{ w // 2 }}" y="{{ h - 180 + loop.index0 * 56 }}" text-anchor="middle"
+        font-family="{{ p.display_font }}" font-size="44" font-style="italic"
+        fill="{{ p.ink }}" opacity="0.85">“{{ note }}”</text>
+  {% endfor %}
+  {% if reaction_summary %}
+  <text x="{{ w // 2 }}" y="{{ h - 70 }}" text-anchor="middle" font-family="{{ p.body_font }}"
+        font-size="42" fill="{{ p.accent }}">{{ reaction_summary }}   ·   {{ count }} contractions · {{ labor_duration }}</text>
+  {% else %}
+  <text x="{{ w // 2 }}" y="{{ h - 70 }}" text-anchor="middle" font-family="{{ p.body_font }}"
+        font-size="42" fill="{{ p.accent }}">{{ count }} contractions · {{ labor_duration }} of labor</text>
+  {% endif %}
+</svg>

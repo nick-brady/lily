@@ -65,12 +65,13 @@ def get_rendering(
 
 
 def _template_ids_for(item: GiftCatalogItem) -> list[str]:
-    """The template ids valid for a catalog item that actually exist in the
-    code registry. Non-physical items (storage gifts) have none."""
+    """The template ids valid for a catalog item. Driven by the code
+    registry keyed on product_kind, so adding a design is a code change (a
+    new registry entry) — no migration. Non-physical items (storage gifts)
+    have none."""
     if item.kind != GiftKind.physical:
         return []
-    declared = (item.template_metadata or {}).get("templates", [])
-    return [tid for tid in declared if gift_templates.get(tid) is not None]
+    return [t.template_id for t in gift_templates.for_product(item.product_kind)]
 
 
 def ensure_renderings(

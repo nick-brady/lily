@@ -40,6 +40,15 @@ def _context(template):
         "spark_line": "0,200 250,80 500,160 750,40 1000,120",
         "spark_area": "0,240 0,200 250,80 500,160 750,40 1000,120 1000,240",
         "photo_data_uri": _PIXEL if template.photo else None,
+        # scene fields (used by the rising template; harmless otherwise)
+        "path_d": "M 750,1700 L 750,600",
+        "polaroids": [
+            {"x": 700, "y": 500, "rot": -6, "href": _PIXEL, "caption": "first look"},
+            {"x": 1100, "y": 700, "rot": 5, "href": _PIXEL, "caption": "so loved"},
+        ],
+        "reaction_summary": "♥ 12   3 notes",
+        "notes": ["yay!", "she's here"],
+        "y_start": template.height - 360,
     }
 
 

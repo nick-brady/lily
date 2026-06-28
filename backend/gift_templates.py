@@ -22,7 +22,8 @@ class GiftTemplate:
     width: int
     height: int
     dpi: int
-    photo: bool
+    photo: bool  # embed the single auto-selected hero photo
+    scene: str | None = None  # richer data scene: "rising" | None
 
 
 TEMPLATES: dict[str, GiftTemplate] = {
@@ -54,6 +55,16 @@ TEMPLATES: dict[str, GiftTemplate] = {
         height=2100,
         dpi=300,
         photo=True,
+    ),
+    "card_rising": GiftTemplate(
+        template_id="card_rising",
+        product_kind="birth_announcement_cards",
+        svg="card_rising.svg.j2",
+        width=1500,
+        height=2100,
+        dpi=300,
+        photo=False,
+        scene="rising",
     ),
 }
 
