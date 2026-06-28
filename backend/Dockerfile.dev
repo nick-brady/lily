@@ -8,8 +8,11 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 WORKDIR /app
 
+# libpq5: psycopg2 runtime. libcairo2: cairosvg rasterization.
+# fonts-ebgaramond (display) + fonts-dejavu-core (body) + fontconfig: gift artwork.
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends libpq5 \
+    && apt-get install -y --no-install-recommends \
+        libpq5 libcairo2 fontconfig fonts-ebgaramond fonts-dejavu-core \
     && rm -rf /var/lib/apt/lists/*
 
 COPY --from=ghcr.io/astral-sh/uv:0.11 /uv /usr/local/bin/uv

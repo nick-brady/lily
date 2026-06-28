@@ -161,6 +161,22 @@ export const api = {
     return jsonOrThrow(res);
   },
 
+  async listGifts(birthId) {
+    const res = await fetch(`${API_URL}/birth/${birthId}/gifts`, {
+      headers: authHeaders(),
+    });
+    return jsonOrThrow(res);
+  },
+
+  async generateGifts(birthId, renderingId = null) {
+    const qs = renderingId ? `?rendering_id=${renderingId}` : '';
+    const res = await fetch(`${API_URL}/birth/${birthId}/gifts/generate${qs}`, {
+      method: 'POST',
+      headers: authHeaders(),
+    });
+    return jsonOrThrow(res);
+  },
+
   async listInvitations(birthId) {
     const res = await fetch(`${API_URL}/birth/${birthId}/invitations`, {
       headers: authHeaders(),

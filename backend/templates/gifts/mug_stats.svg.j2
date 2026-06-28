@@ -1,0 +1,38 @@
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink"
+     width="{{ w }}" height="{{ h }}" viewBox="0 0 {{ w }} {{ h }}">
+  <rect x="0" y="0" width="{{ w }}" height="{{ h }}" fill="{{ p.bg }}"/>
+
+  <!-- name + date, centered -->
+  <text x="{{ w // 2 }}" y="300" text-anchor="middle"
+        font-family="{{ p.display_font }}" font-size="200" font-style="italic"
+        fill="{{ p.ink }}">{{ child_name }}</text>
+  <text x="{{ w // 2 }}" y="392" text-anchor="middle"
+        font-family="{{ p.body_font }}" font-size="50"
+        fill="{{ p.ink }}" opacity="0.7">born {{ birth_date }} · {{ birth_time }}</text>
+
+  <!-- four stat columns -->
+  {% set cols = [
+       (count|string, 'contractions'),
+       (labor_duration, 'in labor'),
+       (avg_contraction, 'avg length'),
+       (avg_interval, 'apart'),
+  ] %}
+  {% for value, label in cols %}
+  {% set cx = (w * (2 * loop.index0 + 1)) // 8 %}
+  <text x="{{ cx }}" y="650" text-anchor="middle" font-family="{{ p.display_font }}"
+        font-size="150" font-weight="bold" fill="{{ p.accent }}">{{ value }}</text>
+  <text x="{{ cx }}" y="740" text-anchor="middle" font-family="{{ p.body_font }}"
+        font-size="46" fill="{{ p.ink }}" opacity="0.75">{{ label }}</text>
+  {% endfor %}
+
+  <!-- contraction pattern across the base -->
+  {% if has_sparkline %}
+  <svg x="300" y="820" width="{{ w - 600 }}" height="240" viewBox="0 0 1000 240"
+       preserveAspectRatio="none">
+    <polygon points="{{ spark_area }}" fill="{{ p.dot }}" opacity="0.16"/>
+    <polyline points="{{ spark_line }}" fill="none" stroke="{{ p.accent }}"
+              stroke-width="4" stroke-linejoin="round" stroke-linecap="round"
+              vector-effect="non-scaling-stroke"/>
+  </svg>
+  {% endif %}
+</svg>

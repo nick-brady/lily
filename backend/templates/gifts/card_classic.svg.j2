@@ -1,0 +1,43 @@
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink"
+     width="{{ w }}" height="{{ h }}" viewBox="0 0 {{ w }} {{ h }}">
+  <defs>
+    <clipPath id="heroRect">
+      <rect x="120" y="120" width="{{ w - 240 }}" height="1080" rx="32"/>
+    </clipPath>
+  </defs>
+
+  <rect x="0" y="0" width="{{ w }}" height="{{ h }}" fill="{{ p.bg }}"/>
+
+  <!-- hero photo -->
+  {% if photo_data_uri %}
+  <g clip-path="url(#heroRect)">
+    <image x="120" y="120" width="{{ w - 240 }}" height="1080"
+           preserveAspectRatio="xMidYMid slice"
+           xlink:href="{{ photo_data_uri }}"/>
+  </g>
+  {% endif %}
+  <rect x="120" y="120" width="{{ w - 240 }}" height="1080" rx="32"
+        fill="none" stroke="{{ p.accent }}" stroke-width="5"/>
+
+  <!-- announcement -->
+  <text x="{{ w // 2 }}" y="1420" text-anchor="middle" font-family="{{ p.body_font }}"
+        font-size="44" letter-spacing="8" fill="{{ p.accent }}">WELCOME TO THE WORLD</text>
+  <text x="{{ w // 2 }}" y="1610" text-anchor="middle" font-family="{{ p.display_font }}"
+        font-size="200" font-style="italic" fill="{{ p.ink }}">{{ child_name }}</text>
+  <text x="{{ w // 2 }}" y="1710" text-anchor="middle" font-family="{{ p.body_font }}"
+        font-size="52" fill="{{ p.ink }}" opacity="0.75">{{ birth_date }} · {{ birth_time }}</text>
+
+  <!-- contraction pattern -->
+  {% if has_sparkline %}
+  <svg x="250" y="1790" width="{{ w - 500 }}" height="170" viewBox="0 0 1000 240"
+       preserveAspectRatio="none">
+    <polygon points="{{ spark_area }}" fill="{{ p.accent }}" opacity="0.12"/>
+    <polyline points="{{ spark_line }}" fill="none" stroke="{{ p.accent }}"
+              stroke-width="4" stroke-linejoin="round" stroke-linecap="round"
+              vector-effect="non-scaling-stroke"/>
+  </svg>
+  {% endif %}
+  <text x="{{ w // 2 }}" y="2020" text-anchor="middle" font-family="{{ p.body_font }}"
+        font-size="40" fill="{{ p.ink }}" opacity="0.65">{{ count }} contractions
+        · {{ labor_duration }} of labor</text>
+</svg>

@@ -1,0 +1,47 @@
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink"
+     width="{{ w }}" height="{{ h }}" viewBox="0 0 {{ w }} {{ h }}">
+  <defs>
+    <clipPath id="heroCircle">
+      <circle cx="430" cy="577" r="360"/>
+    </clipPath>
+  </defs>
+
+  <rect x="0" y="0" width="{{ w }}" height="{{ h }}" fill="{{ p.bg }}"/>
+
+  <!-- hero photo -->
+  {% if photo_data_uri %}
+  <g clip-path="url(#heroCircle)">
+    <image x="70" y="217" width="720" height="720"
+           preserveAspectRatio="xMidYMid slice"
+           xlink:href="{{ photo_data_uri }}"/>
+  </g>
+  {% endif %}
+  <circle cx="430" cy="577" r="360" fill="none" stroke="{{ p.accent }}" stroke-width="6"/>
+
+  <!-- name + date -->
+  <text x="900" y="380" font-family="{{ p.display_font }}" font-size="190"
+        font-style="italic" fill="{{ p.ink }}">{{ child_name }}</text>
+  <text x="905" y="480" font-family="{{ p.body_font }}" font-size="54"
+        fill="{{ p.ink }}" opacity="0.7">born {{ birth_date }} · {{ birth_time }}</text>
+
+  <!-- contraction pattern -->
+  {% if has_sparkline %}
+  <svg x="905" y="560" width="1470" height="300" viewBox="0 0 1000 240"
+       preserveAspectRatio="none">
+    <polygon points="{{ spark_area }}" fill="{{ p.accent }}" opacity="0.14"/>
+    <polyline points="{{ spark_line }}" fill="none" stroke="{{ p.accent }}"
+              stroke-width="4" stroke-linejoin="round" stroke-linecap="round"
+              vector-effect="non-scaling-stroke"/>
+  </svg>
+  {% endif %}
+
+  <!-- stats -->
+  <text x="905" y="1010" font-family="{{ p.body_font }}" font-size="56"
+        fill="{{ p.ink }}">
+    <tspan fill="{{ p.accent }}" font-weight="bold">{{ count }}</tspan> contractions
+    <tspan fill="{{ p.ink }}" opacity="0.4">·</tspan>
+    <tspan fill="{{ p.accent }}" font-weight="bold">{{ labor_duration }}</tspan> of labor
+    <tspan fill="{{ p.ink }}" opacity="0.4">·</tspan>
+    every <tspan fill="{{ p.accent }}" font-weight="bold">{{ avg_interval }}</tspan>
+  </text>
+</svg>
