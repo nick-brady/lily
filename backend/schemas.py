@@ -137,6 +137,39 @@ class BirthOut(BaseModel):
     is_unlocked: bool
     is_locked_to_invited: bool
     theme: str = "lily"
+    child_weight_lbs: Optional[float] = None
+    child_length_in: Optional[float] = None
+
+
+class GuessIn(BaseModel):
+    """A family member's guess. At least one of the two must be given
+    (validated at the route so the error message can be friendly)."""
+
+    weight_lbs: Optional[float] = Field(default=None, gt=0, lt=30)
+    length_in: Optional[float] = Field(default=None, gt=0, lt=40)
+
+
+class GuessOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    display_name: str
+    weight_lbs: Optional[float] = None
+    length_in: Optional[float] = None
+    is_mine: bool = False
+    # set only once the actual measurements are recorded
+    score: Optional[float] = None
+    rank: Optional[int] = None
+
+
+class GuessBoardOut(BaseModel):
+    """The family pool: everyone's guesses, plus the actuals and ranking
+    once the parents record the measurements."""
+
+    guesses: list[GuessOut] = []
+    actual_weight_lbs: Optional[float] = None
+    actual_length_in: Optional[float] = None
+    settled: bool = False
 
 
 class ReactionCountOut(BaseModel):
@@ -400,6 +433,10 @@ class BirthCreateIn(BaseModel):
 
 class BirthUpdateIn(BaseModel):
     theme: Optional[str] = Field(default=None, max_length=50)
+    # Actual measurements, recorded by the parents once known — these settle
+    # the family pool and unlock the pool gift artwork.
+    child_weight_lbs: Optional[float] = Field(default=None, gt=0, lt=30)
+    child_length_in: Optional[float] = Field(default=None, gt=0, lt=40)
 
     @field_validator("theme")
     @classmethod

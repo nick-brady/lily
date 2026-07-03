@@ -6,6 +6,7 @@ import { useSSE } from '../hooks/useSSE';
 import CelebrationOverlay from '../components/CelebrationOverlay';
 import ConnectionStatus from '../components/ConnectionStatus';
 import Timeline from '../components/Timeline';
+import Predictions from '../components/Predictions';
 import { bumpCommentCount, updateReaction } from '../utils/engagement';
 import { getTheme, themeVars } from '../utils/themes';
 
@@ -248,6 +249,14 @@ export default function PublicBirthPage() {
               </p>
             )}
           </section>
+        )}
+
+        {!loading && birth && (
+          <Predictions
+            slug={slug}
+            status={birth.status}
+            isParent={canManageThisBirth}
+          />
         )}
 
         {loading ? (

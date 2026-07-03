@@ -487,7 +487,7 @@ function StatsTab({
           customTimestamps={timestamps}
         />
       </div>
-      <Predictions />
+      <Predictions birthId={birth?.id} status={birth?.status} isParent />
     </>
   );
 }

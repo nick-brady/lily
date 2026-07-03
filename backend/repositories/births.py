@@ -55,9 +55,20 @@ def create_birth(
     return birth
 
 
-def update_birth(db: Session, *, birth: Birth, theme: str | None = None) -> Birth:
+def update_birth(
+    db: Session,
+    *,
+    birth: Birth,
+    theme: str | None = None,
+    child_weight_lbs: float | None = None,
+    child_length_in: float | None = None,
+) -> Birth:
     if theme is not None:
         birth.theme = theme
+    if child_weight_lbs is not None:
+        birth.child_weight_lbs = child_weight_lbs
+    if child_length_in is not None:
+        birth.child_length_in = child_length_in
     db.flush()
     return birth
 

@@ -405,11 +405,31 @@ export const api = {
     return jsonOrThrow(res);
   },
 
-  async updateBirth(birthId, { theme }) {
+  async updateBirth(birthId, patch) {
     const res = await fetch(`${API_URL}/birth/${birthId}`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json', ...authHeaders() },
-      body: JSON.stringify({ theme }),
+      body: JSON.stringify(patch),
+    });
+    return jsonOrThrow(res);
+  },
+
+  async listGuesses({ birthId, slug }) {
+    const url = birthId
+      ? `${API_URL}/birth/${birthId}/guesses`
+      : `${API_URL}/b/${slug}/guesses`;
+    const res = await fetch(url, { headers: authHeaders() });
+    return jsonOrThrow(res);
+  },
+
+  async putGuess({ birthId, slug }, { weight_lbs, length_in }) {
+    const url = birthId
+      ? `${API_URL}/birth/${birthId}/guess`
+      : `${API_URL}/b/${slug}/guess`;
+    const res = await fetch(url, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json', ...authHeaders() },
+      body: JSON.stringify({ weight_lbs, length_in }),
     });
     return jsonOrThrow(res);
   },
