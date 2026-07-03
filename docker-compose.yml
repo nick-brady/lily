@@ -79,6 +79,9 @@ services:
       TWILIO_ACCOUNT_SID: ${TWILIO_ACCOUNT_SID:-}
       TWILIO_AUTH_TOKEN: ${TWILIO_AUTH_TOKEN:-}
       TWILIO_FROM: ${TWILIO_FROM:-}
+      STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY:-}
+      STRIPE_WEBHOOK_SECRET: ${STRIPE_WEBHOOK_SECRET:-}
+      UNLOCK_PRICE_CENTS: ${UNLOCK_PRICE_CENTS:-1200}
     # No published host port: the browser reaches the API same-origin via
     # the frontend's /api proxy, and containers use the compose network.
     volumes:

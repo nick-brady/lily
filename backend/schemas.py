@@ -172,6 +172,22 @@ class GuessBoardOut(BaseModel):
     settled: bool = False
 
 
+class UnlockCheckoutOut(BaseModel):
+    url: str
+
+
+class UnlockConfirmIn(BaseModel):
+    session_id: str = Field(..., min_length=1, max_length=255)
+
+
+class UnlockConfirmOut(BaseModel):
+    """`status`: 'unlocked' (this confirm won) | 'already_unlocked' |
+    'pending' (session exists but isn't paid — no unlock)."""
+
+    status: str
+    is_unlocked: bool
+
+
 class ReactionCountOut(BaseModel):
     """Per-kind reaction summary on an event.
 

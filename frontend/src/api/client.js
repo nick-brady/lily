@@ -414,6 +414,23 @@ export const api = {
     return jsonOrThrow(res);
   },
 
+  async createUnlockCheckout(slug) {
+    const res = await fetch(`${API_URL}/b/${slug}/unlock/checkout`, {
+      method: 'POST',
+      headers: authHeaders(),
+    });
+    return jsonOrThrow(res);
+  },
+
+  async confirmUnlock(slug, sessionId) {
+    const res = await fetch(`${API_URL}/b/${slug}/unlock/confirm`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ session_id: sessionId }),
+    });
+    return jsonOrThrow(res);
+  },
+
   async listGuesses({ birthId, slug }) {
     const url = birthId
       ? `${API_URL}/birth/${birthId}/guesses`
