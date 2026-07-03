@@ -121,7 +121,7 @@ export default function PublicBirthPage() {
 
   const streamUrl = useMemo(() => {
     if (!birth) return null;
-    const url = new URL(`${api.apiUrl}/b/${slug}/stream`);
+    const url = new URL(`${api.apiUrl}/b/${slug}/stream`, window.location.origin);
     const token = getToken();
     if (token) url.searchParams.set('token', token);
     return url.toString();
