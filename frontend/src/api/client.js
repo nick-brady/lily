@@ -1,8 +1,7 @@
-// Dev default matches the compose BACKEND_PORT default; override with
-// VITE_API_URL when the backend runs on a different host port.
-const API_URL = import.meta.env.DEV
-  ? (import.meta.env.VITE_API_URL || 'http://localhost:8000')
-  : '';
+// Same-origin in both modes: the vite dev server proxies '/api/*' to the
+// backend over the docker network (see vite.config.js), so the backend
+// never needs a published host port; prod serves the API same-origin.
+const API_URL = import.meta.env.DEV ? '/api' : '';
 const TOKEN_KEY = 'lily_auth_token';
 
 export function getToken() {

@@ -141,7 +141,7 @@ export default function BirthManagePage() {
   const streamUrl = useMemo(() => {
     if (!birth) return null;
     const token = getToken();
-    const url = new URL(`${api.apiUrl}/birth/${birth.id}/stream`);
+    const url = new URL(`${api.apiUrl}/birth/${birth.id}/stream`, window.location.origin);
     if (token) url.searchParams.set('token', token);
     return url.toString();
   }, [birth]);

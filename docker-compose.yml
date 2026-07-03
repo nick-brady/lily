@@ -74,10 +74,8 @@ services:
       AWS_PUBLIC_ENDPOINT_URL: ${AWS_PUBLIC_ENDPOINT_URL:-http://localhost:9000}
       PRINTFUL_API_KEY: ${PRINTFUL_API_KEY:-}
       PRINTFUL_STORE_ID: ${PRINTFUL_STORE_ID:-}
-    ports:
-      # host port is configurable so Lily can coexist with other local
-      # projects that already bind 8000; keep VITE_API_URL in sync.
-      - "${BACKEND_PORT:-8000}:8000"
+    # No published host port: the browser reaches the API same-origin via
+    # the frontend's /api proxy, and containers use the compose network.
     volumes:
       - ./backend:/app
       - uploads:/app/uploads
@@ -94,8 +92,8 @@ services:
     depends_on:
       - backend
     environment:
-      # where the browser reaches the backend (must match BACKEND_PORT)
-      VITE_API_URL: ${VITE_API_URL:-http://localhost:8000}
+      # where the vite dev proxy forwards /api/* (see vite.config.js)
+      API_PROXY_TARGET: http://backend:8000
     ports:
       - "${FRONTEND_PORT:-3000}:3000"
     volumes:
