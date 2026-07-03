@@ -1,4 +1,8 @@
-const API_URL = import.meta.env.DEV ? 'http://localhost:8000' : '';
+// Dev default matches the compose BACKEND_PORT default; override with
+// VITE_API_URL when the backend runs on a different host port.
+const API_URL = import.meta.env.DEV
+  ? (import.meta.env.VITE_API_URL || 'http://localhost:8000')
+  : '';
 const TOKEN_KEY = 'lily_auth_token';
 
 export function getToken() {

@@ -9,7 +9,9 @@ from __future__ import annotations
 import base64
 import io
 import math
+import os
 from datetime import datetime
+from zoneinfo import ZoneInfo
 
 import cairosvg
 from PIL import Image
@@ -46,6 +48,20 @@ class ArtworkError(Exception):
     """Rendering failed for a reason worth recording on the rendering row."""
 
 
+# Timestamps are stored UTC; keepsakes must show the family's wall-clock time
+# ("born at 10:54 am", the clock angles, photo stamps). Until births carry
+# their own timezone, render in a configurable one.
+_RENDER_TZ = ZoneInfo(os.getenv("GIFT_RENDER_TZ", "America/New_York"))
+
+
+def _localize(dt: datetime | None) -> datetime | None:
+    """UTC (or any aware) datetime → the render timezone; naive passes
+    through untouched (tests, fixtures)."""
+    if dt is None or dt.tzinfo is None:
+        return dt
+    return dt.astimezone(_RENDER_TZ)
+
+
 _env = Environment(
     loader=FileSystemLoader(_TEMPLATE_DIR),
     autoescape=select_autoescape(["svg", "j2", "xml"], default=True),
@@ -75,7 +91,8 @@ def render(
     if template.photo and photo_data_uri is None:
         raise ArtworkError("missing-photo")
 
-    when = birth.child_dob or birth.birth_completed_at
+    when = _localize(birth.child_dob or birth.birth_completed_at)
+    first_at_local = _localize(stats.first_contraction_at)
     spark_last = _spark_last(stats.durations)
     context = {
         "w": template.width,
@@ -94,7 +111,7 @@ def render(
         "spark_last_x": spark_last[0] if spark_last else 0,
         "spark_last_y": spark_last[1] if spark_last else 0,
         "spark_callouts": _spark_callouts(stats.durations),
-        "labor_start_time": _fmt_time(stats.first_contraction_at),
+        "labor_start_time": _fmt_time(first_at_local),
         "photo_data_uri": photo_data_uri,
     }
 
@@ -106,7 +123,8 @@ def render(
             build_hours_clock(
                 durations=stats.durations,
                 offsets_seconds=stats.offsets_seconds,
-                first_contraction_at=stats.first_contraction_at,
+                # local wall-clock time — the clock angles are literal
+                first_contraction_at=first_at_local,
                 born_at=when,
                 cx=context["clock_cx"],
                 cy=context["clock_cy"],
@@ -191,17 +209,22 @@ def _photo_data_uri(asset: MediaAsset, *, max_px: int | None = None) -> str | No
     except Exception:
         return None
     mime = asset.mime_type or "image/jpeg"
-    # Downscale for the small Polaroid thumbnails so the SVG stays light.
-    if max_px is not None:
-        try:
-            im = Image.open(io.BytesIO(raw))
-            im.thumbnail((max_px, max_px))
-            buf = io.BytesIO()
-            im.convert("RGB").save(buf, format="JPEG", quality=85)
-            raw = buf.getvalue()
-            mime = "image/jpeg"
-        except Exception:
-            pass  # fall back to the original bytes
+    # Re-encode every photo: apply the EXIF orientation (phone photos are
+    # usually stored rotated + a tag, and cairosvg ignores the tag — without
+    # this, portraits render sideways) and downscale so the SVG stays light.
+    # Hero photos keep enough pixels for full-bleed print panels.
+    try:
+        from PIL import ImageOps
+
+        im = Image.open(io.BytesIO(raw))
+        im = ImageOps.exif_transpose(im)
+        im.thumbnail((max_px or 1600, max_px or 1600))
+        buf = io.BytesIO()
+        im.convert("RGB").save(buf, format="JPEG", quality=88)
+        raw = buf.getvalue()
+        mime = "image/jpeg"
+    except Exception:
+        pass  # fall back to the original bytes
     return f"data:{mime};base64,{base64.b64encode(raw).decode('ascii')}"
 
 
@@ -269,7 +292,9 @@ def _gather_photos(db: Session, birth: Birth, *, limit: int) -> list[dict]:
         if uri is None:
             continue
         caption = _truncate(_clean_text((e.payload or {}).get("caption")), 18)
-        out.append({"uri": uri, "caption": caption, "occurred_at": e.occurred_at})
+        out.append(
+            {"uri": uri, "caption": caption, "occurred_at": _localize(e.occurred_at)}
+        )
     return _sample_spaced(out, limit)
 
 
@@ -787,12 +812,20 @@ def build_hours_clock(
     # the milestones of the birth, anchored at their true clock angles —
     # each an icon just outside the ring with a quiet label beyond it
     clock_milestones = []
+    placed_angles: list[float] = []
+
+    def _gap(a: float, b: float) -> float:
+        return abs((a - b + math.pi) % (2 * math.pi) - math.pi)
+
     for m in milestones or []:
         a = angle_at(int(m["offset_seconds"]))
-        if star_angle is not None:
-            gap = abs((a - star_angle + math.pi) % (2 * math.pi) - math.pi)
-            if gap < 0.10:  # the star owns the birth minute
-                continue
+        if star_angle is not None and _gap(a, star_angle) < 0.18:
+            continue  # the star owns the birth minute
+        # milestones minutes apart share an angle; their labels would garble
+        # each other, so the first one placed wins the spot
+        if any(_gap(a, b) < 0.35 for b in placed_angles):
+            continue
+        placed_angles.append(a)
         icon = _MILESTONE_ICONS.get(m.get("kind"), _diamond_path)
         ix = cx + (r_ring + 42) * math.cos(a)
         iy = cy + (r_ring + 42) * math.sin(a)
@@ -913,8 +946,8 @@ def _build_orbit_scene(
         photos,
         durations=stats.durations,
         offsets_seconds=stats.offsets_seconds,
-        first_contraction_at=stats.first_contraction_at,
-        born_at=birth.child_dob or birth.birth_completed_at,
+        first_contraction_at=_localize(stats.first_contraction_at),
+        born_at=_localize(birth.child_dob or birth.birth_completed_at),
         cx=template.clock_cx or template.width / 2,
         cy=template.clock_cy or template.height / 2,
     )
@@ -1254,7 +1287,7 @@ def _gather_quotes(db: Session, birth: Birth, *, limit: int, max_len: int) -> li
             {
                 "body": text,
                 "who": who or "family",
-                "when": _fmt_time(created_at),
+                "when": _fmt_time(_localize(created_at)),
             }
         )
     short = [q for q in cleaned if len(q["body"]) <= max_len]

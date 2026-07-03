@@ -18,7 +18,9 @@
   <!-- the opening card -->
   <text x="70" y="330" font-family="{{ p.body_font }}" font-size="30"
         font-weight="500" letter-spacing="9" fill="{{ p.accent }}">THE DAY</text>
-  <text x="64" y="500" font-family="{{ p.display_font }}" font-size="150"
+  {# shrink to fit the title panel — long names overflowed into the frames #}
+  {% set name_size = [150, (1050 / child_name|length)|int] | min %}
+  <text x="64" y="500" font-family="{{ p.display_font }}" font-size="{{ name_size }}"
         font-weight="300" font-style="italic" fill="{{ p.ink }}">{{ child_name }}</text>
   <text x="70" y="590" font-family="{{ p.body_font }}" font-size="34"
         letter-spacing="2" fill="{{ p.ink }}" opacity="0.62">arrived</text>

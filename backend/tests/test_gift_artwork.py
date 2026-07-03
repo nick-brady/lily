@@ -276,6 +276,18 @@ def test_lbs_oz_carry():
     assert gift_artwork._fmt_lbs_oz(7.75) == "7 lbs 12 oz"
 
 
+def test_localize_converts_aware_and_passes_naive():
+    from datetime import timezone
+
+    utc = datetime(2026, 4, 10, 14, 54, tzinfo=timezone.utc)
+    local = gift_artwork._localize(utc)
+    # America/New_York in April is EDT (UTC-4): 14:54 UTC → 10:54 am
+    assert gift_artwork._fmt_time(local) == "10:54 am"
+    naive = datetime(2026, 4, 10, 14, 54)
+    assert gift_artwork._localize(naive) is naive
+    assert gift_artwork._localize(None) is None
+
+
 def test_hours_clock_handles_missing_times():
     clock = gift_artwork.build_hours_clock(
         durations=[],
