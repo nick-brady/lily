@@ -8,8 +8,8 @@ has a real home and the gift artwork can render it.
 weights as decimal pounds, lengths as decimal inches, either nullable.
 Matches the shape of frontend/src/components/Predictions.jsx.
 
-Revision ID: 0011
-Revises: 0010
+Revision ID: 0012
+Revises: 0011
 Create Date: 2026-07-03 14:00:00.000000
 """
 from typing import Sequence, Union
@@ -19,8 +19,8 @@ from alembic import op
 from sqlalchemy.dialects.postgresql import JSONB
 
 
-revision: str = "0011"
-down_revision: Union[str, Sequence[str], None] = "0010"
+revision: str = "0012"
+down_revision: Union[str, Sequence[str], None] = "0011"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
