@@ -8,15 +8,11 @@ Flow (https://developers.printful.com, Mockup Generator API):
 Auth is a Bearer token (a private/store token from the Printful dashboard);
 account-level tokens also send an X-PF-Store-Id header.
 
-Product/variant IDs come from the Printful catalog and must be filled in for
-each product (see PRODUCT_MAP / the PRINTFUL_PRODUCT_MAP env override). Until a
-variant is mapped, `supports()` is False and the gallery keeps the flat
-artwork.
+The product/variant to render onto is chosen by the caller from the curated
+shortlist (`fulfillment.products`) and passed explicitly.
 """
 from __future__ import annotations
 
-import json
-import os
 import time
 
 import httpx
@@ -25,33 +21,9 @@ from fulfillment.base import FulfillmentAdapter, MockupError, MockupResult
 
 _BASE_URL = "https://api.printful.com"
 
-# product_kind -> Printful catalog ids. variant_id is intentionally None until
-# you pick the exact product variant in the Printful catalog; override the
-# whole map (or just the ids) with the PRINTFUL_PRODUCT_MAP env var (JSON).
-DEFAULT_PRODUCT_MAP: dict[str, dict] = {
-    "mug": {"product_id": 19, "variant_id": None, "placement": "default"},
-    "birth_announcement_cards": {
-        "product_id": None,
-        "variant_id": None,
-        "placement": "default",
-    },
-}
-
 _POLL_ATTEMPTS = 12
 _POLL_INTERVAL_SECONDS = 3
 _REQUEST_TIMEOUT = 30.0
-
-
-def _load_product_map() -> dict[str, dict]:
-    raw = os.getenv("PRINTFUL_PRODUCT_MAP")
-    if not raw:
-        return dict(DEFAULT_PRODUCT_MAP)
-    merged = dict(DEFAULT_PRODUCT_MAP)
-    try:
-        merged.update(json.loads(raw))
-    except (ValueError, TypeError):
-        pass  # malformed override → fall back to defaults
-    return merged
 
 
 class PrintfulAdapter(FulfillmentAdapter):
@@ -62,12 +34,10 @@ class PrintfulAdapter(FulfillmentAdapter):
         *,
         api_key: str,
         store_id: str | None = None,
-        product_map: dict[str, dict] | None = None,
         client: httpx.Client | None = None,
         poll_attempts: int = _POLL_ATTEMPTS,
         poll_interval_seconds: float = _POLL_INTERVAL_SECONDS,
     ) -> None:
-        self._product_map = product_map if product_map is not None else _load_product_map()
         self._poll_attempts = poll_attempts
         self._poll_interval = poll_interval_seconds
         headers = {"Authorization": f"Bearer {api_key}"}
@@ -81,19 +51,18 @@ class PrintfulAdapter(FulfillmentAdapter):
         if client is not None:
             self._client.headers.update(headers)
 
-    def supports(self, product_kind: str) -> bool:
-        m = self._product_map.get(product_kind)
-        return bool(m and m.get("product_id") and m.get("variant_id"))
-
-    def generate_mockup(self, *, artwork_url: str, product_kind: str) -> MockupResult:
-        m = self._product_map.get(product_kind)
-        if not (m and m.get("product_id") and m.get("variant_id")):
-            raise MockupError(f"no Printful mapping for {product_kind}")
-
+    def generate_mockup(
+        self,
+        *,
+        artwork_url: str,
+        product_id: int,
+        variant_id: int,
+        placement: str = "default",
+    ) -> MockupResult:
         task_key = self._create_task(
-            product_id=m["product_id"],
-            variant_id=m["variant_id"],
-            placement=m.get("placement", "default"),
+            product_id=product_id,
+            variant_id=variant_id,
+            placement=placement,
             artwork_url=artwork_url,
         )
         mockup_url = self._poll_for_mockup(task_key)
