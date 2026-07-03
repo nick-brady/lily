@@ -40,9 +40,10 @@
   {% endif %}
   {% endfor %}
 
-  <!-- the thread beneath the day -->
+  <!-- the thread beneath the day: the contractions, first wave to last,
+       with the star just beyond — she arrives after the final wave -->
   {% if has_sparkline %}
-  {% set hx, hy, hw, hh = 60, reel_band_y + 26, w - 210, 122 %}
+  {% set hx, hy, hw, hh = 60, reel_band_y + 26, w - 230, 122 %}
   <svg x="{{ hx }}" y="{{ hy }}" width="{{ hw }}" height="{{ hh }}"
        viewBox="0 0 1000 240" preserveAspectRatio="none">
     <path d="{{ spark_area_path }}" fill="url(#horizonFade)"/>
@@ -50,13 +51,16 @@
           stroke-width="4" stroke-linejoin="round" stroke-linecap="round"
           vector-effect="non-scaling-stroke"/>
   </svg>
-  {% set star_x = hx + spark_last_x / 1000 * hw %}
-  {% set star_y = hy + spark_last_y / 240 * hh %}
+  {% set star_x = hx + hw + 40 %}
+  {% set star_y = hy + spark_last_y / 240 * hh - 10 %}
   <path d="{{ sparkle(star_x, star_y, 20) }}" fill="{{ p.accent }}"/>
   {% if labor_start_time %}
   <text x="{{ hx + 4 }}" y="{{ reel_band_y + 22 }}" font-family="{{ p.body_font }}"
         font-size="25" letter-spacing="3" fill="{{ p.ink }}" opacity="0.55">{{ labor_start_time }}</text>
   {% endif %}
+  <text x="{{ hx + 190 }}" y="{{ reel_band_y + 22 }}" font-family="{{ p.display_font }}"
+        font-size="32" font-style="italic" fill="{{ p.ink }}"
+        opacity="0.5">the rhythm of labor, wave by wave</text>
   <text x="{{ star_x - 6 }}" y="{{ star_y + 54 }}" text-anchor="end"
         font-family="{{ p.body_font }}" font-size="25" letter-spacing="3"
         fill="{{ p.ink }}" opacity="0.55">{{ birth_time }}</text>

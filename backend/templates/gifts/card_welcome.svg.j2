@@ -44,14 +44,16 @@
           stroke-width="4" stroke-linejoin="round" stroke-linecap="round"
           vector-effect="non-scaling-stroke"/>
   </svg>
-  {% set star_x = hx + spark_last_x / 1000 * hw %}
-  {% set star_y = hy + spark_last_y / 240 * hh %}
+  {# the star floats beyond the last wave — the birth is the milestone
+     after the final contraction, not the contraction itself #}
+  {% set star_x = hx + hw + 42 %}
+  {% set star_y = hy + spark_last_y / 240 * hh - 12 %}
   <path d="{{ sparkle(star_x, star_y, 22) }}" fill="{{ p.accent }}"/>
   {% endif %}
 
   <text x="{{ w // 2 }}" y="1988" text-anchor="middle"
         font-family="{{ p.display_font }}" font-size="42" font-style="italic"
-        fill="{{ p.ink }}" opacity="0.6">the rhythm of labor, hour by hour</text>
+        fill="{{ p.ink }}" opacity="0.6">the rhythm of labor, wave by wave</text>
   <text x="{{ w // 2 }}" y="2044" text-anchor="middle" font-family="{{ p.body_font }}"
         font-size="28" letter-spacing="6" fill="{{ p.ink }}"
         opacity="0.45">{{ count }} CONTRACTIONS · {{ labor_duration|upper }} OF LABOR</text>

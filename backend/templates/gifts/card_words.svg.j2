@@ -46,9 +46,12 @@
           stroke-width="4" stroke-linejoin="round" stroke-linecap="round"
           vector-effect="non-scaling-stroke"/>
   </svg>
-  {% set star_x = hx + spark_last_x / 1000 * hw %}
-  {% set star_y = hy + spark_last_y / 240 * hh %}
+  {% set star_x = hx + hw + 38 %}
+  {% set star_y = hy + spark_last_y / 240 * hh - 10 %}
   <path d="{{ sparkle(star_x, star_y, 20) }}" fill="{{ p.accent }}"/>
+  <text x="{{ w // 2 }}" y="{{ hy - 22 }}" text-anchor="middle"
+        font-family="{{ p.display_font }}" font-size="34" font-style="italic"
+        fill="{{ p.ink }}" opacity="0.5">the rhythm of labor, wave by wave</text>
   {% endif %}
 
   <text x="{{ w // 2 }}" y="2030" text-anchor="middle" font-family="{{ p.body_font }}"

@@ -32,9 +32,11 @@
         letter-spacing="5" fill="{{ p.ink }}"
         opacity="0.5">{{ count }} CONTRACTIONS · {{ labor_duration|upper }} · EVERY {{ avg_interval|upper }}</text>
 
-  <!-- the labor horizon, wrapping the mug -->
+  <!-- the labor horizon, wrapping the mug. The line is the contractions,
+       first wave to last; the star floats just beyond it — the birth is the
+       milestone after the final wave, not the wave itself. -->
   {% if has_sparkline %}
-  {% set hx, hy, hw, hh = 0, 730, 2440, 310 %}
+  {% set hx, hy, hw, hh = 0, 730, 2380, 310 %}
   <svg x="{{ hx }}" y="{{ hy }}" width="{{ hw }}" height="{{ hh }}"
        viewBox="0 0 1000 240" preserveAspectRatio="none">
     <path d="{{ spark_area_path }}" fill="url(#horizonFade)"/>
@@ -42,11 +44,13 @@
           stroke-width="5" stroke-linejoin="round" stroke-linecap="round"
           vector-effect="non-scaling-stroke"/>
   </svg>
-  {% set star_x = hx + spark_last_x / 1000 * hw %}
-  {% set star_y = hy + spark_last_y / 240 * hh %}
+  {% set star_x = hx + hw + 48 %}
+  {% set star_y = hy + spark_last_y / 240 * hh - 14 %}
   <path d="{{ sparkle(star_x, star_y, 26) }}" fill="{{ p.accent }}"/>
   <text x="{{ star_x - 12 }}" y="{{ star_y - 52 }}" text-anchor="end"
         font-family="{{ p.body_font }}" font-size="28" letter-spacing="3"
         fill="{{ p.ink }}" opacity="0.55">{{ birth_time }}</text>
+  <text x="54" y="1108" font-family="{{ p.display_font }}" font-size="38"
+        font-style="italic" fill="{{ p.ink }}" opacity="0.55">the rhythm of labor, wave by wave{% if labor_start_time %} — from {{ labor_start_time }}{% endif %}</text>
   {% endif %}
 </svg>
