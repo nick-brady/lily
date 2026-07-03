@@ -478,6 +478,7 @@ dependencies = [
     { name = "boto3" },
     { name = "cairosvg" },
     { name = "fastapi" },
+    { name = "httpx" },
     { name = "jinja2" },
     { name = "psycopg2-binary" },
     { name = "pydantic", extra = ["email"] },
@@ -489,7 +490,6 @@ dependencies = [
 
 [package.dev-dependencies]
 dev = [
-    { name = "httpx" },
     { name = "pytest" },
 ]
 
@@ -500,6 +500,7 @@ requires-dist = [
     { name = "boto3", specifier = ">=1.34.0" },
     { name = "cairosvg", specifier = ">=2.7.0" },
     { name = "fastapi", specifier = ">=0.109.0" },
+    { name = "httpx", specifier = ">=0.27" },
     { name = "jinja2", specifier = ">=3.1.0" },
     { name = "psycopg2-binary", specifier = ">=2.9.9" },
     { name = "pydantic", extras = ["email"], specifier = ">=2.5.0" },
@@ -510,10 +511,7 @@ requires-dist = [
 ]
 
 [package.metadata.requires-dev]
-dev = [
-    { name = "httpx", specifier = ">=0.27" },
-    { name = "pytest", specifier = ">=8.0" },
-]
+dev = [{ name = "pytest", specifier = ">=8.0" }]
 
 [[package]]
 name = "mako"
