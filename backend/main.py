@@ -80,6 +80,7 @@ from repositories import media as media_repo
 from repositories import reactions as reactions_repo
 from repositories import timeline as timeline_repo
 from repositories import users as users_repo
+import fulfillment
 from fulfillment import products as fulfillment_products
 from storage import ensure_bucket, presigned_get_url, put_object
 from schemas import (
@@ -1611,6 +1612,12 @@ def request_rendering_product_mockup(
         raise HTTPException(status_code=404, detail="Unknown product for this design")
     if rendering.status != GiftRenderingStatus.ready:
         raise HTTPException(status_code=409, detail="Design is not ready yet")
+    if fulfillment.get_adapter() is None:
+        # No partner configured (dev without PRINTFUL_API_KEY): say so instead
+        # of writing a doomed row that renders as a puzzling failed tile.
+        raise HTTPException(
+            status_code=503, detail="Product previews aren't configured"
+        )
 
     mockup, should_render = gifts_repo.get_or_create_product_mockup(
         db, rendering=rendering, product_key=product_key
