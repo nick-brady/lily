@@ -39,6 +39,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from auth import (
+    ChallengeCooldownError,
     get_current_user,
     get_current_user_stream,
     get_optional_current_user,
@@ -46,6 +47,7 @@ from auth import (
     verify_challenge,
     FRONTEND_URL,
 )
+from messenger import ChallengeDeliveryError
 from db import get_db
 from events import (
     broker,
@@ -163,7 +165,19 @@ async def root() -> dict:
 
 @app.post("/auth/request", response_model=AuthRequestOut)
 def auth_request(payload: AuthRequestIn, db: Session = Depends(get_db)) -> AuthRequestOut:
-    return request_challenge(payload, db)
+    try:
+        return request_challenge(payload, db)
+    except ChallengeCooldownError:
+        raise HTTPException(
+            status_code=429, detail="A code was just sent — give it a moment"
+        )
+    except ChallengeDeliveryError:
+        # identifier-neutral: the failure is provider trouble, not a signal
+        # about whether the identifier exists
+        raise HTTPException(
+            status_code=503,
+            detail="We couldn't send your code — try again in a minute",
+        )
 
 
 @app.post("/auth/verify", response_model=TokenOut)

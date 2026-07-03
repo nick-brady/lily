@@ -74,6 +74,11 @@ services:
       AWS_PUBLIC_ENDPOINT_URL: ${AWS_PUBLIC_ENDPOINT_URL:-http://localhost:9000}
       PRINTFUL_API_KEY: ${PRINTFUL_API_KEY:-}
       PRINTFUL_STORE_ID: ${PRINTFUL_STORE_ID:-}
+      RESEND_API_KEY: ${RESEND_API_KEY:-}
+      RESEND_FROM: ${RESEND_FROM:-}
+      TWILIO_ACCOUNT_SID: ${TWILIO_ACCOUNT_SID:-}
+      TWILIO_AUTH_TOKEN: ${TWILIO_AUTH_TOKEN:-}
+      TWILIO_FROM: ${TWILIO_FROM:-}
     # No published host port: the browser reaches the API same-origin via
     # the frontend's /api proxy, and containers use the compose network.
     volumes:
