@@ -177,6 +177,22 @@ export const api = {
     return jsonOrThrow(res);
   },
 
+  async listRenderingProducts(birthId, renderingId) {
+    const res = await fetch(
+      `${API_URL}/birth/${birthId}/gifts/${renderingId}/products`,
+      { headers: authHeaders() },
+    );
+    return jsonOrThrow(res);
+  },
+
+  async requestRenderingProductMockup(birthId, renderingId, productKey) {
+    const res = await fetch(
+      `${API_URL}/birth/${birthId}/gifts/${renderingId}/products/${productKey}/mockup`,
+      { method: 'POST', headers: authHeaders() },
+    );
+    return jsonOrThrow(res);
+  },
+
   async listInvitations(birthId) {
     const res = await fetch(`${API_URL}/birth/${birthId}/invitations`, {
       headers: authHeaders(),

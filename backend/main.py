@@ -62,6 +62,7 @@ from models import (
     Family,
     FamilyMembership,
     FamilyRole,
+    GiftRenderingStatus,
     MediaAsset,
     MediaKind,
     ReactionKind,
@@ -79,6 +80,7 @@ from repositories import media as media_repo
 from repositories import reactions as reactions_repo
 from repositories import timeline as timeline_repo
 from repositories import users as users_repo
+from fulfillment import products as fulfillment_products
 from storage import ensure_bucket, presigned_get_url, put_object
 from schemas import (
     AuthRequestIn,
@@ -103,6 +105,8 @@ from schemas import (
     GiftItemOut,
     GiftRenderingOut,
     GiftRenderingPatchIn,
+    ProductMockupOut,
+    RenderingProductsOut,
     InvitationContextOut,
     InvitationCreateIn,
     InvitationCreatedOut,
@@ -1529,6 +1533,91 @@ def patch_gift_rendering(
     db.commit()
     db.refresh(rendering)
     return _serialize_rendering(rendering)
+
+
+def _serialize_rendering_products(db, rendering) -> RenderingProductsOut:
+    product_kind = gifts_repo.product_kind_for_rendering(db, rendering)
+    products = (
+        fulfillment_products.for_product_kind(product_kind) if product_kind else []
+    )
+    cached = gifts_repo.list_product_mockups(db, rendering_id=rendering.id)
+    return RenderingProductsOut(
+        rendering_id=rendering.id,
+        products=[
+            _serialize_product_mockup(product, cached.get(product.key))
+            for product in products
+        ],
+    )
+
+
+def _serialize_product_mockup(product, mockup) -> ProductMockupOut:
+    return ProductMockupOut(
+        product_key=product.key,
+        display_name=product.display_name,
+        status=mockup.status if mockup is not None else "none",
+        mockup_url=(
+            gifts_repo.product_mockup_url(mockup) if mockup is not None else None
+        ),
+    )
+
+
+def _load_rendering_for_products(db, access, rendering_id):
+    """Fetch a rendering for the product-picker routes, applying the same
+    visibility rule as the other gift routes (viewers only see visible
+    renderings)."""
+    rendering = gifts_repo.get_rendering(
+        db, birth_id=access.birth.id, rendering_id=rendering_id
+    )
+    is_parent = births_repo.is_parent(access.role)
+    if rendering is None or (not is_parent and not rendering.is_visible_to_viewers):
+        raise HTTPException(status_code=404, detail="Rendering not found")
+    return rendering
+
+
+@app.get(
+    "/birth/{birth_id}/gifts/{rendering_id}/products",
+    response_model=RenderingProductsOut,
+)
+def list_rendering_products(
+    rendering_id: uuid.UUID,
+    access: BirthAccess = Depends(require_birth_access),
+    db: Session = Depends(get_db),
+) -> RenderingProductsOut:
+    """The shortlist of products this design can be shown on, plus any cached
+    mockup per product."""
+    rendering = _load_rendering_for_products(db, access, rendering_id)
+    return _serialize_rendering_products(db, rendering)
+
+
+@app.post(
+    "/birth/{birth_id}/gifts/{rendering_id}/products/{product_key}/mockup",
+    response_model=ProductMockupOut,
+)
+def request_rendering_product_mockup(
+    rendering_id: uuid.UUID,
+    product_key: str,
+    background_tasks: BackgroundTasks,
+    access: BirthAccess = Depends(require_birth_access),
+    db: Session = Depends(get_db),
+) -> ProductMockupOut:
+    """Request (get-or-create) a product mockup for a design on a shortlist
+    product. Schedules a background render only for a new or previously-failed
+    row; a cached row is returned as-is. The client polls the list endpoint
+    for status."""
+    rendering = _load_rendering_for_products(db, access, rendering_id)
+    product = fulfillment_products.get(product_key)
+    product_kind = gifts_repo.product_kind_for_rendering(db, rendering)
+    if product is None or product.product_kind != product_kind:
+        raise HTTPException(status_code=404, detail="Unknown product for this design")
+    if rendering.status != GiftRenderingStatus.ready:
+        raise HTTPException(status_code=409, detail="Design is not ready yet")
+
+    mockup, should_render = gifts_repo.get_or_create_product_mockup(
+        db, rendering=rendering, product_key=product_key
+    )
+    if should_render:
+        background_tasks.add_task(gifts_repo.render_product_mockup, mockup.id)
+    return _serialize_product_mockup(product, mockup)
 
 
 # ============ Co-parents (family-scoped) ============

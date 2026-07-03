@@ -443,6 +443,22 @@ class GiftRenderingPatchIn(BaseModel):
     is_visible_to_viewers: bool
 
 
+class ProductMockupOut(BaseModel):
+    """One shortlist product for the "see this design on another product"
+    picker. `status`: 'none' (never requested) | 'pending' | 'ready' |
+    'failed'. `mockup_url` is set only when ready."""
+
+    product_key: str
+    display_name: str
+    status: str = "none"
+    mockup_url: Optional[str] = None
+
+
+class RenderingProductsOut(BaseModel):
+    rendering_id: uuid.UUID
+    products: list[ProductMockupOut] = []
+
+
 # Convenience for tests / fixtures that need to validate an EmailStr-shaped
 # value without importing pydantic.EmailStr at call sites.
 EmailString = EmailStr

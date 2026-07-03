@@ -79,7 +79,7 @@ export default function GiftGallery({ birthId }) {
       ) : (
         <div className="space-y-6">
           {items.map((item) => (
-            <GiftItemCard key={item.id} item={item} />
+            <GiftItemCard key={item.id} item={item} birthId={birthId} />
           ))}
         </div>
       )}
@@ -87,7 +87,7 @@ export default function GiftGallery({ birthId }) {
   );
 }
 
-function GiftItemCard({ item }) {
+function GiftItemCard({ item, birthId }) {
   return (
     <div>
       <div className="flex items-baseline justify-between mb-2">
@@ -111,7 +111,7 @@ function GiftItemCard({ item }) {
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           {item.renderings.map((r) => (
-            <RenderingTile key={r.id} rendering={r} />
+            <RenderingTile key={r.id} rendering={r} birthId={birthId} />
           ))}
         </div>
       )}
@@ -119,7 +119,8 @@ function GiftItemCard({ item }) {
   );
 }
 
-function RenderingTile({ rendering }) {
+function RenderingTile({ rendering, birthId }) {
+  const [pickerOpen, setPickerOpen] = useState(false);
   // Prefer the product mockup (artwork on the real mug/card) when ready;
   // otherwise show the flat artwork.
   const src = rendering.mockup_url || rendering.artwork_url;
@@ -145,6 +146,173 @@ function RenderingTile({ rendering }) {
           Designing…
         </div>
       )}
+
+      {rendering.status === 'ready' && (
+        <button
+          type="button"
+          onClick={() => setPickerOpen(true)}
+          className="w-full px-3 py-2 text-xs t-muted hover:t-ink text-left transition-colors"
+        >
+          See this design on another product →
+        </button>
+      )}
+
+      {pickerOpen && (
+        <ProductPickerDialog
+          birthId={birthId}
+          rendering={rendering}
+          onClose={() => setPickerOpen(false)}
+        />
+      )}
     </div>
+  );
+}
+
+function ProductPickerDialog({ birthId, rendering, onClose }) {
+  const [products, setProducts] = useState(null);
+  const [error, setError] = useState('');
+  const pollRef = useRef(null);
+
+  const load = useCallback(async () => {
+    try {
+      const data = await api.listRenderingProducts(birthId, rendering.id);
+      setProducts(data.products);
+      setError('');
+      return data.products;
+    } catch (err) {
+      setError(err.message || 'Could not load products');
+      return null;
+    }
+  }, [birthId, rendering.id]);
+
+  useEffect(() => {
+    load();
+    return () => clearTimeout(pollRef.current);
+  }, [load]);
+
+  // Poll while any requested mockup is still generating.
+  useEffect(() => {
+    const pending = (products || []).some((p) => p.status === 'pending');
+    if (!pending) return undefined;
+    pollRef.current = setTimeout(load, 2500);
+    return () => clearTimeout(pollRef.current);
+  }, [products, load]);
+
+  const requestMockup = async (productKey) => {
+    // Optimistically flip to pending so the tile shows the designing state.
+    setProducts((prev) =>
+      (prev || []).map((p) =>
+        p.product_key === productKey ? { ...p, status: 'pending' } : p,
+      ),
+    );
+    try {
+      const updated = await api.requestRenderingProductMockup(
+        birthId,
+        rendering.id,
+        productKey,
+      );
+      setProducts((prev) =>
+        (prev || []).map((p) => (p.product_key === productKey ? updated : p)),
+      );
+    } catch (err) {
+      setError(err.message || 'Could not start the preview');
+    }
+  };
+
+  return (
+    <div
+      className="fixed inset-0 z-50 bg-black/40 flex items-end sm:items-center justify-center"
+      onClick={onClose}
+    >
+      <div
+        className="animate-slide-up w-full sm:max-w-lg bg-white dark:bg-gray-900
+                   rounded-t-2xl sm:rounded-2xl shadow-xl p-5 space-y-4 max-h-[85vh] overflow-y-auto"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="text-center">
+          <h2 className="text-base font-semibold text-gray-800 dark:text-white">
+            Put this design on another product
+          </h2>
+          <p className="text-xs t-muted mt-1">
+            Tap a product to preview this design on it.
+          </p>
+        </div>
+
+        {error && (
+          <div className="p-3 rounded-lg bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-300 text-sm">
+            {error}
+          </div>
+        )}
+
+        {products === null ? (
+          <p className="text-sm t-muted text-center py-6">Loading products…</p>
+        ) : products.length === 0 ? (
+          <p className="text-sm t-muted text-center py-6">
+            No other products available for this design yet.
+          </p>
+        ) : (
+          <div className="grid grid-cols-2 gap-3">
+            {products.map((p) => (
+              <ProductOption
+                key={p.product_key}
+                product={p}
+                onRequest={() => requestMockup(p.product_key)}
+              />
+            ))}
+          </div>
+        )}
+
+        <button
+          type="button"
+          onClick={onClose}
+          className="w-full py-3 rounded-xl text-sm font-medium text-gray-600 dark:text-gray-300
+                     bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors"
+        >
+          Done
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function ProductOption({ product, onRequest }) {
+  const clickable = product.status === 'none' || product.status === 'failed';
+  return (
+    <button
+      type="button"
+      onClick={clickable ? onRequest : undefined}
+      disabled={!clickable}
+      className="rounded-lg border overflow-hidden text-left disabled:cursor-default"
+      style={{ borderColor: 'var(--t-soft-ring)' }}
+    >
+      {product.status === 'ready' && product.mockup_url ? (
+        <img
+          src={product.mockup_url}
+          alt={`${product.display_name} preview`}
+          className="w-full block aspect-square object-cover"
+          style={{ backgroundColor: 'var(--t-soft-bg)' }}
+        />
+      ) : product.status === 'pending' ? (
+        <div className="aspect-square flex items-center justify-center text-xs t-muted gap-2">
+          <span className="w-3 h-3 rounded-full animate-pulse" style={{ backgroundColor: 'var(--t-dot)' }} />
+          Designing…
+        </div>
+      ) : product.status === 'failed' ? (
+        <div className="aspect-square flex flex-col items-center justify-center text-xs text-red-500 gap-1 px-2 text-center">
+          Couldn't preview.
+          <span className="t-muted">Tap to retry</span>
+        </div>
+      ) : (
+        <div
+          className="aspect-square flex items-center justify-center text-xs t-muted px-2 text-center"
+          style={{ backgroundColor: 'var(--t-soft-bg)' }}
+        >
+          Tap to preview
+        </div>
+      )}
+      <div className="px-2 py-2 text-xs font-medium t-ink">
+        {product.display_name}
+      </div>
+    </button>
   );
 }

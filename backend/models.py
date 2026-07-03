@@ -647,3 +647,37 @@ class GiftRendering(Base):
             postgresql_where=sa.text("deleted_at IS NULL"),
         ),
     )
+
+
+class GiftRenderingMockup(Base):
+    """A product mockup of one rendering's artwork on a specific shortlist
+    product (see `fulfillment/products.py`). Generated on demand for the "see
+    this design on another product" picker and cached — one row per
+    (rendering, product_key). `status`: 'pending' | 'ready' | 'failed'."""
+
+    __tablename__ = "gift_rendering_mockups"
+
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    gift_rendering_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        sa.ForeignKey("gift_renderings.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    product_key: Mapped[str] = mapped_column(sa.Text, nullable=False)
+    status: Mapped[str] = mapped_column(
+        sa.Text, nullable=False, server_default="pending"
+    )
+    mockup_s3_key: Mapped[str | None] = mapped_column(sa.Text, nullable=True)
+    created_at: Mapped[datetime] = _created_at()
+    updated_at: Mapped[datetime] = _updated_at()
+
+    __table_args__ = (
+        sa.Index(
+            "ix_gift_rendering_mockups_rendering", "gift_rendering_id"
+        ),
+        sa.UniqueConstraint(
+            "gift_rendering_id",
+            "product_key",
+            name="uq_gift_rendering_mockups_rendering_product",
+        ),
+    )
