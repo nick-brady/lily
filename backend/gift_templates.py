@@ -62,6 +62,17 @@ TEMPLATES: dict[str, GiftTemplate] = {
         clock_cx=640,
         clock_cy=577,
     ),
+    # The reel: the day as a filmstrip — rotating the mug plays the story.
+    "mug_reel": GiftTemplate(
+        template_id="mug_reel",
+        product_kind="mug",
+        svg="mug_reel.svg.j2",
+        width=2475,
+        height=1155,
+        dpi=300,
+        photo=False,
+        scene="reel",
+    ),
     # Hero photo with the contraction line wrapping the mug as a horizon.
     "mug_horizon": GiftTemplate(
         template_id="mug_horizon",
@@ -113,6 +124,17 @@ TEMPLATES: dict[str, GiftTemplate] = {
         scene="orbit",
         clock_cx=750,
         clock_cy=920,
+    ),
+    # The reel, read downward: a photo essay of the day.
+    "card_reel": GiftTemplate(
+        template_id="card_reel",
+        product_kind="birth_announcement_cards",
+        svg="card_reel.svg.j2",
+        width=1500,
+        height=2100,
+        dpi=300,
+        photo=False,
+        scene="reel",
     ),
     # The family's own comments as the artwork, with attribution.
     "card_words": GiftTemplate(

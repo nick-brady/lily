@@ -97,6 +97,18 @@ def _context(template):
                 reactions_total=12,
             )
         )
+    elif template.scene == "reel":
+        ctx.update(
+            gift_artwork.build_reel_scene(
+                [
+                    {"uri": _PIXEL, "caption": "first signs", "occurred_at": _FIRST_AT},
+                    {"uri": _PIXEL, "caption": "she's here", "occurred_at": _BORN_AT},
+                ],
+                width=template.width,
+                height=template.height,
+                layout="mug" if template.product_kind == "mug" else "card",
+            )
+        )
     elif template.scene == "story":
         scene = gift_artwork.build_story_scene(
             [
@@ -199,6 +211,25 @@ def test_wrap_respects_width_and_line_cap():
     assert all(len(line) <= 24 for line in lines)
     assert lines[-1].endswith("…")
     assert gift_artwork._wrap("short", 40) == ["short"]
+
+
+def test_reel_panels_fill_their_region():
+    photos = [
+        {"uri": _PIXEL, "caption": f"c{i}", "occurred_at": _FIRST_AT + timedelta(hours=i)}
+        for i in range(6)
+    ]
+    mug = gift_artwork.build_reel_scene(photos, width=2475, height=1155, layout="mug")
+    assert len(mug["reel_panels"]) == 4  # capped and evenly sampled
+    last = mug["reel_panels"][-1]
+    assert last["x"] + last["w"] == pytest.approx(2475, abs=1)
+    # chronological order preserved, first and last photos kept
+    assert mug["reel_panels"][0]["caption"] == "c0"
+    assert last["caption"] == "c5"
+
+    card = gift_artwork.build_reel_scene(photos, width=1500, height=2100, layout="card")
+    assert len(card["reel_panels"]) == 3
+    bottom = card["reel_panels"][-1]
+    assert bottom["y"] + bottom["h"] <= card["reel_band_y"]
 
 
 def test_hours_clock_handles_missing_times():

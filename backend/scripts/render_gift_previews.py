@@ -35,6 +35,7 @@ from gift_artwork import (  # noqa: E402
     _spark_path,
     build_hours_clock,
     build_orbit_scene,
+    build_reel_scene,
     build_story_scene,
     build_words_scene,
     render_context,
@@ -81,6 +82,11 @@ def fake_photo(w: int = 900, h: int = 900, hue: tuple = (233, 213, 220)) -> str:
     # a vague sleeping-baby blob so the crop/framing reads
     d.ellipse((w * 0.30, h * 0.34, w * 0.70, h * 0.62), fill=(250, 244, 240))
     d.ellipse((w * 0.38, h * 0.55, w * 0.62, h * 0.80), fill=(246, 238, 232))
+    # soft vignette so placeholders read as photographs, not swatches
+    from PIL import ImageChops
+    vign = Image.radial_gradient("L").resize((w, h))
+    vign = vign.point(lambda v: 255 - int(v * 0.30))
+    im = ImageChops.multiply(im, Image.merge("RGB", [vign] * 3))
     buf = io.BytesIO()
     im.save(buf, format="JPEG", quality=85)
     return "data:image/jpeg;base64," + base64.b64encode(buf.getvalue()).decode()
@@ -171,6 +177,16 @@ def main() -> None:
                     "We can't wait to meet her.",
                 ]
                 context.update(scene)
+            elif template.scene == "reel":
+                layout = "mug" if template.product_kind == "mug" else "card"
+                context.update(
+                    build_reel_scene(
+                        story_photos,
+                        width=template.width,
+                        height=template.height,
+                        layout=layout,
+                    )
+                )
             elif template.scene == "words":
                 context.update(
                     build_words_scene(

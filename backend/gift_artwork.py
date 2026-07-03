@@ -118,6 +118,8 @@ def render(
         context.update(_build_story_scene(db, birth, template))
     elif template.scene == "words":
         context.update(_build_words_scene(db, birth, template))
+    elif template.scene == "reel":
+        context.update(_build_reel_scene(db, birth, template))
 
     png = render_context(template, context)
 
@@ -718,6 +720,76 @@ def _build_orbit_scene(
         born_at=birth.child_dob or birth.birth_completed_at,
         cx=template.clock_cx or template.width / 2,
         cy=template.clock_cy or template.height / 2,
+    )
+
+
+# ── the reel: the day as a filmstrip of photos ────────────────────────────
+# Photo-first: full-bleed chronological panels (rotating the mug plays the
+# day; the card reads downward), each stamped with its time and caption on a
+# scrim. The data stays delicate — one continuous labor thread in a quiet
+# band beneath the strip, ending in the star at the minute of birth.
+
+_REEL_GUTTER = 8
+_REEL_BAND_H = 185
+_REEL_TITLE_W = 540  # mug title panel (the "opening card")
+_REEL_HEADER_H = 430  # card title block
+
+
+def build_reel_scene(photos: list[dict], *, width: float, height: float, layout: str) -> dict:
+    """Panel geometry for the filmstrip. `layout` is "mug" (title panel +
+    horizontal strip) or "card" (title block + stacked rows). Assumes at
+    least one photo — the DB wrapper raises before calling otherwise."""
+    band_y = height - _REEL_BAND_H
+    panels = []
+    if layout == "mug":
+        photos = _sample_spaced(photos, 4)
+        n = len(photos)
+        region_w = width - _REEL_TITLE_W
+        panel_w = (region_w - _REEL_GUTTER * (n - 1)) / n
+        for i, ph in enumerate(photos):
+            panels.append(
+                {
+                    "x": round(_REEL_TITLE_W + i * (panel_w + _REEL_GUTTER), 1),
+                    "y": 0,
+                    "w": round(panel_w, 1),
+                    "h": round(band_y - _REEL_GUTTER, 1),
+                    "href": ph["uri"],
+                    "caption": ph.get("caption") or "",
+                    "time": _fmt_time(ph.get("occurred_at")),
+                }
+            )
+    else:
+        photos = _sample_spaced(photos, 3)
+        n = len(photos)
+        region_h = band_y - _REEL_GUTTER - _REEL_HEADER_H
+        row_h = (region_h - _REEL_GUTTER * (n - 1)) / n
+        for i, ph in enumerate(photos):
+            panels.append(
+                {
+                    "x": 0,
+                    "y": round(_REEL_HEADER_H + i * (row_h + _REEL_GUTTER), 1),
+                    "w": width,
+                    "h": round(row_h, 1),
+                    "href": ph["uri"],
+                    "caption": ph.get("caption") or "",
+                    "time": _fmt_time(ph.get("occurred_at")),
+                }
+            )
+    return {
+        "reel_panels": panels,
+        "reel_band_y": round(band_y, 1),
+        "reel_title_w": _REEL_TITLE_W,
+        "reel_header_h": _REEL_HEADER_H,
+    }
+
+
+def _build_reel_scene(db: Session, birth: Birth, template: GiftTemplate) -> dict:
+    layout = "mug" if template.product_kind == "mug" else "card"
+    photos = _gather_photos(db, birth, limit=4 if layout == "mug" else 3)
+    if not photos:
+        raise ArtworkError("missing-photo")
+    return build_reel_scene(
+        photos, width=template.width, height=template.height, layout=layout
     )
 
 
