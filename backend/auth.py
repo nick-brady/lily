@@ -28,7 +28,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from db import get_db
-from messenger import ConsoleMessenger, Messenger
+from messenger import ChallengeDeliveryError, Messenger, get_messenger
 from models import AuthChallenge, AuthIdentifierKind, User
 from repositories import invitations as invitations_repo
 from repositories import users as users_repo
@@ -42,13 +42,18 @@ JWT_ALGORITHM = "HS256"
 JWT_TTL = timedelta(days=30)
 CHALLENGE_TTL = timedelta(minutes=15)
 MAX_ATTEMPTS_PER_CHALLENGE = 5
+CHALLENGE_COOLDOWN_SECONDS = 30
+
+
+class ChallengeCooldownError(Exception):
+    """A code was requested again too quickly for the same identifier."""
 
 FRONTEND_URL = os.environ.get("FRONTEND_URL", "http://localhost:3000")
 
 EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 
 _security = HTTPBearer(auto_error=False)
-_messenger: Messenger = ConsoleMessenger()
+_messenger: Messenger = get_messenger()
 
 
 def set_messenger(messenger: Messenger) -> None:
@@ -119,22 +124,25 @@ def _decode_access_token(token: str) -> uuid.UUID | None:
 def request_challenge(payload: AuthRequestIn, db: Session) -> AuthRequestOut:
     identifier, kind = normalize_identifier(payload.identifier)
 
-    # Invalidate any existing unconsumed challenges for this identifier;
-    # only the most recent challenge should be usable.
-    db.execute(
-        select(AuthChallenge)
-        .where(
-            AuthChallenge.identifier == identifier,
-            AuthChallenge.consumed_at.is_(None),
-        )
-    )
-    for prior in db.scalars(
+    now = datetime.now(timezone.utc)
+    priors = db.scalars(
         select(AuthChallenge).where(
             AuthChallenge.identifier == identifier,
             AuthChallenge.consumed_at.is_(None),
         )
-    ).all():
-        prior.consumed_at = datetime.now(timezone.utc)
+    ).all()
+
+    # Minimal per-identifier cooldown: with real SMS/email providers wired
+    # up, an unthrottled request endpoint is a provider bill. A fuller
+    # throttle (per-IP, captcha) is future work.
+    for prior in priors:
+        if (now - prior.created_at).total_seconds() < CHALLENGE_COOLDOWN_SECONDS:
+            raise ChallengeCooldownError()
+
+    # Invalidate the existing unconsumed challenges; only the most recent
+    # challenge should be usable.
+    for prior in priors:
+        prior.consumed_at = now
 
     salt = _random_salt()
     code = _random_code()
@@ -154,9 +162,18 @@ def request_challenge(payload: AuthRequestIn, db: Session) -> AuthRequestOut:
 
     magic_link_token = f"{challenge.id}.{secret}"
     magic_link_url = f"{FRONTEND_URL}/auth/verify?token={magic_link_token}"
-    _messenger.send_challenge(identifier, kind, code, magic_link_url)
 
+    # Commit before sending: a provider hiccup must not roll back the
+    # challenge (the next request invalidates it anyway), and the send
+    # shouldn't sit inside an open transaction.
     db.commit()
+    try:
+        _messenger.send_challenge(identifier, kind, code, magic_link_url)
+    except ChallengeDeliveryError:
+        raise
+    except Exception as exc:  # a misbehaving messenger is still a 503
+        raise ChallengeDeliveryError(str(exc)) from exc
+
     return AuthRequestOut(
         identifier_kind=kind,
         expires_in_seconds=int(CHALLENGE_TTL.total_seconds()),
