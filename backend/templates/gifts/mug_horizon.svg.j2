@@ -1,5 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink"
      width="{{ w }}" height="{{ h }}" viewBox="0 0 {{ w }} {{ h }}">
+{% from "_horizon.svg.j2" import horizon_callouts with context %}
   <defs>
     <clipPath id="heroCircle">
       <circle cx="600" cy="470" r="330"/>
@@ -50,6 +51,8 @@
   <text x="{{ star_x - 12 }}" y="{{ star_y - 52 }}" text-anchor="end"
         font-family="{{ p.body_font }}" font-size="28" letter-spacing="3"
         fill="{{ p.ink }}" opacity="0.55">{{ birth_time }}</text>
+  {# valley label drops below the photo circle's reach on this layout #}
+  {{ horizon_callouts(hx, hy, hw, hh, label_size=26, valley_ly=888) }}
   <text x="54" y="1108" font-family="{{ p.display_font }}" font-size="38"
         font-style="italic" fill="{{ p.ink }}" opacity="0.55">the rhythm of labor, wave by wave{% if labor_start_time %} — from {{ labor_start_time }}{% endif %}</text>
   {% endif %}

@@ -29,4 +29,10 @@
         font-family="{{ p.body_font }}" font-size="{{ label_size }}" letter-spacing="3"
         fill="{{ p.ink }}" opacity="0.55">{{ labor_start_time }}</text>
   {% endif %}
+  {% for m in clock_milestones or [] %}
+  <path d="{{ m.d }}" fill="{{ p.accent }}" opacity="0.75"/>
+  <text x="{{ m.lx }}" y="{{ m.ly }}" text-anchor="{{ m.anchor }}"
+        font-family="{{ p.body_font }}" font-size="{{ label_size - 5 }}" letter-spacing="3"
+        fill="{{ p.ink }}" opacity="0.5">{{ m.label|upper }}</text>
+  {% endfor %}
 {% endmacro %}

@@ -21,6 +21,7 @@ import gift_stats
 import gift_themes
 from gift_templates import GiftTemplate
 from models import (
+    AudienceScope,
     Birth,
     MediaAsset,
     MediaKind,
@@ -92,6 +93,7 @@ def render(
         "spark_area_path": _spark_area_path(stats.durations),
         "spark_last_x": spark_last[0] if spark_last else 0,
         "spark_last_y": spark_last[1] if spark_last else 0,
+        "spark_callouts": _spark_callouts(stats.durations),
         "labor_start_time": _fmt_time(stats.first_contraction_at),
         "photo_data_uri": photo_data_uri,
     }
@@ -108,6 +110,8 @@ def render(
                 born_at=when,
                 cx=context["clock_cx"],
                 cy=context["clock_cy"],
+                milestones=_gather_milestones(db, birth, stats),
+                canvas_w=template.width,
                 **CLOCK_PRESETS[template.scene],
             )
         )
@@ -267,6 +271,48 @@ def _gather_photos(db: Session, birth: Birth, *, limit: int) -> list[dict]:
         caption = _truncate(_clean_text((e.payload or {}).get("caption")), 18)
         out.append({"uri": uri, "caption": caption, "occurred_at": e.occurred_at})
     return _sample_spaced(out, limit)
+
+
+def _humanize_kind(kind: str | None) -> str:
+    return (kind or "milestone").replace("_", " ")
+
+
+def _gather_milestones(db: Session, birth: Birth, stats) -> list[dict]:
+    """Public milestones that happened during labor (first contraction →
+    birth), as {kind, label, offset_seconds} for the clock. 'born' is
+    excluded — the star already marks it. Capped and evenly sampled so a
+    heavily-annotated labor doesn't crowd the ring."""
+    if stats.first_contraction_at is None:
+        return []
+    born = birth.child_dob or birth.birth_completed_at
+    events = list(
+        db.scalars(
+            select(TimelineEvent)
+            .where(
+                TimelineEvent.birth_id == birth.id,
+                TimelineEvent.event_type == TimelineEventType.milestone,
+                TimelineEvent.audience_scope == AudienceScope.public,
+                TimelineEvent.deleted_at.is_(None),
+            )
+            .order_by(TimelineEvent.occurred_at.asc())
+        ).all()
+    )
+    out = []
+    for e in events:
+        payload = e.payload or {}
+        kind = payload.get("kind")
+        if kind == "born":
+            continue
+        if e.occurred_at < stats.first_contraction_at:
+            continue
+        if born is not None and e.occurred_at > born:
+            continue
+        label = _truncate(
+            _clean_text(payload.get("title")) or _humanize_kind(kind), 22
+        )
+        offset = (e.occurred_at - stats.first_contraction_at).total_seconds()
+        out.append({"kind": kind, "label": label, "offset_seconds": int(offset)})
+    return _sample_spaced(out, 4)
 
 
 def _reaction_counts(db: Session, birth: Birth) -> dict:
@@ -476,6 +522,62 @@ def _spark_last(durations: list[int]) -> tuple[float, float] | None:
     return pts[-1] if pts else None
 
 
+def _spark_callouts(durations: list[int]) -> list[dict]:
+    """Points along the horizon worth naming: the tallest peak and the
+    deepest valley in the line's middle stretch, each with a dot, a hairline
+    connector, and the true duration of a wave in that bucket. The ends are
+    excluded on purpose — the start label and the arrival star own them, and
+    in a ramping labor the global max is usually the final wave anyway.
+    Peak labels drop below the point, valley labels rise above it — that's
+    where the empty space is."""
+    pts = _spark_xy(durations)
+    if len(pts) < 3 or not durations:
+        return []
+    resampled = _resample(durations, _SPARK_MAX_POINTS)
+    n = len(resampled)
+
+    def bucket_extreme(i: int, fn) -> int:
+        lo = round(i * len(durations) / n)
+        hi = round((i + 1) * len(durations) / n) or 1
+        return fn(durations[lo:hi] or durations[lo : lo + 1])
+
+    def anchor(x: float) -> str:
+        if x > 820:
+            return "end"
+        if x < 180:
+            return "start"
+        return "middle"
+
+    mid = [
+        (i, p) for i, p in enumerate(pts) if 110 <= p[0] <= 880
+    ]
+    if not mid:
+        return []
+
+    peak_i, peak = min(mid, key=lambda ip: ip[1][1])
+    callouts = [
+        {
+            "x": peak[0],
+            "y": peak[1],
+            "dir": "down",
+            "anchor": anchor(peak[0]),
+            "label": f"longest wave · {_fmt_ms(bucket_extreme(peak_i, max))}",
+        }
+    ]
+    valley_i, valley = max(mid, key=lambda ip: ip[1][1])
+    if abs(valley[0] - peak[0]) > 140:
+        callouts.append(
+            {
+                "x": valley[0],
+                "y": valley[1],
+                "dir": "up",
+                "anchor": anchor(valley[0]),
+                "label": f"shortest wave · {_fmt_ms(bucket_extreme(valley_i, min))}",
+            }
+        )
+    return callouts
+
+
 # ── the labor clock: contractions around a clock face ────────────────────
 
 
@@ -489,6 +591,57 @@ def _sparkle_path(cx: float, cy: float, r: float) -> str:
         f"Q {cx - w:.1f},{cy + w:.1f} {cx - r:.1f},{cy:.1f} "
         f"Q {cx - w:.1f},{cy - w:.1f} {cx:.1f},{cy - r:.1f} Z"
     )
+
+
+def _droplet_path(cx: float, cy: float, r: float) -> str:
+    """A teardrop (water broke)."""
+    return (
+        f"M {cx:.1f},{cy - r:.1f} "
+        f"C {cx + r * 0.55:.1f},{cy - r * 0.25:.1f} {cx + r * 0.78:.1f},{cy + r * 0.05:.1f} "
+        f"{cx + r * 0.78:.1f},{cy + r * 0.3:.1f} "
+        f"A {r * 0.78:.1f},{r * 0.78:.1f} 0 1 1 {cx - r * 0.78:.1f},{cy + r * 0.3:.1f} "
+        f"C {cx - r * 0.78:.1f},{cy + r * 0.05:.1f} {cx - r * 0.55:.1f},{cy - r * 0.25:.1f} "
+        f"{cx:.1f},{cy - r:.1f} Z"
+    )
+
+
+def _heart_path(cx: float, cy: float, r: float) -> str:
+    """A small heart (first hold / first feed)."""
+    return (
+        f"M {cx:.1f},{cy + r * 0.65:.1f} "
+        f"C {cx - r * 1.15:.1f},{cy - r * 0.15:.1f} {cx - r * 0.6:.1f},{cy - r * 0.95:.1f} "
+        f"{cx:.1f},{cy - r * 0.35:.1f} "
+        f"C {cx + r * 0.6:.1f},{cy - r * 0.95:.1f} {cx + r * 1.15:.1f},{cy - r * 0.15:.1f} "
+        f"{cx:.1f},{cy + r * 0.65:.1f} Z"
+    )
+
+
+def _house_path(cx: float, cy: float, r: float) -> str:
+    """A tiny house silhouette (arrived / going home)."""
+    return (
+        f"M {cx - r * 0.8:.1f},{cy + r * 0.8:.1f} L {cx - r * 0.8:.1f},{cy - r * 0.1:.1f} "
+        f"L {cx:.1f},{cy - r * 0.9:.1f} L {cx + r * 0.8:.1f},{cy - r * 0.1:.1f} "
+        f"L {cx + r * 0.8:.1f},{cy + r * 0.8:.1f} Z"
+    )
+
+
+def _diamond_path(cx: float, cy: float, r: float) -> str:
+    """A small diamond (any other milestone)."""
+    return (
+        f"M {cx:.1f},{cy - r:.1f} L {cx + r * 0.7:.1f},{cy:.1f} "
+        f"L {cx:.1f},{cy + r:.1f} L {cx - r * 0.7:.1f},{cy:.1f} Z"
+    )
+
+
+# milestone kind → icon path builder (mirrors the app's MILESTONES registry;
+# 'born' is never drawn here — the sparkle star already marks it)
+_MILESTONE_ICONS = {
+    "water_broke": _droplet_path,
+    "arrived": _house_path,
+    "going_home": _house_path,
+    "first_hold": _heart_path,
+    "first_feed": _heart_path,
+}
 
 
 _TWELVE_HOURS = 12 * 3600
@@ -542,6 +695,8 @@ def build_hours_clock(
     r_in: float = 205.0,
     len_lo: float = 80.0,
     len_hi: float = 225.0,
+    milestones: list[dict] | None = None,
+    canvas_w: float | None = None,
 ) -> dict:
     """Geometry for the radial labor clock: every contraction is a fine
     stroke radiating at the clock angle of the moment it happened, its length
@@ -629,6 +784,45 @@ def build_hours_clock(
         ly = cy + (r_ring + 52) * math.sin(a0)
         start_label = {"x": round(lx, 1), "y": round(ly + 10, 1)}
 
+    # the milestones of the birth, anchored at their true clock angles —
+    # each an icon just outside the ring with a quiet label beyond it
+    clock_milestones = []
+    for m in milestones or []:
+        a = angle_at(int(m["offset_seconds"]))
+        if star_angle is not None:
+            gap = abs((a - star_angle + math.pi) % (2 * math.pi) - math.pi)
+            if gap < 0.10:  # the star owns the birth minute
+                continue
+        icon = _MILESTONE_ICONS.get(m.get("kind"), _diamond_path)
+        ix = cx + (r_ring + 42) * math.cos(a)
+        iy = cy + (r_ring + 42) * math.sin(a)
+        # labels grow away from the face so they never run back over their
+        # icon: outward horizontally on the sides, stacked above/below at
+        # the top and bottom — and clamped to the canvas so a side label
+        # near an edge stacks instead of clipping (the mug's clock sits far
+        # off-center, so both edges are real)
+        cos_a, sin_a = math.cos(a), math.sin(a)
+        w = canvas_w if canvas_w is not None else cx * 2
+        est = len(m["label"]) * 17  # generous per-glyph advance at label size
+        anchor = None
+        if cos_a > 0.35 and ix + 36 + est <= w - 24:
+            anchor, lx, ly = "start", ix + 36, iy + 9
+        elif cos_a < -0.35 and ix - 36 - est >= 24:
+            anchor, lx, ly = "end", ix - 36, iy + 9
+        if anchor is None:
+            anchor = "middle"
+            lx = min(max(ix, est / 2 + 24), w - est / 2 - 24)
+            ly = iy - 40 if sin_a < 0 else iy + 58
+        clock_milestones.append(
+            {
+                "d": icon(ix, iy, 17),
+                "lx": round(lx, 1),
+                "ly": round(ly, 1),
+                "anchor": anchor,
+                "label": m["label"],
+            }
+        )
+
     return {
         "clock_strokes": strokes,
         "clock_ticks": ticks,
@@ -636,6 +830,7 @@ def build_hours_clock(
         "clock_star_label": star_label,
         "clock_start_dot": start_dot,
         "clock_start_label": start_label,
+        "clock_milestones": clock_milestones,
     }
 
 

@@ -1,5 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink"
      width="{{ w }}" height="{{ h }}" viewBox="0 0 {{ w }} {{ h }}">
+{% from "_horizon.svg.j2" import horizon_callouts with context %}
   <defs>
     <linearGradient id="scrim" x1="0" y1="0" x2="0" y2="1">
       <stop offset="0" stop-color="#0c0a10" stop-opacity="0"/>
@@ -61,6 +62,7 @@
   <text x="{{ hx + 190 }}" y="{{ reel_band_y + 22 }}" font-family="{{ p.display_font }}"
         font-size="32" font-style="italic" fill="{{ p.ink }}"
         opacity="0.5">the rhythm of labor, wave by wave</text>
+  {{ horizon_callouts(hx, hy, hw, hh, label_size=23) }}
   <text x="{{ star_x - 6 }}" y="{{ star_y + 54 }}" text-anchor="end"
         font-family="{{ p.body_font }}" font-size="25" letter-spacing="3"
         fill="{{ p.ink }}" opacity="0.55">{{ birth_time }}</text>

@@ -49,6 +49,8 @@
   {% set star_x = hx + hw + 42 %}
   {% set star_y = hy + spark_last_y / 240 * hh - 12 %}
   <path d="{{ sparkle(star_x, star_y, 22) }}" fill="{{ p.accent }}"/>
+  {# no wave callouts here — this horizon is small and already captioned;
+     the callouts live on the wide bands (mugs, reels) #}
   {% endif %}
 
   <text x="{{ w // 2 }}" y="1988" text-anchor="middle"

@@ -24,6 +24,7 @@ from PIL import Image, ImageDraw  # noqa: E402
 import gift_themes  # noqa: E402
 from gift_artwork import (  # noqa: E402
     CLOCK_PHOTO_R,
+    _spark_callouts,
     CLOCK_PRESETS,
     _fmt_date,
     _fmt_hms,
@@ -152,6 +153,7 @@ def main() -> None:
                 "spark_area_path": _spark_area_path(durations),
                 "spark_last_x": spark_last[0] if spark_last else 0,
                 "spark_last_y": spark_last[1] if spark_last else 0,
+                "spark_callouts": _spark_callouts(durations),
                 "photo_data_uri": fake_photo() if template.photo else None,
             }
             if template.scene in ("hours", "hours_photo", "orbit"):
@@ -166,6 +168,12 @@ def main() -> None:
                         born_at=BORN_AT,
                         cx=context["clock_cx"],
                         cy=context["clock_cy"],
+                        milestones=[
+                            {"kind": "arrived", "label": "arrived", "offset_seconds": int(1.2 * 3600)},
+                            {"kind": "water_broke", "label": "water broke", "offset_seconds": int(3.4 * 3600)},
+                            {"kind": "pushing", "label": "started pushing", "offset_seconds": int(8.9 * 3600)},
+                        ],
+                        canvas_w=template.width,
                         **CLOCK_PRESETS[template.scene],
                     )
                 )
