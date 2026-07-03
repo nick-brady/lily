@@ -724,3 +724,36 @@ class BirthGuess(Base):
             postgresql_where=sa.text("user_id IS NOT NULL"),
         ),
     )
+
+
+class UnlockPurchase(Base):
+    """The $12 family unlock, recorded. UNIQUE(birth_id) is the spec's
+    one-successful-purchase-per-birth invariant — a racing second payment is
+    refunded and never recorded. The payment-intent unique is a cheap extra
+    invariant (one payment can't buy two births)."""
+
+    __tablename__ = "unlock_purchases"
+
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    birth_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        sa.ForeignKey("births.id", ondelete="CASCADE"),
+        nullable=False,
+        unique=True,
+    )
+    purchased_by_user_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        sa.ForeignKey("users.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    amount_cents: Mapped[int] = mapped_column(sa.Integer, nullable=False)
+    currency: Mapped[str] = mapped_column(
+        sa.Text, nullable=False, server_default="usd"
+    )
+    stripe_payment_intent_id: Mapped[str] = mapped_column(
+        sa.Text, nullable=False, unique=True
+    )
+    stripe_checkout_session_id: Mapped[str | None] = mapped_column(
+        sa.Text, nullable=True
+    )
+    purchased_at: Mapped[datetime] = _created_at()

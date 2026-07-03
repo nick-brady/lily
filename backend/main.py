@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import os
 import mimetypes
 import re
 import uuid
@@ -83,8 +84,10 @@ from repositories import invitations as invitations_repo
 from repositories import media as media_repo
 from repositories import reactions as reactions_repo
 from repositories import timeline as timeline_repo
+from repositories import unlocks as unlocks_repo
 from repositories import users as users_repo
 import fulfillment
+import payments
 from fulfillment import products as fulfillment_products
 from storage import ensure_bucket, presigned_get_url, put_object
 from schemas import (
@@ -113,6 +116,9 @@ from schemas import (
     GuessBoardOut,
     GuessIn,
     GuessOut,
+    UnlockCheckoutOut,
+    UnlockConfirmIn,
+    UnlockConfirmOut,
     ProductMockupOut,
     RenderingProductsOut,
     InvitationContextOut,
@@ -1283,6 +1289,143 @@ def put_public_guess(
     db: Session = Depends(get_db),
 ) -> GuessOut:
     return _do_put_guess(db, birth=access.birth, user=access.user, payload=payload)
+
+
+# ============ The $12 family unlock (Stripe) ============
+
+
+async def _fulfill_unlock_from_session(
+    db: Session,
+    stripe: payments.StripeClient,
+    session_obj: dict,
+    *,
+    raise_on_refund_error: bool,
+) -> str:
+    """Fulfill a paid checkout session — the single funnel for both the
+    webhook and the redirect-confirm paths. Returns "unlocked" or
+    "already_unlocked". A losing (second) payment is refunded; on the
+    webhook path a refund failure propagates so Stripe's redelivery becomes
+    the retry loop, on the confirm path it's logged and swallowed (the
+    webhook will retry it)."""
+    metadata = session_obj.get("metadata") or {}
+    birth_id = uuid.UUID(metadata["birth_id"])
+    user_id = uuid.UUID(metadata["user_id"]) if metadata.get("user_id") else None
+    payment_intent_id = session_obj.get("payment_intent")
+
+    outcome, birth = unlocks_repo.fulfill_purchase(
+        db,
+        birth_id=birth_id,
+        user_id=user_id,
+        payment_intent_id=payment_intent_id,
+        checkout_session_id=session_obj.get("id"),
+        amount_cents=session_obj.get("amount_total") or payments.unlock_price_cents(),
+        currency=session_obj.get("currency") or "usd",
+    )
+    if outcome == "unlocked":
+        # after commit: everyone watching gets their comment box opened live
+        await publish_birth_update(birth.id, birth)
+        return "unlocked"
+    if outcome == "already_other_intent" and payment_intent_id:
+        try:
+            stripe.create_refund(payment_intent_id=payment_intent_id)
+        except payments.StripeError:
+            if raise_on_refund_error:
+                raise
+            print(
+                f"unlock refund failed for {payment_intent_id}; the webhook "
+                "redelivery will retry it",
+                flush=True,
+            )
+    return "already_unlocked"
+
+
+@app.post("/b/{slug}/unlock/checkout", response_model=UnlockCheckoutOut)
+def create_unlock_checkout(
+    access: PublicEngagementAccess = Depends(require_public_engagement),
+) -> UnlockCheckoutOut:
+    """Start the $12 unlock. Anyone signed in can pay — family unlocks to
+    participate as family, friends unlock to honor their friend (personas
+    doc); one payment opens comments for everyone, forever."""
+    stripe = payments.get_stripe()
+    if stripe is None:
+        raise HTTPException(status_code=503, detail="Payments aren't configured")
+    if access.birth.is_unlocked:
+        raise HTTPException(
+            status_code=409,
+            detail={"code": "already_unlocked", "birth_id": str(access.birth.id)},
+        )
+    try:
+        session = stripe.create_checkout_session(
+            birth_id=str(access.birth.id),
+            user_id=str(access.user.id),
+            slug=access.birth.slug,
+            child_name=access.birth.child_name,
+            amount_cents=payments.unlock_price_cents(),
+        )
+    except payments.StripeError:
+        raise HTTPException(
+            status_code=502, detail="Couldn't start checkout — try again"
+        )
+    return UnlockCheckoutOut(url=session["url"])
+
+
+@app.post("/b/{slug}/unlock/confirm", response_model=UnlockConfirmOut)
+async def confirm_unlock(
+    payload: UnlockConfirmIn,
+    slug: str = PathParam(...),
+    db: Session = Depends(get_db),
+) -> UnlockConfirmOut:
+    """Redirect-return fulfillment (the dev path — no webhook needed).
+    Deliberately unauthenticated: all trust comes from retrieving the
+    session server-side with our key (a forged id 404s at Stripe), and it
+    stays robust if auth state is odd after the redirect."""
+    stripe = payments.get_stripe()
+    if stripe is None:
+        raise HTTPException(status_code=503, detail="Payments aren't configured")
+    birth = _resolve_public_birth(db, slug)
+    session = stripe.retrieve_checkout_session(payload.session_id)
+    if session is None:
+        raise HTTPException(status_code=404, detail="Unknown checkout session")
+    metadata = session.get("metadata") or {}
+    if (
+        metadata.get("kind") != "family_unlock"
+        or metadata.get("birth_id") != str(birth.id)
+    ):
+        raise HTTPException(status_code=400, detail="Session doesn't match this page")
+    if session.get("payment_status") != "paid":
+        return UnlockConfirmOut(status="pending", is_unlocked=birth.is_unlocked)
+    status = await _fulfill_unlock_from_session(
+        db, stripe, session, raise_on_refund_error=False
+    )
+    return UnlockConfirmOut(status=status, is_unlocked=True)
+
+
+@app.post("/webhooks/stripe")
+async def stripe_webhook(request: Request, db: Session = Depends(get_db)) -> dict:
+    """Stripe's source-of-truth fulfillment path. Signature-verified against
+    the raw body; anything that isn't a paid family_unlock checkout is
+    acknowledged and ignored (future products share this endpoint). Errors
+    500 on purpose — Stripe's at-least-once redelivery is the retry loop."""
+    secret = os.getenv("STRIPE_WEBHOOK_SECRET")
+    if not secret:
+        raise HTTPException(status_code=503, detail="Webhook not configured")
+    body = await request.body()
+    if not payments.verify_stripe_signature(
+        body, request.headers.get("stripe-signature"), secret
+    ):
+        raise HTTPException(status_code=400, detail="Bad signature")
+    event = json.loads(body)
+    if event.get("type") != "checkout.session.completed":
+        return {"received": True}
+    obj = (event.get("data") or {}).get("object") or {}
+    metadata = obj.get("metadata") or {}
+    if metadata.get("kind") != "family_unlock" or obj.get("payment_status") != "paid":
+        return {"received": True}
+    stripe = payments.get_stripe()
+    if stripe is None:  # webhook secret without an API key is a misconfig
+        raise HTTPException(status_code=503, detail="Payments aren't configured")
+    await _fulfill_unlock_from_session(db, stripe, obj, raise_on_refund_error=True)
+    return {"received": True}
 
 
 # ============ Media ============

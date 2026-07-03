@@ -35,7 +35,28 @@ export default function CommentThread({
   const [needName, setNeedName] = useState(false);
   const [nameValue, setNameValue] = useState('');
   const [savingName, setSavingName] = useState(false);
+  const [unlockState, setUnlockState] = useState(''); // '' | 'starting' | 'unavailable'
   const textareaRef = useRef(null);
+
+  // The $12 unlock: only offered on the public surface (scope has a slug);
+  // parents never see the prompt (their manage page passes isUnlocked).
+  async function startUnlock() {
+    if (!scope.slug) return;
+    setUnlockState('starting');
+    try {
+      const { url } = await api.createUnlockCheckout(scope.slug);
+      window.location.assign(url);
+    } catch (err) {
+      if (err.status === 409) {
+        // someone beat them to it — drop the prompt and let a refresh/SSE
+        // settle the composer state
+        setLockedPrompt(false);
+        setUnlockState('');
+      } else {
+        setUnlockState('unavailable');
+      }
+    }
+  }
 
   const displayedCount = countOverride ?? event.comment_count ?? 0;
 
@@ -215,6 +236,8 @@ export default function CommentThread({
             isAuthenticated={isAuthenticated}
             isUnlocked={isUnlocked}
             lockedPrompt={lockedPrompt}
+            onUnlock={scope.slug ? startUnlock : null}
+            unlockState={unlockState}
           />
         </div>
       )}
@@ -260,6 +283,8 @@ const Composer = forwardRef(function Composer(
     isAuthenticated,
     isUnlocked,
     lockedPrompt,
+    onUnlock,
+    unlockState,
   },
   ref,
 ) {
@@ -279,7 +304,7 @@ const Composer = forwardRef(function Composer(
   }
 
   if (lockedPrompt || isUnlocked === false) {
-    return <LockedPrompt />;
+    return <LockedPrompt onUnlock={onUnlock} unlockState={unlockState} />;
   }
 
   return (
@@ -309,7 +334,7 @@ const Composer = forwardRef(function Composer(
   );
 });
 
-function LockedPrompt() {
+function LockedPrompt({ onUnlock, unlockState }) {
   return (
     <div className="rounded-lg border border-primary-100 dark:border-primary-900/30
                     bg-primary-50/40 dark:bg-primary-900/10 p-4 text-sm">
@@ -320,10 +345,23 @@ function LockedPrompt() {
         Anyone in the family can unlock the comments for everyone — $12,
         one time. It's permanent for this baby.
       </p>
-      <p className="mt-3 text-xs text-gray-500 dark:text-gray-500 italic">
-        Payments are coming soon. For now, ask the parents to unlock from
-        their dashboard.
-      </p>
+      {onUnlock && unlockState !== 'unavailable' ? (
+        <button
+          type="button"
+          onClick={onUnlock}
+          disabled={unlockState === 'starting'}
+          className="mt-3 px-4 py-2 rounded-lg bg-primary-600 text-white text-sm
+                     font-medium hover:bg-primary-700 disabled:opacity-50"
+        >
+          {unlockState === 'starting' ? 'Opening checkout…' : 'Unlock for $12'}
+        </button>
+      ) : (
+        <p className="mt-3 text-xs text-gray-500 dark:text-gray-500 italic">
+          {unlockState === 'unavailable'
+            ? "Payments aren't available right now — try again soon, or ask the parents."
+            : 'Ask the parents to unlock from their dashboard.'}
+        </p>
+      )}
     </div>
   );
 }
