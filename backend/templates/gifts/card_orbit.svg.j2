@@ -1,0 +1,50 @@
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink"
+     width="{{ w }}" height="{{ h }}" viewBox="0 0 {{ w }} {{ h }}">
+{% from "_clock.svg.j2" import clock with context %}
+  <defs>
+    {% for t in orbit_thumbs %}
+    <clipPath id="orbit{{ loop.index }}">
+      <circle cx="{{ t.cx }}" cy="{{ t.cy }}" r="{{ t.r }}"/>
+    </clipPath>
+    {% endfor %}
+  </defs>
+
+  <rect x="0" y="0" width="{{ w }}" height="{{ h }}" fill="{{ p.bg }}"/>
+
+  <!-- eyebrow -->
+  <text x="{{ w // 2 }}" y="230" text-anchor="middle" font-family="{{ p.body_font }}"
+        font-size="36" font-weight="500" letter-spacing="14"
+        fill="{{ p.accent }}">THE HOURS, MOMENT BY MOMENT</text>
+
+  <!-- the labor clock -->
+  {{ clock() }}
+
+  <!-- the moments, orbiting at the time they happened -->
+  {% for t in orbit_thumbs %}
+  <line x1="{{ t.dot_x }}" y1="{{ t.dot_y }}" x2="{{ t.lx }}" y2="{{ t.ly }}"
+        stroke="{{ p.ink }}" stroke-width="2" opacity="0.28"/>
+  <circle cx="{{ t.dot_x }}" cy="{{ t.dot_y }}" r="8" fill="{{ p.accent }}"/>
+  <g clip-path="url(#orbit{{ loop.index }})">
+    <image x="{{ t.cx - t.r }}" y="{{ t.cy - t.r }}" width="{{ t.r * 2 }}" height="{{ t.r * 2 }}"
+           preserveAspectRatio="xMidYMid slice" xlink:href="{{ t.href }}"/>
+  </g>
+  <circle cx="{{ t.cx }}" cy="{{ t.cy }}" r="{{ t.r + 5 }}" fill="none"
+          stroke="#ffffff" stroke-width="10"/>
+  <circle cx="{{ t.cx }}" cy="{{ t.cy }}" r="{{ t.r + 11 }}" fill="none"
+          stroke="{{ p.ink }}" stroke-width="2" opacity="0.25"/>
+  {% endfor %}
+
+  <!-- name + date -->
+  <text x="{{ w // 2 }}" y="1710" text-anchor="middle"
+        font-family="{{ p.display_font }}" font-size="185" font-weight="300"
+        font-style="italic" fill="{{ p.ink }}">{{ child_name }}</text>
+  <text x="{{ w // 2 }}" y="1812" text-anchor="middle" font-family="{{ p.body_font }}"
+        font-size="38" letter-spacing="2" fill="{{ p.ink }}" opacity="0.62">born {{ birth_date }} at {{ birth_time }}</text>
+
+  <!-- footer -->
+  <line x1="{{ w // 2 - 80 }}" y1="1905" x2="{{ w // 2 + 80 }}" y2="1905"
+        stroke="{{ p.ink }}" stroke-width="2" opacity="0.25"/>
+  <text x="{{ w // 2 }}" y="1982" text-anchor="middle" font-family="{{ p.body_font }}"
+        font-size="30" letter-spacing="6" fill="{{ p.ink }}"
+        opacity="0.5">{{ count }} CONTRACTIONS · {{ labor_duration|upper }} OF LABOR</text>
+</svg>

@@ -1,0 +1,70 @@
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink"
+     width="{{ w }}" height="{{ h }}" viewBox="0 0 {{ w }} {{ h }}">
+{% from "_horizon.svg.j2" import horizon_callouts with context %}
+  <defs>
+    <linearGradient id="scrim" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#0c0a10" stop-opacity="0"/>
+      <stop offset="0.55" stop-color="#0c0a10" stop-opacity="0"/>
+      <stop offset="1" stop-color="#0c0a10" stop-opacity="0.62"/>
+    </linearGradient>
+    <linearGradient id="horizonFade" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="{{ p.accent }}" stop-opacity="0.18"/>
+      <stop offset="1" stop-color="{{ p.accent }}" stop-opacity="0"/>
+    </linearGradient>
+  </defs>
+
+  <rect x="0" y="0" width="{{ w }}" height="{{ h }}" fill="{{ p.bg }}"/>
+
+  <!-- the title -->
+  <text x="{{ w // 2 }}" y="150" text-anchor="middle" font-family="{{ p.body_font }}"
+        font-size="32" font-weight="500" letter-spacing="14"
+        fill="{{ p.accent }}">THE DAY</text>
+  <text x="{{ w // 2 }}" y="305" text-anchor="middle"
+        font-family="{{ p.display_font }}" font-size="150" font-weight="300"
+        font-style="italic" fill="{{ p.ink }}">{{ child_name }}</text>
+  <text x="{{ w // 2 }}" y="390" text-anchor="middle" font-family="{{ p.body_font }}"
+        font-size="34" letter-spacing="2" fill="{{ p.ink }}"
+        opacity="0.62">arrived · {{ birth_date }} · {{ birth_time }}</text>
+
+  <!-- the story, read downward -->
+  {% for f in reel_panels %}
+  <image x="{{ f.x }}" y="{{ f.y }}" width="{{ f.w }}" height="{{ f.h }}"
+         preserveAspectRatio="xMidYMid slice" xlink:href="{{ f.href }}"/>
+  <rect x="{{ f.x }}" y="{{ f.y }}" width="{{ f.w }}" height="{{ f.h }}" fill="url(#scrim)"/>
+  {% if f.time %}
+  <text x="{{ f.x + 46 }}" y="{{ f.y + f.h - 96 }}" font-family="{{ p.body_font }}"
+        font-size="28" letter-spacing="5" fill="#ffffff" opacity="0.85">{{ f.time|upper }}</text>
+  {% endif %}
+  {% if f.caption %}
+  <text x="{{ f.x + 44 }}" y="{{ f.y + f.h - 40 }}" font-family="{{ p.display_font }}"
+        font-size="50" font-style="italic" fill="#ffffff" opacity="0.96">{{ f.caption }}</text>
+  {% endif %}
+  {% endfor %}
+
+  <!-- the thread beneath the day: the contractions, first wave to last,
+       with the star just beyond — she arrives after the final wave -->
+  {% if has_sparkline %}
+  {% set hx, hy, hw, hh = 60, reel_band_y + 26, w - 230, 122 %}
+  <svg x="{{ hx }}" y="{{ hy }}" width="{{ hw }}" height="{{ hh }}"
+       viewBox="0 0 1000 240" preserveAspectRatio="none">
+    <path d="{{ spark_area_path }}" fill="url(#horizonFade)"/>
+    <path d="{{ spark_path }}" fill="none" stroke="{{ p.accent }}"
+          stroke-width="4" stroke-linejoin="round" stroke-linecap="round"
+          vector-effect="non-scaling-stroke"/>
+  </svg>
+  {% set star_x = hx + hw + 40 %}
+  {% set star_y = hy + spark_last_y / 240 * hh - 10 %}
+  <path d="{{ sparkle(star_x, star_y, 20) }}" fill="{{ p.accent }}"/>
+  {% if labor_start_time %}
+  <text x="{{ hx + 4 }}" y="{{ reel_band_y + 22 }}" font-family="{{ p.body_font }}"
+        font-size="25" letter-spacing="3" fill="{{ p.ink }}" opacity="0.55">{{ labor_start_time }}</text>
+  {% endif %}
+  <text x="{{ hx + 190 }}" y="{{ reel_band_y + 22 }}" font-family="{{ p.display_font }}"
+        font-size="32" font-style="italic" fill="{{ p.ink }}"
+        opacity="0.5">the rhythm of labor, wave by wave</text>
+  {{ horizon_callouts(hx, hy, hw, hh, label_size=23) }}
+  <text x="{{ star_x - 6 }}" y="{{ star_y + 54 }}" text-anchor="end"
+        font-family="{{ p.body_font }}" font-size="25" letter-spacing="3"
+        fill="{{ p.ink }}" opacity="0.55">{{ birth_time }}</text>
+  {% endif %}
+</svg>

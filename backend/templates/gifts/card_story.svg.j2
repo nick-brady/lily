@@ -1,0 +1,64 @@
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink"
+     width="{{ w }}" height="{{ h }}" viewBox="0 0 {{ w }} {{ h }}">
+
+{% macro polaroid(pl, pw=300, ph=350) %}
+  <!-- shadow cast in page space so the light falls the same way on every photo -->
+  <g transform="translate({{ pl.x + 7 }},{{ pl.y + 12 }}) rotate({{ pl.rot }})">
+    <rect x="{{ -pw/2 }}" y="{{ -ph/2 }}" width="{{ pw }}" height="{{ ph }}" rx="4"
+          fill="#000000" opacity="0.10"/>
+  </g>
+  <g transform="translate({{ pl.x }},{{ pl.y }}) rotate({{ pl.rot }})">
+    <rect x="{{ -pw/2 }}" y="{{ -ph/2 }}" width="{{ pw }}" height="{{ ph }}" rx="4"
+          fill="#ffffff" stroke="#e8e4e1" stroke-width="2"/>
+    <image x="{{ 16 - pw/2 }}" y="{{ 16 - ph/2 }}" width="{{ pw - 32 }}" height="{{ ph - 94 }}"
+           preserveAspectRatio="xMidYMid slice" xlink:href="{{ pl.href }}"/>
+    {% if pl.caption %}
+    <text x="0" y="{{ ph/2 - 26 }}" text-anchor="middle" font-family="{{ p.display_font }}"
+          font-size="34" font-style="italic" fill="#57504b">{{ pl.caption }}</text>
+    {% endif %}
+  </g>
+{% endmacro %}
+
+  <rect x="0" y="0" width="{{ w }}" height="{{ h }}" fill="{{ p.bg }}"/>
+
+  <!-- title -->
+  <text x="{{ w // 2 }}" y="240" text-anchor="middle" font-family="{{ p.body_font }}"
+        font-size="34" font-weight="500" letter-spacing="14"
+        fill="{{ p.accent }}">THE STORY, FROM THE START</text>
+  <text x="{{ w // 2 }}" y="440" text-anchor="middle" font-family="{{ p.display_font }}"
+        font-size="180" font-weight="300" font-style="italic"
+        fill="{{ p.ink }}">{{ child_name }}</text>
+  <text x="{{ w // 2 }}" y="540" text-anchor="middle" font-family="{{ p.body_font }}"
+        font-size="36" letter-spacing="2" fill="{{ p.ink }}"
+        opacity="0.62">born {{ birth_date }} at {{ birth_time }}</text>
+
+  <!-- the thread: begins at the bottom, arrives at the star -->
+  <path d="{{ path_d }}" fill="none" stroke="{{ p.accent }}" stroke-width="4.5"
+        stroke-linecap="round" opacity="0.5"/>
+  <circle cx="{{ w // 2 }}" cy="{{ y_start }}" r="12" fill="{{ p.accent }}"/>
+  <path d="{{ star }}" fill="{{ p.accent }}"/>
+
+  <!-- each photo's moment sits on the thread -->
+  {% for m in moments %}
+  <line x1="{{ m.x }}" y1="{{ m.y }}" x2="{{ m.x2 }}" y2="{{ m.y }}"
+        stroke="{{ p.ink }}" stroke-width="2" opacity="0.28"/>
+  <circle cx="{{ m.x }}" cy="{{ m.y }}" r="9" fill="{{ p.accent }}"/>
+  {% endfor %}
+  {% for pl in polaroids %}{{ polaroid(pl) }}{% endfor %}
+
+  <!-- footer: where it began, and what everyone said -->
+  <text x="{{ w // 2 }}" y="{{ y_start + 78 }}" text-anchor="middle"
+        font-family="{{ p.display_font }}" font-size="40" font-style="italic"
+        fill="{{ p.ink }}" opacity="0.55">where it began</text>
+  {% for note in notes %}
+  <text x="{{ w // 2 }}" y="{{ h - 285 + loop.index0 * 78 }}" text-anchor="middle"
+        font-family="{{ p.display_font }}" font-size="52" font-style="italic"
+        fill="{{ p.ink }}" opacity="0.85">“{{ note }}”</text>
+  {% endfor %}
+  <line x1="{{ w // 2 - 80 }}" y1="{{ h - 130 }}" x2="{{ w // 2 + 80 }}" y2="{{ h - 130 }}"
+        stroke="{{ p.ink }}" stroke-width="2" opacity="0.25"/>
+  {% set tally = (reaction_summary ~ ' · ' if reaction_summary else '') %}
+  <text x="{{ w // 2 }}" y="{{ h - 62 }}" text-anchor="middle" font-family="{{ p.body_font }}"
+        font-size="28" letter-spacing="5" fill="{{ p.ink }}"
+        opacity="0.5">{{ tally|upper }}{{ count }} CONTRACTIONS · {{ labor_duration|upper }}</text>
+</svg>

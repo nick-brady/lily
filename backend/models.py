@@ -242,6 +242,12 @@ class Birth(Base):
     theme: Mapped[str] = mapped_column(
         sa.Text, nullable=False, server_default="lily"
     )
+    # The family prediction pool: [{"name", "weight_lbs", "length_in"}, …]
+    # (decimal pounds / inches, either nullable). Scored against the actual
+    # measurements below once they're recorded.
+    predictions: Mapped[list | None] = mapped_column(JSONB, nullable=True)
+    child_weight_lbs: Mapped[float | None] = mapped_column(sa.Float, nullable=True)
+    child_length_in: Mapped[float | None] = mapped_column(sa.Float, nullable=True)
     deleted_at: Mapped[datetime | None] = mapped_column(
         sa.DateTime(timezone=True), nullable=True
     )

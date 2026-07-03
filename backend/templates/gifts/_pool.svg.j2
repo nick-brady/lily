@@ -1,0 +1,60 @@
+{# The pool leaderboard pieces, shared by card_pool and mug_pool. Import
+   `with context` — macros read the scene geometry (pool_rows, pool_actual,
+   pool_ruler, pool_layout) and palette from the render context. #}
+{% macro pool_list(font_size=33) %}
+  {% for r in pool_rows %}
+  {% if r.winner %}
+  <path d="{{ sparkle(pool_layout.rank_x - 12, r.y - 11, 16) }}" fill="{{ p.accent }}"/>
+  {% else %}
+  <text x="{{ pool_layout.rank_x }}" y="{{ r.y }}" text-anchor="end"
+        font-family="{{ p.body_font }}" font-size="{{ font_size - 5 }}"
+        fill="{{ p.ink }}" opacity="0.4">{{ r.rank }}</text>
+  {% endif %}
+  <text x="{{ pool_layout.name_x }}" y="{{ r.y }}" font-family="{{ p.body_font }}"
+        font-size="{{ font_size }}" {% if r.winner %}font-weight="500" fill="{{ p.accent }}"{% else %}fill="{{ p.ink }}" opacity="0.8"{% endif %}>{{ r.name }}</text>
+  {% if r.leader_x1 %}
+  <line x1="{{ r.leader_x1 }}" y1="{{ r.y - 10 }}" x2="{{ r.leader_x2 }}" y2="{{ r.y - 10 }}"
+        stroke="{{ p.ink }}" stroke-width="3" stroke-linecap="round"
+        stroke-dasharray="0.5 18" opacity="0.35"/>
+  {% endif %}
+  <text x="{{ pool_layout.guess_x }}" y="{{ r.y }}" text-anchor="end"
+        font-family="{{ p.body_font }}" font-size="{{ font_size }}"
+        {% if r.winner %}font-weight="500" fill="{{ p.accent }}"{% else %}fill="{{ p.ink }}" opacity="0.6"{% endif %}>{{ r.guess }}</text>
+  {% endfor %}
+
+  <!-- and what she actually was -->
+  <line x1="{{ pool_layout.rank_x - 30 }}" y1="{{ pool_actual.y - 44 }}"
+        x2="{{ pool_layout.guess_x }}" y2="{{ pool_actual.y - 44 }}"
+        stroke="{{ p.ink }}" stroke-width="2" opacity="0.2"/>
+  <path d="{{ sparkle(pool_layout.rank_x - 12, pool_actual.y - 13, 17) }}" fill="{{ p.accent }}"/>
+  <text x="{{ pool_layout.name_x }}" y="{{ pool_actual.y }}"
+        font-family="{{ p.display_font }}" font-size="{{ font_size + 15 }}"
+        font-style="italic" fill="{{ p.ink }}">{{ pool_actual.name }}</text>
+  <text x="{{ pool_layout.guess_x }}" y="{{ pool_actual.y }}" text-anchor="end"
+        font-family="{{ p.body_font }}" font-size="{{ font_size }}" font-weight="500"
+        fill="{{ p.ink }}" opacity="0.85">{{ pool_actual.guess }}</text>
+  <line x1="{{ pool_layout.rank_x - 30 }}" y1="{{ pool_actual.y + 32 }}"
+        x2="{{ pool_layout.guess_x }}" y2="{{ pool_actual.y + 32 }}"
+        stroke="{{ p.ink }}" stroke-width="2" opacity="0.2"/>
+{% endmacro %}
+
+{% macro pool_ruler_strip(label_size=24) %}
+  {% if pool_ruler %}
+  <text x="{{ pool_ruler.x1 }}" y="{{ pool_ruler.y - 46 }}" font-family="{{ p.body_font }}"
+        font-size="{{ label_size }}" letter-spacing="4" fill="{{ p.ink }}"
+        opacity="0.45">EVERY GUESS, BY WEIGHT</text>
+  <line x1="{{ pool_ruler.x1 }}" y1="{{ pool_ruler.y }}" x2="{{ pool_ruler.x2 }}" y2="{{ pool_ruler.y }}"
+        stroke="{{ p.ink }}" stroke-width="2" opacity="0.3"/>
+  {% for t in pool_ruler.ticks %}
+  <line x1="{{ t.x }}" y1="{{ pool_ruler.y - 8 }}" x2="{{ t.x }}" y2="{{ pool_ruler.y + 8 }}"
+        stroke="{{ p.ink }}" stroke-width="2" opacity="0.3"/>
+  <text x="{{ t.x }}" y="{{ pool_ruler.y + 52 }}" text-anchor="middle"
+        font-family="{{ p.body_font }}" font-size="{{ label_size }}" letter-spacing="2"
+        fill="{{ p.ink }}" opacity="0.45">{{ t.label }}</text>
+  {% endfor %}
+  {% for d in pool_ruler.dots %}
+  <circle cx="{{ d.x }}" cy="{{ pool_ruler.y }}" r="7" fill="{{ p.dot }}" opacity="0.7"/>
+  {% endfor %}
+  <path d="{{ sparkle(pool_ruler.star_x, pool_ruler.y, 18) }}" fill="{{ p.accent }}"/>
+  {% endif %}
+{% endmacro %}

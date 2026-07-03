@@ -1,0 +1,59 @@
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink"
+     width="{{ w }}" height="{{ h }}" viewBox="0 0 {{ w }} {{ h }}">
+{% from "_horizon.svg.j2" import horizon_callouts with context %}
+  <defs>
+    <clipPath id="heroCircle">
+      <circle cx="600" cy="470" r="330"/>
+    </clipPath>
+    <linearGradient id="horizonFade" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="{{ p.accent }}" stop-opacity="0.20"/>
+      <stop offset="1" stop-color="{{ p.accent }}" stop-opacity="0"/>
+    </linearGradient>
+  </defs>
+
+  <rect x="0" y="0" width="{{ w }}" height="{{ h }}" fill="{{ p.bg }}"/>
+
+  <!-- hero photo -->
+  {% if photo_data_uri %}
+  <g clip-path="url(#heroCircle)">
+    <image x="270" y="140" width="660" height="660"
+           preserveAspectRatio="xMidYMid slice"
+           xlink:href="{{ photo_data_uri }}"/>
+  </g>
+  {% endif %}
+  <circle cx="600" cy="470" r="346" fill="none" stroke="{{ p.ink }}"
+          stroke-width="2" opacity="0.3"/>
+
+  <!-- name + date -->
+  <text x="1080" y="420" font-family="{{ p.display_font }}" font-size="170"
+        font-weight="300" font-style="italic" fill="{{ p.ink }}">{{ child_name }}</text>
+  <text x="1086" y="520" font-family="{{ p.body_font }}" font-size="38"
+        letter-spacing="2" fill="{{ p.ink }}" opacity="0.62">born {{ birth_date }} at {{ birth_time }}</text>
+  <text x="1086" y="626" font-family="{{ p.body_font }}" font-size="29"
+        letter-spacing="5" fill="{{ p.ink }}"
+        opacity="0.5">{{ count }} CONTRACTIONS · {{ labor_duration|upper }} · EVERY {{ avg_interval|upper }}</text>
+
+  <!-- the labor horizon, wrapping the mug. The line is the contractions,
+       first wave to last; the star floats just beyond it — the birth is the
+       milestone after the final wave, not the wave itself. -->
+  {% if has_sparkline %}
+  {% set hx, hy, hw, hh = 0, 730, 2380, 310 %}
+  <svg x="{{ hx }}" y="{{ hy }}" width="{{ hw }}" height="{{ hh }}"
+       viewBox="0 0 1000 240" preserveAspectRatio="none">
+    <path d="{{ spark_area_path }}" fill="url(#horizonFade)"/>
+    <path d="{{ spark_path }}" fill="none" stroke="{{ p.accent }}"
+          stroke-width="5" stroke-linejoin="round" stroke-linecap="round"
+          vector-effect="non-scaling-stroke"/>
+  </svg>
+  {% set star_x = hx + hw + 48 %}
+  {% set star_y = hy + spark_last_y / 240 * hh - 14 %}
+  <path d="{{ sparkle(star_x, star_y, 26) }}" fill="{{ p.accent }}"/>
+  <text x="{{ star_x - 12 }}" y="{{ star_y - 52 }}" text-anchor="end"
+        font-family="{{ p.body_font }}" font-size="28" letter-spacing="3"
+        fill="{{ p.ink }}" opacity="0.55">{{ birth_time }}</text>
+  {# valley label drops below the photo circle's reach on this layout #}
+  {{ horizon_callouts(hx, hy, hw, hh, label_size=26, valley_ly=888) }}
+  <text x="54" y="1108" font-family="{{ p.display_font }}" font-size="38"
+        font-style="italic" fill="{{ p.ink }}" opacity="0.55">the rhythm of labor, wave by wave{% if labor_start_time %} — from {{ labor_start_time }}{% endif %}</text>
+  {% endif %}
+</svg>

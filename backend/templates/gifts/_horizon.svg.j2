@@ -1,0 +1,25 @@
+{# Callouts along the labor horizon — a dot on the line, a long hairline
+   connector, and the wave's true duration (the same connector language as
+   the story card's moments). Labels pin to the calm edges of the band —
+   peaks drop to the bottom (inside the fading fill), valleys rise to the
+   top — so they never sit on the line itself. Import `with context`; pass
+   the horizon box so normalized points land in page space. #}
+{% macro horizon_callouts(hx, hy, hw, hh, label_size=24, valley_ly=None) %}
+  {% for c in spark_callouts or [] %}
+  {% set px = hx + c.x / 1000 * hw %}
+  {% set py = hy + c.y / 240 * hh %}
+  <circle cx="{{ px }}" cy="{{ py }}" r="6" fill="{{ p.accent }}"/>
+  {% if c.dir == 'down' %}
+  {% set ly = hy + hh - 6 %}
+  <line x1="{{ px }}" y1="{{ py + 14 }}" x2="{{ px }}" y2="{{ ly - 30 }}"
+        stroke="{{ p.ink }}" stroke-width="2" opacity="0.3"/>
+  {% else %}
+  {% set ly = valley_ly if valley_ly else hy + 20 %}
+  <line x1="{{ px }}" y1="{{ py - 14 }}" x2="{{ px }}" y2="{{ ly + 12 }}"
+        stroke="{{ p.ink }}" stroke-width="2" opacity="0.3"/>
+  {% endif %}
+  <text x="{{ px }}" y="{{ ly }}" text-anchor="{{ c.anchor }}"
+        font-family="{{ p.body_font }}" font-size="{{ label_size }}"
+        letter-spacing="3" fill="{{ p.ink }}" opacity="0.55">{{ c.label|upper }}</text>
+  {% endfor %}
+{% endmacro %}
