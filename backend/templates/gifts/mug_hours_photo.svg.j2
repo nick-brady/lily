@@ -1,10 +1,26 @@
 <svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink"
      width="{{ w }}" height="{{ h }}" viewBox="0 0 {{ w }} {{ h }}">
 {% from "_clock.svg.j2" import clock with context %}
+  <defs>
+    <clipPath id="clockPhoto">
+      <circle cx="{{ clock_cx }}" cy="{{ clock_cy }}" r="{{ clock_photo_r }}"/>
+    </clipPath>
+  </defs>
+
   <rect x="0" y="0" width="{{ w }}" height="{{ h }}" fill="{{ p.bg }}"/>
 
-  <!-- the labor clock, left face of the wrap -->
+  <!-- the labor clock with her at the center, left face of the wrap -->
   {{ clock(label_size=28) }}
+  {% if photo_data_uri %}
+  <g clip-path="url(#clockPhoto)">
+    <image x="{{ clock_cx - clock_photo_r }}" y="{{ clock_cy - clock_photo_r }}"
+           width="{{ clock_photo_r * 2 }}" height="{{ clock_photo_r * 2 }}"
+           preserveAspectRatio="xMidYMid slice"
+           xlink:href="{{ photo_data_uri }}"/>
+  </g>
+  {% endif %}
+  <circle cx="{{ clock_cx }}" cy="{{ clock_cy }}" r="{{ clock_photo_r + 12 }}"
+          fill="none" stroke="{{ p.ink }}" stroke-width="2" opacity="0.3"/>
 
   <!-- name + date, right face of the wrap -->
   <text x="1360" y="500" font-family="{{ p.display_font }}" font-size="175"

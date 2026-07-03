@@ -1,0 +1,57 @@
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink"
+     width="{{ w }}" height="{{ h }}" viewBox="0 0 {{ w }} {{ h }}">
+  <defs>
+    <linearGradient id="horizonFade" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="{{ p.accent }}" stop-opacity="0.20"/>
+      <stop offset="1" stop-color="{{ p.accent }}" stop-opacity="0"/>
+    </linearGradient>
+  </defs>
+
+  <rect x="0" y="0" width="{{ w }}" height="{{ h }}" fill="{{ p.bg }}"/>
+
+  <!-- title -->
+  <text x="{{ w // 2 }}" y="280" text-anchor="middle" font-family="{{ p.body_font }}"
+        font-size="36" font-weight="500" letter-spacing="14"
+        fill="{{ p.accent }}">THE WORDS THAT WELCOMED</text>
+  <text x="{{ w // 2 }}" y="480" text-anchor="middle"
+        font-family="{{ p.display_font }}" font-size="180" font-weight="300"
+        font-style="italic" fill="{{ p.ink }}">{{ child_name }}</text>
+  <text x="{{ w // 2 }}" y="580" text-anchor="middle" font-family="{{ p.body_font }}"
+        font-size="36" letter-spacing="2" fill="{{ p.ink }}"
+        opacity="0.62">born {{ birth_date }} at {{ birth_time }}</text>
+
+  <!-- what the family said, in their own words -->
+  {% for l in words_lines %}
+  {% if l.kind == 'quote' %}
+  <text x="{{ w // 2 }}" y="{{ l.y }}" text-anchor="middle"
+        font-family="{{ p.display_font }}" font-size="62" font-style="italic"
+        fill="{{ p.ink }}" opacity="0.88">{{ l.t }}</text>
+  {% else %}
+  <text x="{{ w // 2 }}" y="{{ l.y }}" text-anchor="middle"
+        font-family="{{ p.body_font }}" font-size="27" letter-spacing="4"
+        fill="{{ p.accent }}">{{ l.t|upper }}</text>
+  {% endif %}
+  {% endfor %}
+  {% for dy in words_dividers %}
+  <path d="{{ sparkle(w / 2, dy, 15) }}" fill="{{ p.ink }}" opacity="0.3"/>
+  {% endfor %}
+
+  <!-- the labor horizon, a whisper of the day itself -->
+  {% if has_sparkline %}
+  {% set hx, hy, hw, hh = 420, 1800, 660, 140 %}
+  <svg x="{{ hx }}" y="{{ hy }}" width="{{ hw }}" height="{{ hh }}"
+       viewBox="0 0 1000 240" preserveAspectRatio="none">
+    <path d="{{ spark_area_path }}" fill="url(#horizonFade)"/>
+    <path d="{{ spark_path }}" fill="none" stroke="{{ p.accent }}"
+          stroke-width="4" stroke-linejoin="round" stroke-linecap="round"
+          vector-effect="non-scaling-stroke"/>
+  </svg>
+  {% set star_x = hx + spark_last_x / 1000 * hw %}
+  {% set star_y = hy + spark_last_y / 240 * hh %}
+  <path d="{{ sparkle(star_x, star_y, 20) }}" fill="{{ p.accent }}"/>
+  {% endif %}
+
+  <text x="{{ w // 2 }}" y="2030" text-anchor="middle" font-family="{{ p.body_font }}"
+        font-size="28" letter-spacing="6" fill="{{ p.ink }}"
+        opacity="0.5">{{ reactions_total }} REACTIONS FROM THE FAMILY · {{ count }} CONTRACTIONS · {{ labor_duration|upper }}</text>
+</svg>

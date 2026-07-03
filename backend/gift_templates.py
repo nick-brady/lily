@@ -48,6 +48,20 @@ TEMPLATES: dict[str, GiftTemplate] = {
         clock_cx=640,
         clock_cy=577,
     ),
+    # The labor clock with the hero photo at its center — the labor radiates
+    # outward from the baby it produced.
+    "mug_hours_photo": GiftTemplate(
+        template_id="mug_hours_photo",
+        product_kind="mug",
+        svg="mug_hours_photo.svg.j2",
+        width=2475,
+        height=1155,
+        dpi=300,
+        photo=True,
+        scene="hours_photo",
+        clock_cx=640,
+        clock_cy=577,
+    ),
     # Hero photo with the contraction line wrapping the mug as a horizon.
     "mug_horizon": GiftTemplate(
         template_id="mug_horizon",
@@ -72,6 +86,44 @@ TEMPLATES: dict[str, GiftTemplate] = {
         scene="hours",
         clock_cx=750,
         clock_cy=940,
+    ),
+    # The labor clock with the hero photo at its center.
+    "card_hours_photo": GiftTemplate(
+        template_id="card_hours_photo",
+        product_kind="birth_announcement_cards",
+        svg="card_hours_photo.svg.j2",
+        width=1500,
+        height=2100,
+        dpi=300,
+        photo=True,
+        scene="hours_photo",
+        clock_cx=750,
+        clock_cy=940,
+    ),
+    # The clock with the timeline's photos orbiting outside the ring, each
+    # at the clock angle of the moment it was taken.
+    "card_orbit": GiftTemplate(
+        template_id="card_orbit",
+        product_kind="birth_announcement_cards",
+        svg="card_orbit.svg.j2",
+        width=1500,
+        height=2100,
+        dpi=300,
+        photo=False,
+        scene="orbit",
+        clock_cx=750,
+        clock_cy=920,
+    ),
+    # The family's own comments as the artwork, with attribution.
+    "card_words": GiftTemplate(
+        template_id="card_words",
+        product_kind="birth_announcement_cards",
+        svg="card_words.svg.j2",
+        width=1500,
+        height=2100,
+        dpi=300,
+        photo=False,
+        scene="words",
     ),
     # Classic photo announcement with the labor horizon beneath the name.
     "card_welcome": GiftTemplate(

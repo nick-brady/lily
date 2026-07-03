@@ -53,15 +53,48 @@ def _context(template):
         "labor_start_time": "7:04 pm",
         "photo_data_uri": _PIXEL if template.photo else None,
     }
-    if template.scene == "hours":
+    if template.scene in ("hours", "hours_photo", "orbit"):
+        ctx["clock_cx"] = template.clock_cx or template.width / 2
+        ctx["clock_cy"] = template.clock_cy or template.height / 2
+    if template.scene in ("hours", "hours_photo"):
         ctx.update(
             gift_artwork.build_hours_clock(
                 durations=durations,
                 offsets_seconds=_OFFSETS,
                 first_contraction_at=_FIRST_AT,
                 born_at=_BORN_AT,
-                cx=template.clock_cx or template.width / 2,
-                cy=template.clock_cy or template.height / 2,
+                cx=ctx["clock_cx"],
+                cy=ctx["clock_cy"],
+                **gift_artwork.CLOCK_PRESETS[template.scene],
+            )
+        )
+        ctx["clock_photo_r"] = gift_artwork.CLOCK_PHOTO_R
+    elif template.scene == "orbit":
+        ctx.update(
+            gift_artwork.build_orbit_scene(
+                [
+                    {"uri": _PIXEL, "occurred_at": _FIRST_AT + timedelta(hours=2)},
+                    {"uri": _PIXEL, "occurred_at": _FIRST_AT + timedelta(hours=2, minutes=5)},
+                    {"uri": _PIXEL, "occurred_at": _FIRST_AT + timedelta(hours=8)},
+                ],
+                durations=durations,
+                offsets_seconds=_OFFSETS,
+                first_contraction_at=_FIRST_AT,
+                born_at=_BORN_AT,
+                cx=ctx["clock_cx"],
+                cy=ctx["clock_cy"],
+            )
+        )
+    elif template.scene == "words":
+        ctx.update(
+            gift_artwork.build_words_scene(
+                [
+                    {"body": "She is absolutely perfect. Welcome to the world!", "who": "Janet", "when": "4:31 am"},
+                    {"body": "So proud of you both.", "who": "Lisa", "when": "9:02 am"},
+                ],
+                width=template.width,
+                height=template.height,
+                reactions_total=12,
             )
         )
     elif template.scene == "story":
@@ -135,6 +168,37 @@ def test_hours_clock_star_and_strokes():
     # opacity deepens as labor progresses
     opacities = [s["o"] for s in clock["clock_strokes"]]
     assert opacities == sorted(opacities)
+
+
+def test_orbit_thumbs_keep_min_separation():
+    import math
+
+    # two photos five minutes apart would overlap without the nudge
+    scene = gift_artwork.build_orbit_scene(
+        [
+            {"uri": _PIXEL, "occurred_at": _FIRST_AT + timedelta(hours=2)},
+            {"uri": _PIXEL, "occurred_at": _FIRST_AT + timedelta(hours=2, minutes=5)},
+        ],
+        durations=_DURATIONS,
+        offsets_seconds=_OFFSETS,
+        first_contraction_at=_FIRST_AT,
+        born_at=_BORN_AT,
+        cx=750,
+        cy=920,
+    )
+    a, b = scene["orbit_thumbs"]
+    dist = math.hypot(a["cx"] - b["cx"], a["cy"] - b["cy"])
+    assert dist >= 2 * gift_artwork._ORBIT_THUMB_R
+
+
+def test_wrap_respects_width_and_line_cap():
+    lines = gift_artwork._wrap(
+        "We have been waiting so long to meet you sweet girl and we love you", 24
+    )
+    assert len(lines) == 2
+    assert all(len(line) <= 24 for line in lines)
+    assert lines[-1].endswith("…")
+    assert gift_artwork._wrap("short", 40) == ["short"]
 
 
 def test_hours_clock_handles_missing_times():

@@ -23,6 +23,8 @@ from PIL import Image, ImageDraw  # noqa: E402
 
 import gift_themes  # noqa: E402
 from gift_artwork import (  # noqa: E402
+    CLOCK_PHOTO_R,
+    CLOCK_PRESETS,
     _fmt_date,
     _fmt_hms,
     _fmt_interval,
@@ -32,7 +34,9 @@ from gift_artwork import (  # noqa: E402
     _spark_last,
     _spark_path,
     build_hours_clock,
+    build_orbit_scene,
     build_story_scene,
+    build_words_scene,
     render_context,
 )
 from gift_templates import TEMPLATES  # noqa: E402
@@ -88,9 +92,20 @@ def main() -> None:
     themes = sys.argv[1:] or ["lily"]
 
     hues = [(233, 213, 220), (214, 226, 235), (236, 228, 212), (222, 232, 222), (230, 220, 235)]
+    captions = ["first signs", "heading in", "almost there", "she's here", "going home"]
     story_photos = [
-        {"uri": fake_photo(hue=hues[i % len(hues)]), "caption": cap}
-        for i, cap in enumerate(["first signs", "heading in", "almost there", "she's here", "going home"])
+        {
+            "uri": fake_photo(hue=hues[i % len(hues)]),
+            "caption": cap,
+            # spread across the labor for the orbit placement
+            "occurred_at": LABOR_START + (BORN_AT - LABOR_START) * ((i + 0.5) / len(captions)),
+        }
+        for i, cap in enumerate(captions)
+    ]
+    quotes = [
+        {"body": "She's perfect. Welcome to the world, little one!", "who": "Janet", "when": "4:31 am"},
+        {"body": "Crying at my desk. So proud of you, Sarah.", "who": "Lisa", "when": "9:02 am"},
+        {"body": "We've been waiting for you, sweet girl.", "who": "Grandpa", "when": "11:11 am"},
     ]
 
     labor_seconds = int((BORN_AT - LABOR_START).total_seconds())
@@ -118,15 +133,32 @@ def main() -> None:
                 "spark_last_y": spark_last[1] if spark_last else 0,
                 "photo_data_uri": fake_photo() if template.photo else None,
             }
-            if template.scene == "hours":
+            if template.scene in ("hours", "hours_photo", "orbit"):
+                context["clock_cx"] = template.clock_cx or template.width / 2
+                context["clock_cy"] = template.clock_cy or template.height / 2
+            if template.scene in ("hours", "hours_photo"):
                 context.update(
                     build_hours_clock(
                         durations=durations,
                         offsets_seconds=offsets,
                         first_contraction_at=LABOR_START,
                         born_at=BORN_AT,
-                        cx=template.clock_cx or template.width / 2,
-                        cy=template.clock_cy or template.height / 2,
+                        cx=context["clock_cx"],
+                        cy=context["clock_cy"],
+                        **CLOCK_PRESETS[template.scene],
+                    )
+                )
+                context["clock_photo_r"] = CLOCK_PHOTO_R
+            elif template.scene == "orbit":
+                context.update(
+                    build_orbit_scene(
+                        story_photos,
+                        durations=durations,
+                        offsets_seconds=offsets,
+                        first_contraction_at=LABOR_START,
+                        born_at=BORN_AT,
+                        cx=context["clock_cx"],
+                        cy=context["clock_cy"],
                     )
                 )
             elif template.scene == "story":
@@ -139,6 +171,15 @@ def main() -> None:
                     "We can't wait to meet her.",
                 ]
                 context.update(scene)
+            elif template.scene == "words":
+                context.update(
+                    build_words_scene(
+                        quotes,
+                        width=template.width,
+                        height=template.height,
+                        reactions_total=47,
+                    )
+                )
             png = render_context(template, context)
             out = OUT_DIR / f"{template.template_id}_{theme}.png"
             out.write_bytes(png)

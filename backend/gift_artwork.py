@@ -29,6 +29,7 @@ from models import (
     TimelineEventComment,
     TimelineEventReaction,
     TimelineEventType,
+    User,
 )
 from storage import get_object_bytes
 
@@ -95,19 +96,28 @@ def render(
         "photo_data_uri": photo_data_uri,
     }
 
-    if template.scene == "hours":
+    if template.scene in ("hours", "hours_photo", "orbit"):
+        context["clock_cx"] = template.clock_cx or template.width / 2
+        context["clock_cy"] = template.clock_cy or template.height / 2
+    if template.scene in ("hours", "hours_photo"):
         context.update(
             build_hours_clock(
                 durations=stats.durations,
                 offsets_seconds=stats.offsets_seconds,
                 first_contraction_at=stats.first_contraction_at,
                 born_at=when,
-                cx=template.clock_cx or template.width / 2,
-                cy=template.clock_cy or template.height / 2,
+                cx=context["clock_cx"],
+                cy=context["clock_cy"],
+                **CLOCK_PRESETS[template.scene],
             )
         )
+        context["clock_photo_r"] = CLOCK_PHOTO_R
+    elif template.scene == "orbit":
+        context.update(_build_orbit_scene(db, birth, template, stats))
     elif template.scene == "story":
         context.update(_build_story_scene(db, birth, template))
+    elif template.scene == "words":
+        context.update(_build_words_scene(db, birth, template))
 
     png = render_context(template, context)
 
@@ -251,7 +261,7 @@ def _gather_photos(db: Session, birth: Birth, *, limit: int) -> list[dict]:
         if uri is None:
             continue
         caption = _truncate(_clean_text((e.payload or {}).get("caption")), 18)
-        out.append({"uri": uri, "caption": caption})
+        out.append({"uri": uri, "caption": caption, "occurred_at": e.occurred_at})
     return _sample_spaced(out, limit)
 
 
@@ -486,6 +496,36 @@ def _clock_angle(dt: datetime) -> float:
     return (seconds / _TWELVE_HOURS) * 2 * math.pi - math.pi / 2
 
 
+def _angle_mapper(offsets_seconds: list[int], first_contraction_at: datetime | None):
+    """offset-seconds → clock-face angle (radians). Real clock time when the
+    labor fits one lap of the face; otherwise a linear sweep (overlapping
+    strokes would lie about the shape). Shared by every clock-family scene so
+    strokes, the star, and orbiting photos all agree on where a moment sits."""
+    total = offsets_seconds[-1] if offsets_seconds else 0
+    clock_true = first_contraction_at is not None and total <= _TWELVE_HOURS * 0.96
+
+    def angle_at(offset: int) -> float:
+        if clock_true:
+            base = _clock_angle(first_contraction_at)
+            return base + (offset / _TWELVE_HOURS) * 2 * math.pi
+        sweep = 2 * math.pi * 0.93
+        return -math.pi / 2 + (offset / (total or 1)) * sweep
+
+    return angle_at, clock_true, total
+
+
+# Clock face sizes per scene. `hours_photo` pulls the strokes outward to make
+# room for the hero photo in the center; `orbit` shrinks the whole face so the
+# photo thumbnails orbiting outside still clear the card edges.
+CLOCK_PRESETS: dict[str, dict] = {
+    "hours": {"r_ring": 460.0, "r_in": 205.0, "len_lo": 80.0, "len_hi": 225.0},
+    "hours_photo": {"r_ring": 470.0, "r_in": 245.0, "len_lo": 70.0, "len_hi": 200.0},
+    "orbit": {"r_ring": 420.0, "r_in": 190.0, "len_lo": 70.0, "len_hi": 190.0},
+}
+# Hero-photo radius inside the hours_photo face (hairline ring sits just out).
+CLOCK_PHOTO_R = 195.0
+
+
 def build_hours_clock(
     *,
     durations: list[int],
@@ -494,6 +534,10 @@ def build_hours_clock(
     born_at: datetime | None,
     cx: float,
     cy: float,
+    r_ring: float = 460.0,
+    r_in: float = 205.0,
+    len_lo: float = 80.0,
+    len_hi: float = 225.0,
 ) -> dict:
     """Geometry for the radial labor clock: every contraction is a fine
     stroke radiating at the clock angle of the moment it happened, its length
@@ -505,19 +549,10 @@ def build_hours_clock(
     strokes would otherwise overlap themselves); the ring loses its clock
     semantics but the shape stays honest.
     """
-    r_ring = 460.0  # the tick ring
-    r_in = 205.0  # where contraction strokes start
-    len_lo, len_hi = 80.0, 225.0  # stroke length range (duration-scaled)
-
-    total = offsets_seconds[-1] if offsets_seconds else 0
-    clock_true = first_contraction_at is not None and total <= _TWELVE_HOURS * 0.96
-
-    def angle_at(offset: int) -> float:
-        if clock_true:
-            base = _clock_angle(first_contraction_at)
-            return base + (offset / _TWELVE_HOURS) * 2 * math.pi
-        sweep = 2 * math.pi * 0.93
-        return -math.pi / 2 + (offset / (total or 1)) * sweep
+    angle_at, _clock_true, total = _angle_mapper(
+        offsets_seconds, first_contraction_at
+    )
+    clock_true = _clock_true
 
     lo = min(durations) if durations else 0
     hi = max(durations) if durations else 1
@@ -598,6 +633,214 @@ def build_hours_clock(
         "clock_start_dot": start_dot,
         "clock_start_label": start_label,
     }
+
+
+# ── moments in orbit: photos around the clock at the time they happened ──
+
+_ORBIT_R = 545.0
+_ORBIT_THUMB_R = 95.0
+
+
+def build_orbit_scene(
+    photos: list[dict],
+    *,
+    durations: list[int],
+    offsets_seconds: list[int],
+    first_contraction_at: datetime | None,
+    born_at: datetime | None,
+    cx: float,
+    cy: float,
+) -> dict:
+    """The labor clock with the timeline's photos as small circles orbiting
+    outside the tick ring, each at the clock angle of the moment it was
+    taken — placed by the data, not arranged in a grid. Each photo gets a dot
+    on the ring and a hairline connector. `photos` need an `occurred_at`;
+    ones without are spread evenly (previews, degraded data)."""
+    preset = CLOCK_PRESETS["orbit"]
+    scene = build_hours_clock(
+        durations=durations,
+        offsets_seconds=offsets_seconds,
+        first_contraction_at=first_contraction_at,
+        born_at=born_at,
+        cx=cx,
+        cy=cy,
+        **preset,
+    )
+    angle_at, _, total = _angle_mapper(offsets_seconds, first_contraction_at)
+
+    angles = []
+    for i, ph in enumerate(photos):
+        when = ph.get("occurred_at")
+        if when is not None and first_contraction_at is not None:
+            offset = (when - first_contraction_at).total_seconds()
+            angles.append(angle_at(int(max(0, min(offset, total)))))
+        else:
+            angles.append(angle_at(int(total * (i + 0.5) / max(len(photos), 1))))
+
+    # keep thumbnails from overlapping: enforce a minimum angular gap,
+    # nudging later moments forward (order stays chronological)
+    min_gap = 2 * math.asin((_ORBIT_THUMB_R + 10) / _ORBIT_R)
+    order = sorted(range(len(angles)), key=lambda i: angles[i])
+    for prev, curr in zip(order, order[1:]):
+        if angles[curr] < angles[prev] + min_gap:
+            angles[curr] = angles[prev] + min_gap
+
+    r_ring = preset["r_ring"]
+    thumbs = []
+    for ph, a in zip(photos, angles):
+        tx = cx + _ORBIT_R * math.cos(a)
+        ty = cy + _ORBIT_R * math.sin(a)
+        thumbs.append(
+            {
+                "cx": round(tx, 1),
+                "cy": round(ty, 1),
+                "r": _ORBIT_THUMB_R,
+                "href": ph["uri"],
+                "dot_x": round(cx + r_ring * math.cos(a), 1),
+                "dot_y": round(cy + r_ring * math.sin(a), 1),
+                "lx": round(cx + (_ORBIT_R - _ORBIT_THUMB_R) * math.cos(a), 1),
+                "ly": round(cy + (_ORBIT_R - _ORBIT_THUMB_R) * math.sin(a), 1),
+            }
+        )
+    scene["orbit_thumbs"] = thumbs
+    return scene
+
+
+def _build_orbit_scene(
+    db: Session, birth: Birth, template: GiftTemplate, stats
+) -> dict:
+    photos = _gather_photos(db, birth, limit=5)
+    return build_orbit_scene(
+        photos,
+        durations=stats.durations,
+        offsets_seconds=stats.offsets_seconds,
+        first_contraction_at=stats.first_contraction_at,
+        born_at=birth.child_dob or birth.birth_completed_at,
+        cx=template.clock_cx or template.width / 2,
+        cy=template.clock_cy or template.height / 2,
+    )
+
+
+# ── the words: the family's comments as the artwork ──────────────────────
+
+
+def _wrap(text: str, max_chars: int, max_lines: int = 2) -> list[str]:
+    """Greedy word wrap; if the text overflows max_lines the last line is
+    truncated with an ellipsis."""
+    words = text.split()
+    lines: list[str] = []
+    current = ""
+    for word in words:
+        candidate = f"{current} {word}".strip()
+        if len(candidate) <= max_chars or not current:
+            current = candidate
+        else:
+            lines.append(current)
+            current = word
+    if current:
+        lines.append(current)
+    if len(lines) > max_lines:
+        lines = lines[:max_lines]
+        last = lines[-1]
+        if len(last) >= max_chars:
+            last = last[: max_chars - 1].rstrip()
+        lines[-1] = last + "…"
+    return lines
+
+
+def build_words_scene(
+    quotes: list[dict], *, width: float, height: float, reactions_total: int
+) -> dict:
+    """Typography-first: up to three of the family's own comments, wrapped
+    and vertically centered, each attributed with a first name and time,
+    separated by small sparkles. `quotes` are {body, who, when}."""
+    quote_size = 62
+    line_h = 84
+    who_gap = 66
+    quote_gap = 118
+
+    blocks = []
+    total_h = 0.0
+    for q in quotes:
+        lines = _wrap(q["body"], max_chars=42)
+        h = len(lines) * line_h + who_gap
+        blocks.append({"lines": lines, "who": q["who"], "when": q["when"], "h": h})
+        total_h += h
+    if blocks:
+        total_h += quote_gap * (len(blocks) - 1)
+
+    mid = (720 + 1700) / 2  # the band between the title block and the footer
+    y = mid - total_h / 2 + quote_size * 0.8
+
+    words_lines: list[dict] = []
+    words_dividers: list[float] = []
+    for i, b in enumerate(blocks):
+        for line in b["lines"]:
+            words_lines.append({"t": f"{line}", "y": round(y), "kind": "quote"})
+            y += line_h
+        who = f"— {b['who']} · {b['when']}" if b["when"] else f"— {b['who']}"
+        words_lines.append({"t": who, "y": round(y - line_h + who_gap), "kind": "who"})
+        y += who_gap
+        if i < len(blocks) - 1:
+            words_dividers.append(round(y + quote_gap / 2 - 46))
+            y += quote_gap
+
+    return {
+        "words_lines": words_lines,
+        "words_dividers": words_dividers,
+        "reactions_total": reactions_total,
+    }
+
+
+def _gather_quotes(db: Session, birth: Birth, *, limit: int, max_len: int) -> list[dict]:
+    """Viewer comments with author first name + time, cleaned for the fonts,
+    evenly sampled across the day."""
+    rows = db.execute(
+        select(
+            TimelineEventComment.body,
+            TimelineEventComment.created_at,
+            User.display_name,
+        )
+        .join(TimelineEvent, TimelineEvent.id == TimelineEventComment.event_id)
+        .join(User, User.id == TimelineEventComment.user_id)
+        .where(
+            TimelineEvent.birth_id == birth.id,
+            TimelineEventComment.deleted_at.is_(None),
+        )
+        .order_by(TimelineEventComment.created_at.asc())
+    ).all()
+
+    cleaned = []
+    for body, created_at, display_name in rows:
+        text = _clean_text(body)
+        if not text:
+            continue
+        who = _clean_text((display_name or "").split()[0] if display_name else "")
+        cleaned.append(
+            {
+                "body": text,
+                "who": who or "family",
+                "when": _fmt_time(created_at),
+            }
+        )
+    short = [q for q in cleaned if len(q["body"]) <= max_len]
+    pool = short or [
+        {**q, "body": _truncate(q["body"], max_len)} for q in cleaned
+    ]
+    return _sample_spaced(pool, limit)
+
+
+def _build_words_scene(db: Session, birth: Birth, template: GiftTemplate) -> dict:
+    quotes = _gather_quotes(db, birth, limit=3, max_len=110)
+    if not quotes:
+        raise ArtworkError("no-comments")
+    counts = _reaction_counts(db, birth)
+    return build_words_scene(
+        quotes,
+        width=template.width,
+        height=template.height,
+        reactions_total=sum(counts.values()),
+    )
 
 
 # ── formatting ───────────────────────────────────────────────────────────
