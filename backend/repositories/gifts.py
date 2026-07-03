@@ -17,11 +17,13 @@ import fulfillment
 import gift_artwork
 import gift_templates
 from db import SessionLocal
+from fulfillment import products as fulfillment_products
 from models import (
     Birth,
     GiftCatalogItem,
     GiftKind,
     GiftRendering,
+    GiftRenderingMockup,
     GiftRenderingStatus,
 )
 from storage import object_key, presigned_get_url, put_object
@@ -139,6 +141,72 @@ def mockup_url(rendering: GiftRendering) -> str | None:
     return presigned_get_url(rendering.mockup_s3_key)
 
 
+def product_mockup_url(mockup: GiftRenderingMockup) -> str | None:
+    if mockup.status != "ready" or not mockup.mockup_s3_key:
+        return None
+    return presigned_get_url(mockup.mockup_s3_key)
+
+
+def product_kind_for_rendering(db: Session, rendering: GiftRendering) -> str | None:
+    item = db.get(GiftCatalogItem, rendering.gift_catalog_item_id)
+    return item.product_kind if item is not None else None
+
+
+def list_product_mockups(
+    db: Session, *, rendering_id: uuid.UUID
+) -> dict[str, GiftRenderingMockup]:
+    """Cached product mockups for a rendering, keyed by product_key."""
+    rows = db.scalars(
+        select(GiftRenderingMockup).where(
+            GiftRenderingMockup.gift_rendering_id == rendering_id
+        )
+    ).all()
+    return {r.product_key: r for r in rows}
+
+
+def get_or_create_product_mockup(
+    db: Session, *, rendering: GiftRendering, product_key: str
+) -> tuple[GiftRenderingMockup, bool]:
+    """Get the cached (rendering, product_key) mockup row, creating a pending
+    one if absent. Returns (row, should_render): should_render is True for a
+    freshly-created row or when retrying a previously-failed one — the caller
+    schedules a background render only then, so a cached row never re-hits the
+    partner."""
+    existing = db.scalar(
+        select(GiftRenderingMockup).where(
+            GiftRenderingMockup.gift_rendering_id == rendering.id,
+            GiftRenderingMockup.product_key == product_key,
+        )
+    )
+    if existing is not None:
+        if existing.status == "failed":
+            existing.status = "pending"
+            existing.mockup_s3_key = None
+            db.commit()
+            return existing, True
+        return existing, False
+
+    row = GiftRenderingMockup(
+        gift_rendering_id=rendering.id,
+        product_key=product_key,
+        status="pending",
+    )
+    db.add(row)
+    try:
+        db.commit()
+    except IntegrityError:
+        # A concurrent request created it first — fall back to that row.
+        db.rollback()
+        row = db.scalar(
+            select(GiftRenderingMockup).where(
+                GiftRenderingMockup.gift_rendering_id == rendering.id,
+                GiftRenderingMockup.product_key == product_key,
+            )
+        )
+        return row, False
+    return row, True
+
+
 # ── background render job ─────────────────────────────────────────────────
 
 
@@ -188,15 +256,18 @@ def render_rendering(rendering_id: uuid.UUID) -> None:
 
 
 def _try_generate_mockup(db: Session, rendering: GiftRendering) -> None:
-    """Generate a product mockup for a ready rendering, if a fulfillment
-    partner is configured and supports the product. Records mockup_status;
-    never raises."""
+    """Generate the default hero product mockup for a ready rendering, if a
+    fulfillment partner is configured and the product_kind has a default
+    product mapped. Records mockup_status; never raises."""
     adapter = fulfillment.get_adapter()
     if adapter is None or not rendering.artwork_s3_key:
         return
     item = db.get(GiftCatalogItem, rendering.gift_catalog_item_id)
     birth = db.get(Birth, rendering.birth_id)
-    if item is None or birth is None or not adapter.supports(item.product_kind):
+    if item is None or birth is None:
+        return
+    product = fulfillment_products.default_for_product_kind(item.product_kind)
+    if product is None:
         return
 
     rendering.mockup_status = "pending"
@@ -206,7 +277,10 @@ def _try_generate_mockup(db: Session, rendering: GiftRendering) -> None:
         # reachable (real S3 in prod — a localhost dev MinIO URL won't work).
         artwork = presigned_get_url(rendering.artwork_s3_key, expires_in=3600)
         result = adapter.generate_mockup(
-            artwork_url=artwork, product_kind=item.product_kind
+            artwork_url=artwork,
+            product_id=product.product_id,
+            variant_id=product.variant_id,
+            placement=product.placement,
         )
         key = object_key(
             family_id=birth.family_id,
@@ -223,6 +297,63 @@ def _try_generate_mockup(db: Session, rendering: GiftRendering) -> None:
         if rendering is not None:
             rendering.mockup_status = "failed"
             db.commit()
+
+
+def render_product_mockup(mockup_id: uuid.UUID) -> None:
+    """Generate one on-demand product mockup (a rendering's artwork on a
+    shortlist product) and persist it. Runs as a BackgroundTask after the
+    response, so it owns its own DB session. Failures are recorded on the row,
+    never raised."""
+    db = SessionLocal()
+    try:
+        mockup = db.get(GiftRenderingMockup, mockup_id)
+        if mockup is None:
+            return
+        rendering = db.get(GiftRendering, mockup.gift_rendering_id)
+        product = fulfillment_products.get(mockup.product_key)
+        adapter = fulfillment.get_adapter()
+        if (
+            rendering is None
+            or rendering.status != GiftRenderingStatus.ready
+            or not rendering.artwork_s3_key
+            or product is None
+            or adapter is None
+        ):
+            mockup.status = "failed"
+            db.commit()
+            return
+        birth = db.get(Birth, rendering.birth_id)
+        if birth is None:
+            mockup.status = "failed"
+            db.commit()
+            return
+        try:
+            artwork = presigned_get_url(rendering.artwork_s3_key, expires_in=3600)
+            result = adapter.generate_mockup(
+                artwork_url=artwork,
+                product_id=product.product_id,
+                variant_id=product.variant_id,
+                placement=product.placement,
+            )
+            key = object_key(
+                family_id=birth.family_id,
+                birth_id=birth.id,
+                filename=f"gifts/{rendering.id}-{product.key}.png",
+            )
+            put_object(
+                key=key, body=result.image_bytes, content_type=result.content_type
+            )
+            mockup.mockup_s3_key = key
+            mockup.status = "ready"
+            db.commit()
+        except Exception:  # MockupError or any transport error
+            db.rollback()
+            mockup = db.get(GiftRenderingMockup, mockup_id)
+            if mockup is not None:
+                mockup.status = "failed"
+                db.commit()
+    finally:
+        db.close()
 
 
 def _fail(db: Session, rendering: GiftRendering, reason: str) -> None:
