@@ -35,6 +35,7 @@ from gift_artwork import (  # noqa: E402
     _spark_path,
     build_hours_clock,
     build_orbit_scene,
+    build_pool_scene,
     build_reel_scene,
     build_story_scene,
     build_words_scene,
@@ -113,6 +114,20 @@ def main() -> None:
         {"body": "Crying at my desk. So proud of you, Sarah.", "who": "Lisa", "when": "9:02 am"},
         {"body": "We've been waiting for you, sweet girl.", "who": "Grandpa", "when": "11:11 am"},
     ]
+    # mirrors the family pool in frontend/src/components/Predictions.jsx
+    pool = [
+        {"name": "Alexis (Momma)", "weight_lbs": 7.75, "length_in": 20.5},
+        {"name": "Nick (Daddy)", "weight_lbs": 7.5, "length_in": 20},
+        {"name": "Nathan", "weight_lbs": 7.25, "length_in": 19.5},
+        {"name": "Jena", "weight_lbs": 8.4375, "length_in": None},
+        {"name": "Krista", "weight_lbs": 7.375, "length_in": 20},
+        {"name": "Kim (Nina)", "weight_lbs": 8.125, "length_in": 21},
+        {"name": "Joan (Nonna)", "weight_lbs": 7.3125, "length_in": 20.5},
+        {"name": "Leslie (Lala)", "weight_lbs": 7.375, "length_in": None},
+        {"name": "Steven (Papa)", "weight_lbs": 9.6, "length_in": 21.3},
+        {"name": "Cynthia", "weight_lbs": 8, "length_in": 20},
+        {"name": "David (Copa)", "weight_lbs": 8.7, "length_in": 20.25},
+    ]
 
     labor_seconds = int((BORN_AT - LABOR_START).total_seconds())
     spark_last = _spark_last(durations)
@@ -185,6 +200,16 @@ def main() -> None:
                         width=template.width,
                         height=template.height,
                         layout=layout,
+                    )
+                )
+            elif template.scene == "pool":
+                context.update(
+                    build_pool_scene(
+                        pool,
+                        actual_weight_lbs=8.4375,
+                        actual_length_in=20.5,
+                        child_name="Lily",
+                        layout="mug" if template.product_kind == "mug" else "card",
                     )
                 )
             elif template.scene == "words":

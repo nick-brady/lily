@@ -73,6 +73,17 @@ TEMPLATES: dict[str, GiftTemplate] = {
         photo=False,
         scene="reel",
     ),
+    # The family pool: everyone's guesses vs. what actually happened.
+    "mug_pool": GiftTemplate(
+        template_id="mug_pool",
+        product_kind="mug",
+        svg="mug_pool.svg.j2",
+        width=2475,
+        height=1155,
+        dpi=300,
+        photo=False,
+        scene="pool",
+    ),
     # Hero photo with the contraction line wrapping the mug as a horizon.
     "mug_horizon": GiftTemplate(
         template_id="mug_horizon",
@@ -135,6 +146,17 @@ TEMPLATES: dict[str, GiftTemplate] = {
         dpi=300,
         photo=False,
         scene="reel",
+    ),
+    # The family pool leaderboard as a keepsake card.
+    "card_pool": GiftTemplate(
+        template_id="card_pool",
+        product_kind="birth_announcement_cards",
+        svg="card_pool.svg.j2",
+        width=1500,
+        height=2100,
+        dpi=300,
+        photo=False,
+        scene="pool",
     ),
     # The family's own comments as the artwork, with attribution.
     "card_words": GiftTemplate(

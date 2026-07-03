@@ -120,6 +120,8 @@ def render(
         context.update(_build_words_scene(db, birth, template))
     elif template.scene == "reel":
         context.update(_build_reel_scene(db, birth, template))
+    elif template.scene == "pool":
+        context.update(_build_pool_scene(db, birth, template))
 
     png = render_context(template, context)
 
@@ -790,6 +792,171 @@ def _build_reel_scene(db: Session, birth: Birth, template: GiftTemplate) -> dict
         raise ArtworkError("missing-photo")
     return build_reel_scene(
         photos, width=template.width, height=template.height, layout=layout
+    )
+
+
+# ── the pool: the family's predictions vs. the actuals ───────────────────
+# The leaderboard as a keepsake: everyone guessed before they met her; the
+# card settles it. Scoring mirrors frontend/src/components/Predictions.jsx —
+# |weight diff in lbs| + 0.5 × |length diff in inches|, closest wins.
+
+_POOL_LAYOUTS = {
+    "card": {
+        "rank_x": 205, "name_x": 250, "guess_x": 1295,
+        "y0": 660, "step": 76, "max_rows": 11,
+        "ruler_x1": 250, "ruler_x2": 1250, "ruler_y": 1790,
+    },
+    "mug": {
+        "rank_x": 1300, "name_x": 1340, "guess_x": 2380,
+        "y0": 190, "step": 58, "max_rows": 11,
+        "ruler_x1": 1340, "ruler_x2": 2380, "ruler_y": 1035,
+    },
+}
+# rough per-glyph advances for the leader-dot gaps (generous on purpose —
+# a leader that stops early is fine, one that runs into text is not)
+_POOL_NAME_ADV = 0.74
+_POOL_GUESS_ADV = 0.68
+_POOL_ROW_FONT = 33
+
+
+def _fmt_lbs_oz(lbs: float | None) -> str:
+    if not lbs:
+        return ""
+    pounds = int(lbs)
+    oz = round((lbs - pounds) * 16)
+    if oz == 16:
+        pounds, oz = pounds + 1, 0
+    return f"{pounds} lbs {oz} oz" if oz else f"{pounds} lbs"
+
+
+def _fmt_guess(weight_lbs: float | None, length_in: float | None) -> str:
+    parts = []
+    if weight_lbs:
+        parts.append(_fmt_lbs_oz(weight_lbs))
+    if length_in:
+        parts.append(f"{length_in:g} in")
+    return " · ".join(parts) or "—"
+
+
+def _pool_score(
+    prediction: dict, actual_weight: float, actual_length: float
+) -> float | None:
+    """Mirrors Predictions.jsx: lower is closer; guesses that named nothing
+    score None and sink to the bottom."""
+    score = 0.0
+    scored = False
+    if prediction.get("weight_lbs"):
+        score += abs(prediction["weight_lbs"] - actual_weight)
+        scored = True
+    if prediction.get("length_in") and actual_length:
+        score += abs(prediction["length_in"] - actual_length) * 0.5
+        scored = True
+    return score if scored else None
+
+
+def build_pool_scene(
+    predictions: list[dict],
+    *,
+    actual_weight_lbs: float,
+    actual_length_in: float | None,
+    child_name: str,
+    layout: str,
+) -> dict:
+    """The ranked pool. Returns row/ruler geometry so the template stays a
+    thin loop: rows with leader-dot spans, the actual row set apart, and a
+    weight ruler with every guess as a dot and the actual as the star."""
+    lay = _POOL_LAYOUTS[layout]
+
+    scored = []
+    for p in predictions:
+        name = _truncate(_clean_text(p.get("name")), 20)
+        if not name:
+            continue
+        scored.append(
+            {
+                "name": name,
+                "weight_lbs": p.get("weight_lbs"),
+                "length_in": p.get("length_in"),
+                "score": _pool_score(p, actual_weight_lbs, actual_length_in),
+            }
+        )
+    scored.sort(key=lambda r: (r["score"] is None, r["score"]))
+
+    shown = scored[: lay["max_rows"]]
+    rows = []
+    for i, r in enumerate(shown):
+        y = lay["y0"] + i * lay["step"]
+        guess = _fmt_guess(r["weight_lbs"], r["length_in"])
+        adv = _POOL_ROW_FONT
+        lx1 = lay["name_x"] + len(r["name"]) * adv * _POOL_NAME_ADV + 28
+        lx2 = lay["guess_x"] - len(guess) * adv * _POOL_GUESS_ADV - 28
+        rows.append(
+            {
+                "y": round(y),
+                "rank": i + 1,
+                "winner": i == 0 and r["score"] is not None,
+                "name": r["name"],
+                "guess": guess,
+                "leader_x1": round(lx1) if lx2 - lx1 > 50 else None,
+                "leader_x2": round(lx2),
+            }
+        )
+
+    # the weight ruler: every guess a dot, the actual the star
+    weights = [r["weight_lbs"] for r in scored if r["weight_lbs"]]
+    ruler = None
+    if weights:
+        lo = min(weights + [actual_weight_lbs]) - 0.35
+        hi = max(weights + [actual_weight_lbs]) + 0.35
+        span = (hi - lo) or 1
+
+        def rx(w: float) -> float:
+            return lay["ruler_x1"] + (w - lo) / span * (lay["ruler_x2"] - lay["ruler_x1"])
+
+        ruler = {
+            "y": lay["ruler_y"],
+            "x1": lay["ruler_x1"],
+            "x2": lay["ruler_x2"],
+            "dots": [{"x": round(rx(w), 1)} for w in weights],
+            "star_x": round(rx(actual_weight_lbs), 1),
+            "ticks": [
+                {"x": round(rx(lb), 1), "label": f"{lb} LB"}
+                for lb in range(math.ceil(lo), math.floor(hi) + 1)
+            ],
+        }
+
+    actual_y = lay["y0"] + len(rows) * lay["step"] + 42
+    return {
+        "pool_layout": {
+            "rank_x": lay["rank_x"],
+            "name_x": lay["name_x"],
+            "guess_x": lay["guess_x"],
+        },
+        "pool_rows": rows,
+        "pool_actual": {
+            "y": round(actual_y),
+            "name": child_name,
+            "guess": _fmt_guess(actual_weight_lbs, actual_length_in),
+        },
+        "pool_ruler": ruler,
+        "pool_count": len(scored),
+        "pool_winner": rows[0]["name"] if rows and rows[0]["winner"] else None,
+        "pool_extra": max(0, len(scored) - len(rows)),
+    }
+
+
+def _build_pool_scene(db: Session, birth: Birth, template: GiftTemplate) -> dict:
+    predictions = birth.predictions or []
+    if not predictions:
+        raise ArtworkError("no-predictions")
+    if not birth.child_weight_lbs:
+        raise ArtworkError("missing-measurements")
+    return build_pool_scene(
+        predictions,
+        actual_weight_lbs=birth.child_weight_lbs,
+        actual_length_in=birth.child_length_in,
+        child_name=(birth.child_name or "").strip() or "Baby",
+        layout="mug" if template.product_kind == "mug" else "card",
     )
 
 

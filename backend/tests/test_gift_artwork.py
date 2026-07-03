@@ -97,6 +97,20 @@ def _context(template):
                 reactions_total=12,
             )
         )
+    elif template.scene == "pool":
+        ctx.update(
+            gift_artwork.build_pool_scene(
+                [
+                    {"name": "Janet", "weight_lbs": 8.4375, "length_in": 20.5},
+                    {"name": "Lisa", "weight_lbs": 7.5, "length_in": None},
+                    {"name": "Marco", "weight_lbs": None, "length_in": None},
+                ],
+                actual_weight_lbs=8.4375,
+                actual_length_in=20.5,
+                child_name="Lily Wren",
+                layout="mug" if template.product_kind == "mug" else "card",
+            )
+        )
     elif template.scene == "reel":
         ctx.update(
             gift_artwork.build_reel_scene(
@@ -230,6 +244,36 @@ def test_reel_panels_fill_their_region():
     assert len(card["reel_panels"]) == 3
     bottom = card["reel_panels"][-1]
     assert bottom["y"] + bottom["h"] <= card["reel_band_y"]
+
+
+def test_pool_scoring_and_formats():
+    scene = gift_artwork.build_pool_scene(
+        [
+            {"name": "Papa", "weight_lbs": 9.6, "length_in": 21.3},
+            {"name": "Jena", "weight_lbs": 8.4375, "length_in": None},
+            {"name": "Shrug", "weight_lbs": None, "length_in": None},
+        ],
+        actual_weight_lbs=8.4375,
+        actual_length_in=20.5,
+        child_name="Lily",
+        layout="card",
+    )
+    rows = scene["pool_rows"]
+    # exact weight guess wins; the guessless entry sinks to the bottom
+    assert rows[0]["name"] == "Jena" and rows[0]["winner"]
+    assert rows[-1]["name"] == "Shrug" and rows[-1]["guess"] == "—"
+    assert rows[0]["guess"] == "8 lbs 7 oz"
+    assert scene["pool_actual"]["guess"] == "8 lbs 7 oz · 20.5 in"
+    assert scene["pool_winner"] == "Jena"
+    # ruler covers all weights and stars the actual
+    assert scene["pool_ruler"] is not None
+    assert len(scene["pool_ruler"]["dots"]) == 2
+
+
+def test_lbs_oz_carry():
+    assert gift_artwork._fmt_lbs_oz(7.99) == "8 lbs"  # 15.84 oz rounds up and carries
+    assert gift_artwork._fmt_lbs_oz(8.0) == "8 lbs"
+    assert gift_artwork._fmt_lbs_oz(7.75) == "7 lbs 12 oz"
 
 
 def test_hours_clock_handles_missing_times():

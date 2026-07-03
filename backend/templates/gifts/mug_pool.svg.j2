@@ -1,0 +1,31 @@
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink"
+     width="{{ w }}" height="{{ h }}" viewBox="0 0 {{ w }} {{ h }}">
+{% from "_pool.svg.j2" import pool_list, pool_ruler_strip with context %}
+  <rect x="0" y="0" width="{{ w }}" height="{{ h }}" fill="{{ p.bg }}"/>
+
+  <!-- the opening card, left face of the wrap -->
+  <text x="70" y="300" font-family="{{ p.body_font }}" font-size="30"
+        font-weight="500" letter-spacing="9" fill="{{ p.accent }}">THE FAMILY POOL</text>
+  <text x="64" y="470" font-family="{{ p.display_font }}" font-size="150"
+        font-weight="300" font-style="italic" fill="{{ p.ink }}">{{ child_name }}</text>
+  <text x="70" y="560" font-family="{{ p.body_font }}" font-size="32"
+        letter-spacing="2" fill="{{ p.ink }}" opacity="0.62">born {{ birth_date }}</text>
+  <text x="70" y="680" font-family="{{ p.display_font }}" font-size="46"
+        font-style="italic" fill="{{ p.ink }}" opacity="0.75">everyone guessed</text>
+  <text x="70" y="742" font-family="{{ p.display_font }}" font-size="46"
+        font-style="italic" fill="{{ p.ink }}" opacity="0.75">before they met you</text>
+  <line x1="70" y1="830" x2="220" y2="830" stroke="{{ p.ink }}"
+        stroke-width="2" opacity="0.25"/>
+  <text x="70" y="905" font-family="{{ p.body_font }}" font-size="27"
+        letter-spacing="3" fill="{{ p.ink }}" opacity="0.55">{{ pool_count }} GUESSES{% if pool_extra %} · +{{ pool_extra }} MORE{% endif %}</text>
+  {% if pool_winner %}
+  <text x="70" y="962" font-family="{{ p.body_font }}" font-size="27"
+        letter-spacing="3" fill="{{ p.ink }}" opacity="0.55">CLOSEST: {{ pool_winner|upper }}</text>
+  {% endif %}
+
+  <!-- the leaderboard, right face of the wrap -->
+  {{ pool_list(font_size=31) }}
+
+  <!-- the ruler -->
+  {{ pool_ruler_strip(label_size=22) }}
+</svg>
