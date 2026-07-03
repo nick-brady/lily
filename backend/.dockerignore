@@ -8,3 +8,4 @@ uploads/*
 .env
 .env.local
 alembic/versions/__pycache__
+preview_out/

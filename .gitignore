@@ -31,3 +31,6 @@ backend/uploads/*
 
 # OS
 .DS_Store
+
+# gift-artwork design previews (render_gift_previews.py output)
+backend/preview_out/

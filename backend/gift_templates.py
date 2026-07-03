@@ -8,6 +8,10 @@ migration.
 
 `dims` are the exact output pixels (≈300 DPI for the product's print area).
 `photo=True` templates embed the auto-selected hero photo.
+
+The collection ("The Hours") is designed as keepsakes first, data second:
+the birth's real data drawn as art — a radial labor clock, a quiet horizon
+line, a story path — set in Cormorant Garamond with Montserrat caps labels.
 """
 from __future__ import annotations
 
@@ -23,48 +27,73 @@ class GiftTemplate:
     height: int
     dpi: int
     photo: bool  # embed the single auto-selected hero photo
-    scene: str | None = None  # richer data scene: "rising" | None
+    scene: str | None = None  # richer data scene: "hours" | "story" | None
+    # center of the labor clock, for scene == "hours" (defaults to canvas center)
+    clock_cx: float | None = None
+    clock_cy: float | None = None
 
 
 TEMPLATES: dict[str, GiftTemplate] = {
-    # Mug wrap print area ≈ 2475 × 1155 px at 300 DPI.
-    "mug_pattern": GiftTemplate(
-        template_id="mug_pattern",
+    # ── mugs — wrap print area ≈ 2475 × 1155 px at 300 DPI ────────────────
+    # The labor clock on one face, name and one quiet data line on the other.
+    "mug_hours": GiftTemplate(
+        template_id="mug_hours",
         product_kind="mug",
-        svg="mug_pattern.svg.j2",
+        svg="mug_hours.svg.j2",
+        width=2475,
+        height=1155,
+        dpi=300,
+        photo=False,
+        scene="hours",
+        clock_cx=640,
+        clock_cy=577,
+    ),
+    # Hero photo with the contraction line wrapping the mug as a horizon.
+    "mug_horizon": GiftTemplate(
+        template_id="mug_horizon",
+        product_kind="mug",
+        svg="mug_horizon.svg.j2",
         width=2475,
         height=1155,
         dpi=300,
         photo=True,
     ),
-    "mug_stats": GiftTemplate(
-        template_id="mug_stats",
-        product_kind="mug",
-        svg="mug_stats.svg.j2",
-        width=2475,
-        height=1155,
+    # ── cards — 5×7 in at 300 DPI = 1500 × 2100 px (portrait) ─────────────
+    # The labor clock as an art print: the hours of labor around a clock
+    # face, a star at the minute of birth.
+    "card_hours": GiftTemplate(
+        template_id="card_hours",
+        product_kind="birth_announcement_cards",
+        svg="card_hours.svg.j2",
+        width=1500,
+        height=2100,
         dpi=300,
         photo=False,
+        scene="hours",
+        clock_cx=750,
+        clock_cy=940,
     ),
-    # 5×7 in card at 300 DPI = 1500 × 2100 px (portrait).
-    "card_classic": GiftTemplate(
-        template_id="card_classic",
+    # Classic photo announcement with the labor horizon beneath the name.
+    "card_welcome": GiftTemplate(
+        template_id="card_welcome",
         product_kind="birth_announcement_cards",
-        svg="card_classic.svg.j2",
+        svg="card_welcome.svg.j2",
         width=1500,
         height=2100,
         dpi=300,
         photo=True,
     ),
-    "card_rising": GiftTemplate(
-        template_id="card_rising",
+    # The story of the day: a thread rising from "where it began" through
+    # Polaroid moments to a star, with the family's own words beneath.
+    "card_story": GiftTemplate(
+        template_id="card_story",
         product_kind="birth_announcement_cards",
-        svg="card_rising.svg.j2",
+        svg="card_story.svg.j2",
         width=1500,
         height=2100,
         dpi=300,
         photo=False,
-        scene="rising",
+        scene="story",
     ),
 }
 

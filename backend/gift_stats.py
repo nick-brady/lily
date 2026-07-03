@@ -24,6 +24,11 @@ class GiftStats:
     avg_contraction_seconds: float | None
     avg_interval_seconds: float | None
     durations: list[int] = field(default_factory=list)
+    # Per completed contraction, seconds since the first one — parallel to
+    # `durations`. Lets designs place contractions in time (the radial labor
+    # clock), not just in sequence (the sparkline).
+    offsets_seconds: list[int] = field(default_factory=list)
+    first_contraction_at: datetime | None = None
 
     def as_metadata(self) -> dict:
         return {
@@ -32,6 +37,7 @@ class GiftStats:
             "avg_contraction_seconds": self.avg_contraction_seconds,
             "avg_interval_seconds": self.avg_interval_seconds,
             "durations": self.durations,
+            "offsets_seconds": self.offsets_seconds,
         }
 
 
@@ -73,12 +79,19 @@ def compute(birth: Birth, events: list[TimelineEvent]) -> GiftStats:
 
     labor_duration = _labor_duration_seconds(birth)
 
+    first_at = completed[0].occurred_at if completed else None
+    offsets = [
+        int((e.occurred_at - first_at).total_seconds()) for e in completed
+    ] if first_at else []
+
     return GiftStats(
         contraction_count=len(completed),
         labor_duration_seconds=labor_duration,
         avg_contraction_seconds=avg_contraction,
         avg_interval_seconds=avg_interval,
         durations=durations,
+        offsets_seconds=offsets,
+        first_contraction_at=first_at,
     )
 
 

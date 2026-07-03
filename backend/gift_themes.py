@@ -2,19 +2,20 @@
 `frontend/src/utils/themes.js`.
 
 Artwork only needs a few tokens (background, ink, accent, a secondary
-"dot" accent) plus a display font. We use the light-mode tokens (except
-`starry`, which is dark-only). The display font is the bundled
-"Cormorant Garamond" for every theme in v1 (see Dockerfile.dev); per-theme
-fonts can follow once more families are bundled.
+"dot" accent) plus fonts. We use the light-mode tokens (except `starry`,
+which is dark-only). Fonts are the same pairing for every theme in v1:
+Cormorant Garamond (vendored in assets/fonts, installed by Dockerfile.dev)
+for names and display lines, Montserrat (Debian package) for letterspaced
+caps labels and numerals — Cormorant/EB Garamond's old-style figures are
+unreadable at stat sizes ("1" renders like a small-caps ɪ).
 """
 from __future__ import annotations
 
 from dataclasses import dataclass
 
-# Family names of fonts installed in the backend image (see Dockerfile.dev):
-# fonts-ebgaramond (display) + fonts-dejavu-core (body).
-DISPLAY_FONT = "EB Garamond"
-BODY_FONT = "DejaVu Sans"
+# Family names of fonts installed in the backend image (see Dockerfile.dev).
+DISPLAY_FONT = "Cormorant Garamond"
+BODY_FONT = "Montserrat"
 
 
 @dataclass(frozen=True)

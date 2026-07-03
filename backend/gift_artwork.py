@@ -48,6 +48,9 @@ _env = Environment(
     loader=FileSystemLoader(_TEMPLATE_DIR),
     autoescape=select_autoescape(["svg", "j2", "xml"], default=True),
 )
+# `sparkle(cx, cy, r)` is available in templates — the four-point star that
+# marks the moment of arrival across the collection.
+_env.globals["sparkle"] = lambda cx, cy, r: _sparkle_path(cx, cy, r)
 
 
 def render(
@@ -71,6 +74,7 @@ def render(
         raise ArtworkError("missing-photo")
 
     when = birth.child_dob or birth.birth_completed_at
+    spark_last = _spark_last(stats.durations)
     context = {
         "w": template.width,
         "h": template.height,
@@ -83,13 +87,27 @@ def render(
         "avg_contraction": _fmt_ms(stats.avg_contraction_seconds),
         "avg_interval": _fmt_interval(stats.avg_interval_seconds),
         "has_sparkline": len(stats.durations) >= 2,
-        "spark_line": _sparkline_polyline(stats.durations),
-        "spark_area": _sparkline_area(stats.durations),
+        "spark_path": _spark_path(stats.durations),
+        "spark_area_path": _spark_area_path(stats.durations),
+        "spark_last_x": spark_last[0] if spark_last else 0,
+        "spark_last_y": spark_last[1] if spark_last else 0,
+        "labor_start_time": _fmt_time(stats.first_contraction_at),
         "photo_data_uri": photo_data_uri,
     }
 
-    if template.scene == "rising":
-        context.update(_build_rising_scene(db, birth, template))
+    if template.scene == "hours":
+        context.update(
+            build_hours_clock(
+                durations=stats.durations,
+                offsets_seconds=stats.offsets_seconds,
+                first_contraction_at=stats.first_contraction_at,
+                born_at=when,
+                cx=template.clock_cx or template.width / 2,
+                cy=template.clock_cy or template.height / 2,
+            )
+        )
+    elif template.scene == "story":
+        context.update(_build_story_scene(db, birth, template))
 
     png = render_context(template, context)
 
@@ -270,13 +288,17 @@ def _short_comments(db: Session, birth: Birth, *, limit: int, max_len: int) -> l
 
 
 def _reaction_summary(counts: dict, comment_total: int) -> str:
+    """Single separator-joined line. SVG collapses whitespace runs, so
+    separators must be real characters — and words, not symbols: the bundled
+    fonts have no ♥, and cairosvg won't fall back per-glyph (it renders
+    tofu)."""
     total = sum(counts.values())
     parts = []
     if total:
-        parts.append(f"♥ {total}")  # ♥
+        parts.append(f"{total} reaction{'s' if total != 1 else ''}")
     if comment_total:
         parts.append(f"{comment_total} note{'s' if comment_total != 1 else ''}")
-    return "   ".join(parts)
+    return " · ".join(parts)
 
 
 def _polaroid_rotations(n: int) -> list[int]:
@@ -284,18 +306,19 @@ def _polaroid_rotations(n: int) -> list[int]:
     return [base[i % len(base)] for i in range(n)]
 
 
-def _build_rising_scene(db: Session, birth: Birth, template: GiftTemplate) -> dict:
-    """A timeline that rises from the bottom of the card to the top, with
-    Polaroid photos alternating left/right along the meandering path."""
-    photos = _gather_photos(db, birth, limit=5)
-    counts = _reaction_counts(db, birth)
-    comments = _short_comments(db, birth, limit=2, max_len=60)
-
-    cx = template.width / 2
-    amp = 150.0
-    y_bottom = template.height - 360
-    y_top = 620
-    waves = 2.2
+def build_story_scene(
+    photos: list[dict], *, width: float, height: float
+) -> dict:
+    """Geometry for the story card: a path rising from "where it began" at
+    the bottom to a sparkle star at the top, with Polaroids hanging off it.
+    Each photo's moment is a dot ON the path with a short connector to the
+    Polaroid, so the thread and the photos read as one object. Pure geometry
+    — the DB wrapper below gathers the content."""
+    cx = width / 2
+    amp = 190.0
+    y_bottom = height - 420
+    y_top = 660
+    waves = 1.6
 
     def path_x(t: float) -> float:
         return cx + amp * math.sin(t * waves * 2 * math.pi)
@@ -306,16 +329,26 @@ def _build_rising_scene(db: Session, birth: Birth, template: GiftTemplate) -> di
         t = i / steps
         y = y_bottom - t * (y_bottom - y_top)
         pts.append((path_x(t), y))
-    path_d = "M " + " L ".join(f"{x:.1f},{y:.1f}" for x, y in pts)
+    path_d = _smooth_path(pts)
 
     rotations = _polaroid_rotations(len(photos))
     polaroids = []
+    moments = []
     n = len(photos)
     for i, ph in enumerate(photos):
         t = (i + 0.5) / n if n else 0
         y = y_bottom - t * (y_bottom - y_top)
+        px = path_x(t)
         side = -1 if i % 2 == 0 else 1
-        x = cx + side * 360
+        x = cx + side * 355
+        moments.append(
+            {
+                "x": round(px, 1),
+                "y": round(y, 1),
+                # connector from the dot toward the polaroid's near edge
+                "x2": round(x - side * 175, 1),
+            }
+        )
         polaroids.append(
             {
                 "x": round(x, 1),
@@ -329,43 +362,242 @@ def _build_rising_scene(db: Session, birth: Birth, template: GiftTemplate) -> di
     return {
         "path_d": path_d,
         "polaroids": polaroids,
-        "reaction_summary": _reaction_summary(counts, len(comments)),
-        "notes": comments,
+        "moments": moments,
         "y_start": y_bottom,
+        "star": _sparkle_path(path_x(1.0), y_top - 60, 44),
     }
 
 
-# ── sparkline geometry ───────────────────────────────────────────────────
+def _build_story_scene(db: Session, birth: Birth, template: GiftTemplate) -> dict:
+    photos = _gather_photos(db, birth, limit=5)
+    counts = _reaction_counts(db, birth)
+    comments = _short_comments(db, birth, limit=2, max_len=60)
+    scene = build_story_scene(
+        photos, width=template.width, height=template.height
+    )
+    scene["reaction_summary"] = _reaction_summary(counts, len(comments))
+    scene["notes"] = comments
+    return scene
+
+
+# ── the horizon: labor as a smooth line ──────────────────────────────────
+# Drawn in a normalized 1000×240 space; templates place it with a nested
+# <svg viewBox="0 0 1000 240" preserveAspectRatio="none">. Cubic béziers
+# stay smooth under the non-uniform stretch, and vector-effect:
+# non-scaling-stroke keeps the line weight even.
+
+
+_SPARK_MAX_POINTS = 40
+
+
+def _resample(durations: list[int], n: int) -> list[int]:
+    """Bucket-average down to at most n points, so a long labor draws a calm
+    horizon instead of a nervous scribble. The labor clock is the
+    every-contraction-truthful piece; the horizon is the rhythm."""
+    if len(durations) <= n:
+        return durations
+    out = []
+    for b in range(n):
+        lo = round(b * len(durations) / n)
+        hi = round((b + 1) * len(durations) / n) or 1
+        bucket = durations[lo:hi] or durations[lo : lo + 1]
+        out.append(round(sum(bucket) / len(bucket)))
+    return out
 
 
 def _spark_xy(durations: list[int]) -> list[tuple[float, float]]:
     if len(durations) < 2:
         return []
+    durations = _resample(durations, _SPARK_MAX_POINTS)
     hi = max(durations)
     lo = min(durations)
     span = (hi - lo) or 1
-    pad = 16  # keep the line off the top/bottom edges
+    top_pad = 20
     points = []
     n = len(durations)
     for i, d in enumerate(durations):
         x = (i / (n - 1)) * _SPARK_W
-        # taller = longer contraction; invert because SVG y grows downward
+        # taller = longer contraction; invert because SVG y grows downward.
+        # The quietest moment sits on the baseline so the area fill hugs the
+        # line instead of leaving a solid band beneath it.
         norm = (d - lo) / span
-        y = _SPARK_H - pad - norm * (_SPARK_H - 2 * pad)
+        y = _SPARK_H - norm * (_SPARK_H - top_pad)
         points.append((round(x, 1), round(y, 1)))
     return points
 
 
-def _sparkline_polyline(durations: list[int]) -> str:
-    return " ".join(f"{x},{y}" for x, y in _spark_xy(durations))
+def _smooth_path(pts: list[tuple[float, float]]) -> str:
+    """Catmull-Rom through the points, emitted as cubic béziers — the organic
+    line a hand would draw, instead of a jagged polyline."""
+    if len(pts) < 2:
+        return ""
+    d = [f"M {pts[0][0]},{pts[0][1]}"]
+    for i in range(len(pts) - 1):
+        p0 = pts[i - 1] if i > 0 else pts[i]
+        p1, p2 = pts[i], pts[i + 1]
+        p3 = pts[i + 2] if i + 2 < len(pts) else p2
+        c1 = (p1[0] + (p2[0] - p0[0]) / 6, p1[1] + (p2[1] - p0[1]) / 6)
+        c2 = (p2[0] - (p3[0] - p1[0]) / 6, p2[1] - (p3[1] - p1[1]) / 6)
+        d.append(
+            f"C {c1[0]:.1f},{c1[1]:.1f} {c2[0]:.1f},{c2[1]:.1f} "
+            f"{p2[0]:.1f},{p2[1]:.1f}"
+        )
+    return " ".join(d)
 
 
-def _sparkline_area(durations: list[int]) -> str:
+def _spark_path(durations: list[int]) -> str:
+    return _smooth_path(_spark_xy(durations))
+
+
+def _spark_area_path(durations: list[int]) -> str:
     pts = _spark_xy(durations)
     if not pts:
         return ""
-    body = " ".join(f"{x},{y}" for x, y in pts)
-    return f"{pts[0][0]},{_SPARK_H} {body} {pts[-1][0]},{_SPARK_H}"
+    line = _smooth_path(pts)
+    return f"{line} L {pts[-1][0]},{_SPARK_H} L {pts[0][0]},{_SPARK_H} Z"
+
+
+def _spark_last(durations: list[int]) -> tuple[float, float] | None:
+    pts = _spark_xy(durations)
+    return pts[-1] if pts else None
+
+
+# ── the labor clock: contractions around a clock face ────────────────────
+
+
+def _sparkle_path(cx: float, cy: float, r: float) -> str:
+    """A four-point sparkle star (the arrival mark)."""
+    w = r * 0.22  # waist — how pinched the points are
+    return (
+        f"M {cx:.1f},{cy - r:.1f} "
+        f"Q {cx + w:.1f},{cy - w:.1f} {cx + r:.1f},{cy:.1f} "
+        f"Q {cx + w:.1f},{cy + w:.1f} {cx:.1f},{cy + r:.1f} "
+        f"Q {cx - w:.1f},{cy + w:.1f} {cx - r:.1f},{cy:.1f} "
+        f"Q {cx - w:.1f},{cy - w:.1f} {cx:.1f},{cy - r:.1f} Z"
+    )
+
+
+_TWELVE_HOURS = 12 * 3600
+
+
+def _clock_angle(dt: datetime) -> float:
+    """Angle (radians) of a moment on a 12-hour clock face, 12 at the top."""
+    seconds = (dt.hour % 12) * 3600 + dt.minute * 60 + dt.second
+    return (seconds / _TWELVE_HOURS) * 2 * math.pi - math.pi / 2
+
+
+def build_hours_clock(
+    *,
+    durations: list[int],
+    offsets_seconds: list[int],
+    first_contraction_at: datetime | None,
+    born_at: datetime | None,
+    cx: float,
+    cy: float,
+) -> dict:
+    """Geometry for the radial labor clock: every contraction is a fine
+    stroke radiating at the clock angle of the moment it happened, its length
+    the contraction's duration. A sparkle star sits on the ring at the minute
+    of birth. Pure function of the data — no DB — so previews and tests can
+    drive it directly.
+
+    Labors longer than a lap of the clock fall back to a linear sweep (the
+    strokes would otherwise overlap themselves); the ring loses its clock
+    semantics but the shape stays honest.
+    """
+    r_ring = 460.0  # the tick ring
+    r_in = 205.0  # where contraction strokes start
+    len_lo, len_hi = 80.0, 225.0  # stroke length range (duration-scaled)
+
+    total = offsets_seconds[-1] if offsets_seconds else 0
+    clock_true = first_contraction_at is not None and total <= _TWELVE_HOURS * 0.96
+
+    def angle_at(offset: int) -> float:
+        if clock_true:
+            base = _clock_angle(first_contraction_at)
+            return base + (offset / _TWELVE_HOURS) * 2 * math.pi
+        sweep = 2 * math.pi * 0.93
+        return -math.pi / 2 + (offset / (total or 1)) * sweep
+
+    lo = min(durations) if durations else 0
+    hi = max(durations) if durations else 1
+    span = (hi - lo) or 1
+
+    strokes = []
+    for offset, duration in zip(offsets_seconds, durations):
+        a = angle_at(offset)
+        length = len_lo + ((duration - lo) / span) * (len_hi - len_lo)
+        progress = offset / (total or 1)
+        strokes.append(
+            {
+                "x1": round(cx + r_in * math.cos(a), 1),
+                "y1": round(cy + r_in * math.sin(a), 1),
+                "x2": round(cx + (r_in + length) * math.cos(a), 1),
+                "y2": round(cy + (r_in + length) * math.sin(a), 1),
+                # the burst deepens as labor builds toward the star
+                "o": round(0.45 + 0.45 * progress, 2),
+            }
+        )
+
+    # The birth minute on the ring — where the star sits. The tick ring
+    # leaves a gap around it so the star reads as part of the clock.
+    star_angle = None
+    if born_at is not None:
+        if clock_true:
+            star_angle = _clock_angle(born_at)
+        elif offsets_seconds:
+            star_angle = angle_at(offsets_seconds[-1])
+
+    ticks = []
+    for i in range(60):
+        a = (i / 60) * 2 * math.pi - math.pi / 2
+        if star_angle is not None:
+            gap = abs((a - star_angle + math.pi) % (2 * math.pi) - math.pi)
+            if gap < 0.10:  # leave room for the star
+                continue
+        is_hour = i % 5 == 0
+        r0 = r_ring - (22 if is_hour else 10)
+        ticks.append(
+            {
+                "x1": round(cx + r0 * math.cos(a), 1),
+                "y1": round(cy + r0 * math.sin(a), 1),
+                "x2": round(cx + r_ring * math.cos(a), 1),
+                "y2": round(cy + r_ring * math.sin(a), 1),
+                "hour": is_hour,
+            }
+        )
+
+    star = None
+    star_label = None
+    if star_angle is not None:
+        sx = cx + (r_ring - 6) * math.cos(star_angle)
+        sy = cy + (r_ring - 6) * math.sin(star_angle)
+        star = _sparkle_path(sx, sy, 40)
+        lx = cx + (r_ring + 78) * math.cos(star_angle)
+        ly = cy + (r_ring + 78) * math.sin(star_angle)
+        star_label = {"x": round(lx, 1), "y": round(ly + 10, 1)}
+
+    start_dot = None
+    start_label = None
+    if offsets_seconds:
+        a0 = angle_at(offsets_seconds[0])
+        start_dot = {
+            "x": round(cx + (r_ring - 6) * math.cos(a0), 1),
+            "y": round(cy + (r_ring - 6) * math.sin(a0), 1),
+        }
+        # closer in than the star's label — the dot is a small mark
+        lx = cx + (r_ring + 52) * math.cos(a0)
+        ly = cy + (r_ring + 52) * math.sin(a0)
+        start_label = {"x": round(lx, 1), "y": round(ly + 10, 1)}
+
+    return {
+        "clock_strokes": strokes,
+        "clock_ticks": ticks,
+        "clock_star": star,
+        "clock_star_label": star_label,
+        "clock_start_dot": start_dot,
+        "clock_start_label": start_label,
+    }
 
 
 # ── formatting ───────────────────────────────────────────────────────────
@@ -382,7 +614,7 @@ def _fmt_time(dt: datetime | None) -> str:
     if dt is None:
         return ""
     hour = dt.hour % 12 or 12
-    ampm = "AM" if dt.hour < 12 else "PM"
+    ampm = "am" if dt.hour < 12 else "pm"
     return f"{hour}:{dt.minute:02d} {ampm}"
 
 
