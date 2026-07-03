@@ -59,6 +59,7 @@ from events import (
 from models import (
     AudienceScope,
     Birth,
+    BirthStatus,
     Family,
     FamilyMembership,
     FamilyRole,
@@ -75,6 +76,7 @@ from repositories import births as births_repo
 from repositories import comments as comments_repo
 from repositories import families as families_repo
 from repositories import gifts as gifts_repo
+from repositories import guesses as guesses_repo
 from repositories import invitations as invitations_repo
 from repositories import media as media_repo
 from repositories import reactions as reactions_repo
@@ -106,6 +108,9 @@ from schemas import (
     GiftItemOut,
     GiftRenderingOut,
     GiftRenderingPatchIn,
+    GuessBoardOut,
+    GuessIn,
+    GuessOut,
     ProductMockupOut,
     RenderingProductsOut,
     InvitationContextOut,
@@ -340,7 +345,13 @@ def update_birth(
     access: BirthAccess = Depends(require_parent_access),
     db: Session = Depends(get_db),
 ) -> BirthOut:
-    births_repo.update_birth(db, birth=access.birth, theme=payload.theme)
+    births_repo.update_birth(
+        db,
+        birth=access.birth,
+        theme=payload.theme,
+        child_weight_lbs=payload.child_weight_lbs,
+        child_length_in=payload.child_length_in,
+    )
     db.commit()
     db.refresh(access.birth)
     return BirthOut.model_validate(access.birth)
@@ -1150,6 +1161,114 @@ async def public_delete_event_comment(
         event_id=event_id,
         comment_id=comment_id,
     )
+
+
+# ============ The family pool (guesses) ============
+
+
+def _guess_board(db: Session, birth: Birth, current_user_id) -> GuessBoardOut:
+    """Everyone's guesses; once the parents record the actual measurements
+    the board is settled — scored and ranked server-side (the one scoring
+    implementation lives in repositories/guesses.py)."""
+    rows = guesses_repo.list_guesses(db, birth_id=birth.id)
+    settled = bool(birth.child_weight_lbs)
+    items = []
+    for g in rows:
+        item = GuessOut.model_validate(g)
+        item.is_mine = current_user_id is not None and g.user_id == current_user_id
+        items.append((g, item))
+    if settled:
+        for g, item in items:
+            item.score = guesses_repo.score(
+                g.weight_lbs,
+                g.length_in,
+                actual_weight_lbs=birth.child_weight_lbs,
+                actual_length_in=birth.child_length_in,
+            )
+        items.sort(key=lambda pair: (pair[1].score is None, pair[1].score or 0))
+        rank = 0
+        for _, item in items:
+            if item.score is not None:
+                rank += 1
+                item.rank = rank
+    return GuessBoardOut(
+        guesses=[item for _, item in items],
+        actual_weight_lbs=birth.child_weight_lbs,
+        actual_length_in=birth.child_length_in,
+        settled=settled,
+    )
+
+
+def _do_put_guess(db: Session, *, birth: Birth, user: User, payload: GuessIn) -> GuessOut:
+    """Upsert the caller's guess. Free-tier engagement (no unlock gate —
+    like reactions); locks the moment the baby is born."""
+    if birth.status is BirthStatus.born:
+        raise HTTPException(
+            status_code=409, detail="The baby is here — the pool is settled"
+        )
+    if payload.weight_lbs is None and payload.length_in is None:
+        raise HTTPException(
+            status_code=422, detail="Guess a weight, a length, or both"
+        )
+    if not (user.display_name or "").strip():
+        # same contract as comments: the client name-captures, then retries
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "code": "name_required",
+                "message": "Add your name so the family knows whose guess this is",
+            },
+        )
+    row = guesses_repo.upsert_guess(
+        db,
+        birth=birth,
+        user=user,
+        weight_lbs=payload.weight_lbs,
+        length_in=payload.length_in,
+    )
+    out = GuessOut.model_validate(row)
+    out.is_mine = True
+    return out
+
+
+@app.get("/birth/{birth_id}/guesses", response_model=GuessBoardOut)
+def list_guesses(
+    access: BirthAccess = Depends(require_birth_access),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> GuessBoardOut:
+    return _guess_board(db, access.birth, current_user.id)
+
+
+@app.get("/b/{slug}/guesses", response_model=GuessBoardOut)
+def list_public_guesses(
+    slug: str,
+    current_user: User | None = Depends(get_optional_current_user),
+    db: Session = Depends(get_db),
+) -> GuessBoardOut:
+    """The pool is page content — anonymous visitors can read it (like
+    reaction counts); `is_mine` is simply false for them."""
+    birth = _resolve_public_birth(db, slug)
+    return _guess_board(db, birth, current_user.id if current_user else None)
+
+
+@app.put("/birth/{birth_id}/guess", response_model=GuessOut)
+def put_guess(
+    payload: GuessIn,
+    access: BirthAccess = Depends(require_birth_access),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> GuessOut:
+    return _do_put_guess(db, birth=access.birth, user=current_user, payload=payload)
+
+
+@app.put("/b/{slug}/guess", response_model=GuessOut)
+def put_public_guess(
+    payload: GuessIn,
+    access: PublicEngagementAccess = Depends(require_public_engagement),
+    db: Session = Depends(get_db),
+) -> GuessOut:
+    return _do_put_guess(db, birth=access.birth, user=access.user, payload=payload)
 
 
 # ============ Media ============

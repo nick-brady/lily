@@ -1069,17 +1069,16 @@ def _fmt_guess(weight_lbs: float | None, length_in: float | None) -> str:
 def _pool_score(
     prediction: dict, actual_weight: float, actual_length: float
 ) -> float | None:
-    """Mirrors Predictions.jsx: lower is closer; guesses that named nothing
-    score None and sink to the bottom."""
-    score = 0.0
-    scored = False
-    if prediction.get("weight_lbs"):
-        score += abs(prediction["weight_lbs"] - actual_weight)
-        scored = True
-    if prediction.get("length_in") and actual_length:
-        score += abs(prediction["length_in"] - actual_length) * 0.5
-        scored = True
-    return score if scored else None
+    """Thin wrapper over the one true scoring fn (repositories/guesses.py)
+    so the pool card and the leaderboard can't drift apart."""
+    from repositories import guesses as guesses_repo
+
+    return guesses_repo.score(
+        prediction.get("weight_lbs"),
+        prediction.get("length_in"),
+        actual_weight_lbs=actual_weight,
+        actual_length_in=actual_length,
+    )
 
 
 def build_pool_scene(
@@ -1174,7 +1173,16 @@ def build_pool_scene(
 
 
 def _build_pool_scene(db: Session, birth: Birth, template: GiftTemplate) -> dict:
-    predictions = birth.predictions or []
+    from repositories import guesses as guesses_repo
+
+    predictions = [
+        {
+            "name": g.display_name,
+            "weight_lbs": g.weight_lbs,
+            "length_in": g.length_in,
+        }
+        for g in guesses_repo.list_guesses(db, birth_id=birth.id)
+    ]
     if not predictions:
         raise ArtworkError("no-predictions")
     if not birth.child_weight_lbs:

@@ -242,10 +242,8 @@ class Birth(Base):
     theme: Mapped[str] = mapped_column(
         sa.Text, nullable=False, server_default="lily"
     )
-    # The family prediction pool: [{"name", "weight_lbs", "length_in"}, …]
-    # (decimal pounds / inches, either nullable). Scored against the actual
-    # measurements below once they're recorded.
-    predictions: Mapped[list | None] = mapped_column(JSONB, nullable=True)
+    # Actual measurements, recorded by the parents once known. The family's
+    # guesses live in `birth_guesses` and are scored against these.
     child_weight_lbs: Mapped[float | None] = mapped_column(sa.Float, nullable=True)
     child_length_in: Mapped[float | None] = mapped_column(sa.Float, nullable=True)
     deleted_at: Mapped[datetime | None] = mapped_column(
@@ -685,5 +683,44 @@ class GiftRenderingMockup(Base):
             "gift_rendering_id",
             "product_key",
             name="uq_gift_rendering_mockups_rendering_product",
+        ),
+    )
+
+
+class BirthGuess(Base):
+    """One family member's guess at the baby's weight/length — the family
+    pool. `user_id` links a signed-in guesser (one guess per user per birth,
+    editable until the birth); name-only rows (`user_id` NULL) come from
+    imports or parent-entered guesses for relatives without accounts.
+    `display_name` is snapshotted at write time so the pool reads the same
+    even if the account is renamed or removed later."""
+
+    __tablename__ = "birth_guesses"
+
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    birth_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        sa.ForeignKey("births.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    user_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        sa.ForeignKey("users.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    display_name: Mapped[str] = mapped_column(sa.Text, nullable=False)
+    weight_lbs: Mapped[float | None] = mapped_column(sa.Float, nullable=True)
+    length_in: Mapped[float | None] = mapped_column(sa.Float, nullable=True)
+    created_at: Mapped[datetime] = _created_at()
+    updated_at: Mapped[datetime] = _updated_at()
+
+    __table_args__ = (
+        sa.Index("ix_birth_guesses_birth", "birth_id"),
+        sa.Index(
+            "uq_birth_guesses_birth_user",
+            "birth_id",
+            "user_id",
+            unique=True,
+            postgresql_where=sa.text("user_id IS NOT NULL"),
         ),
     )
