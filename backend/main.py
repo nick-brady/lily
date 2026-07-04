@@ -148,6 +148,7 @@ from schemas import (
     ReactionToggleIn,
     StartContractionIn,
     StopContractionIn,
+    StorageGiftCheckoutIn,
     TimelineEventOut,
     TokenOut,
     UserOut,
@@ -1478,7 +1479,10 @@ async def _fulfill_gift_from_session(
     creates the shipment and schedules the Printful submission; a losing
     family-claim payment is refunded (webhook path re-raises refund errors
     so Stripe redelivery retries; confirm path swallows) and recorded as
-    refunded only after the refund succeeds."""
+    refunded only after the refund succeeds.
+
+    Physical items ship; storage gifts have nothing to ship — they just
+    extend the birth's paid-through date."""
     metadata = session_obj.get("metadata") or {}
     order_id = uuid.UUID(metadata["order_id"])
 
@@ -1487,6 +1491,12 @@ async def _fulfill_gift_from_session(
     )
     if outcome == "paid":
         birth = db.get(Birth, order.birth_id)
+        item = db.get(GiftCatalogItem, order.gift_catalog_item_id)
+        if item.kind == GiftKind.storage_gift:
+            gift_orders_repo.grant_storage_gift(
+                db, birth=birth, storage_years_granted=item.storage_years_granted
+            )
+            return "fulfilled"
         if order.recipient_kind == "family" and birth.shipping_address:
             address = dict(birth.shipping_address)
         else:
@@ -1572,6 +1582,61 @@ def create_gift_checkout(
             product_name=item.display_name,
             amount_cents=item.base_price_cents,
             collect_shipping=collect_shipping,
+            allowed_countries=payments.gift_shipping_countries(),
+        )
+    except payments.StripeError:
+        # the pending row is inert; leave it
+        raise HTTPException(
+            status_code=502, detail="Couldn't start checkout — try again"
+        )
+    gift_orders_repo.attach_session(db, order, session["id"])
+    return GiftCheckoutOut(url=session["url"])
+
+
+@app.post(
+    "/birth/{birth_id}/gifts/storage/{item_id}/checkout",
+    response_model=GiftCheckoutOut,
+)
+def create_storage_gift_checkout(
+    item_id: uuid.UUID,
+    payload: StorageGiftCheckoutIn = Body(default=StorageGiftCheckoutIn()),
+    access: BirthAccess = Depends(require_birth_access),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> GiftCheckoutOut:
+    """Start a storage-gift purchase. Unlike physical items there's no
+    rendering (no artwork behind it) and no shipping — it's always a gift
+    to the family, one-of-one per birth, same claim mechanic as a
+    family-bound physical gift."""
+    stripe = payments.get_stripe()
+    if stripe is None:
+        raise HTTPException(status_code=503, detail="Payments aren't configured")
+
+    item = db.get(GiftCatalogItem, item_id)
+    if item is None or item.kind != GiftKind.storage_gift or not item.is_active:
+        raise HTTPException(status_code=409, detail={"code": "not_purchasable"})
+    if item.id in gift_orders_repo.claimed_item_ids(db, birth_id=access.birth.id):
+        # UX guard — the partial unique index is the real enforcement
+        raise HTTPException(status_code=409, detail={"code": "already_claimed"})
+
+    order = gift_orders_repo.create_pending_order(
+        db,
+        birth=access.birth,
+        item=item,
+        rendering=None,
+        user=current_user,
+        recipient_kind="family",
+        gift_message=(payload.gift_message or "").strip() or None,
+    )
+    try:
+        session = stripe.create_gift_checkout_session(
+            order_id=str(order.id),
+            birth_id=str(access.birth.id),
+            user_id=str(current_user.id),
+            slug=access.birth.slug,
+            product_name=item.display_name,
+            amount_cents=item.base_price_cents,
+            collect_shipping=False,
             allowed_countries=payments.gift_shipping_countries(),
         )
     except payments.StripeError:
@@ -2042,12 +2107,16 @@ def _serialize_gift_items(db, birth_id, *, is_parent: bool) -> list[GiftItemOut]
             display_name=item.display_name,
             base_price_cents=item.base_price_cents,
             storage_years_granted=item.storage_years_granted,
-            # purchasable = physical AND a fulfillment product is mapped
-            # (cards stay "coming soon" until a registry entry exists)
+            # physical: purchasable once a fulfillment product is mapped
+            # (cards stay "coming soon" until a registry entry exists).
+            # storage gifts: always purchasable, no fulfillment involved.
             is_purchasable=(
-                item.kind == GiftKind.physical
-                and fulfillment_products.default_for_product_kind(item.product_kind)
-                is not None
+                item.kind == GiftKind.storage_gift
+                or (
+                    item.kind == GiftKind.physical
+                    and fulfillment_products.default_for_product_kind(item.product_kind)
+                    is not None
+                )
             ),
             is_claimed_for_family=item.id in claimed,
             renderings=[_serialize_rendering(r) for r in by_item.get(item.id, [])],
@@ -2060,6 +2129,7 @@ def _gift_gallery_out(db, birth, *, is_parent: bool) -> GiftGalleryOut:
     return GiftGalleryOut(
         items=_serialize_gift_items(db, birth.id, is_parent=is_parent),
         family_has_shipping_address=birth.shipping_address is not None,
+        storage_paid_until=birth.storage_paid_until,
     )
 
 

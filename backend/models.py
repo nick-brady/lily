@@ -225,6 +225,13 @@ class Birth(Base):
         nullable=False,
         server_default=BirthStorageTier.active.value,
     )
+    # Set/extended when a storage_gift order is fulfilled (see
+    # repositories/gift_orders.py:grant_storage_gift). Null means no one has
+    # gifted storage yet — unrelated to `storage_tier`, which is the S3
+    # lifecycle state, not a billing concept.
+    storage_paid_until: Mapped[datetime | None] = mapped_column(
+        sa.DateTime(timezone=True), nullable=True
+    )
     is_unlocked: Mapped[bool] = mapped_column(
         sa.Boolean, nullable=False, server_default=sa.text("false")
     )
@@ -786,10 +793,12 @@ class GiftOrder(Base):
         sa.ForeignKey("gift_catalog_items.id", ondelete="RESTRICT"),
         nullable=False,
     )
-    gift_rendering_id: Mapped[uuid.UUID] = mapped_column(
+    # Null for storage-gift orders — there's no artwork/rendering behind
+    # a storage gift, only a physical item has one.
+    gift_rendering_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True),
         sa.ForeignKey("gift_renderings.id", ondelete="RESTRICT"),
-        nullable=False,
+        nullable=True,
     )
     purchased_by_user_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True),

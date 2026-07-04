@@ -1,4 +1,4 @@
-"""Gift orders — the purchase path for physical gifts.
+"""Gift orders — the purchase path for physical gifts and storage gifts.
 
 Only the database lives here (Stripe calls and refund decisions belong to
 the route-layer funnel, house style). Two invariants do all the race work:
@@ -10,12 +10,16 @@ the route-layer funnel, house style). Two invariants do all the race work:
   cross-order family-bound race fail its CAS with IntegrityError (Postgres
   enforces partial unique indexes on the UPDATE's new tuple), mirroring
   unlocks.fulfill_purchase; the caller refunds and we record 'refunded'.
+
+Storage-gift orders share this same table and the same claim index —
+`gift_rendering_id` is just null for them (no artwork behind a storage
+gift). They skip shipping/fulfillment entirely; see `grant_storage_gift`.
 """
 from __future__ import annotations
 
 import os
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Literal
 
 from sqlalchemy import select, update
@@ -39,6 +43,11 @@ from storage import presigned_get_url
 # confirms them; the artwork file URL must outlive that window (SigV4 max).
 _ORDER_FILE_TTL_SECONDS = 604800
 
+# Alembic can't express "365 days per storage_years_granted" declaratively,
+# so we approximate a year at fulfillment time instead. Good enough for a
+# feature measured in years, not days.
+_DAYS_PER_YEAR = 365
+
 MarkPaidOutcome = Literal["paid", "already_paid", "already_refunded", "claim_lost"]
 
 
@@ -47,7 +56,7 @@ def create_pending_order(
     *,
     birth: Birth,
     item: GiftCatalogItem,
-    rendering: GiftRendering,
+    rendering: GiftRendering | None,
     user: User,
     recipient_kind: str,
     gift_message: str | None,
@@ -55,7 +64,7 @@ def create_pending_order(
     order = GiftOrder(
         birth_id=birth.id,
         gift_catalog_item_id=item.id,
-        gift_rendering_id=rendering.id,
+        gift_rendering_id=rendering.id if rendering else None,
         purchased_by_user_id=user.id,
         recipient_kind=recipient_kind,
         gift_message=gift_message,
@@ -147,6 +156,17 @@ def mark_refunded(db: Session, *, order_id: uuid.UUID) -> None:
         .where(GiftOrder.id == order_id)
         .values(status="refunded")
     )
+    db.commit()
+
+
+def grant_storage_gift(db: Session, *, birth: Birth, storage_years_granted: int) -> None:
+    """Extend (never shorten) `birth.storage_paid_until` by the granted
+    years. Stacks from the later of "now" and the current value, so a
+    second grandparent's gift adds on top of the first's instead of
+    resetting the clock."""
+    now = datetime.now(timezone.utc)
+    base = birth.storage_paid_until if birth.storage_paid_until and birth.storage_paid_until > now else now
+    birth.storage_paid_until = base + timedelta(days=_DAYS_PER_YEAR * storage_years_granted)
     db.commit()
 
 
