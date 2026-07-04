@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link, Navigate, useParams } from 'react-router-dom';
+import { api } from '../api/client';
 import { useAuth } from '../contexts/AuthContext';
 import { getTheme, themeVars } from '../utils/themes';
 import GiftGallery from '../components/GiftGallery';
