@@ -164,7 +164,9 @@ export default function CoParentManager({ familyId, familyName }) {
       {lastCreated && (
         <div className="mt-4 p-3 rounded-lg bg-primary-50 dark:bg-primary-900/20 border border-primary-100 dark:border-primary-800">
           <p className="text-sm font-medium text-primary-800 dark:text-primary-200 mb-2">
-            Invite link ready — send it to your co-parent
+            {lastCreated.sent
+              ? `Invite sent to ${lastCreated.email_hint || lastCreated.phone_hint}`
+              : 'Invite link ready — send it to your co-parent'}
           </p>
           <div className="flex gap-2">
             <input
@@ -219,7 +221,9 @@ export default function CoParentManager({ familyId, familyName }) {
             </button>
           </div>
           <p className="text-xs text-gray-400 dark:text-gray-500">
-            We'll generate a link to send them. They confirm with a code and join as a co-parent.
+            Add an email or phone and we&rsquo;ll send the invite for you — or leave it blank
+            and share the link yourself. Either way, they confirm with a code and join as a
+            co-parent.
           </p>
         </form>
       )}

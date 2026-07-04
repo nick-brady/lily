@@ -386,6 +386,10 @@ class InvitationCreatedOut(InvitationOut):
 
     token: str
     invite_url: str
+    # True if we auto-delivered the invite via email/SMS. False when no
+    # contact was given, or delivery failed — either way the link above
+    # still works, so creation never fails just because sending did.
+    sent: bool = False
 
 
 class InvitationRedemptionOut(BaseModel):

@@ -41,9 +41,11 @@ from sqlalchemy.orm import Session
 
 from auth import (
     ChallengeCooldownError,
+    get_active_messenger,
     get_current_user,
     get_current_user_stream,
     get_optional_current_user,
+    normalize_identifier,
     request_challenge,
     verify_challenge,
     FRONTEND_URL,
@@ -61,6 +63,7 @@ from events import (
 )
 from models import (
     AudienceScope,
+    AuthIdentifierKind,
     Birth,
     BirthStatus,
     Family,
@@ -1784,8 +1787,84 @@ def _media_visible_to(
 # ============ Invitations ============
 
 
+_INVITE_ROLE_LABELS = {
+    FamilyRole.co_parent: "co-parent",
+    FamilyRole.family_viewer: "family member",
+}
+
+
 def _invitation_url(plaintext_token: str) -> str:
     return f"{FRONTEND_URL}/invite/{plaintext_token}"
+
+
+def _resolve_invite_contact(
+    email_hint: str | None, phone_hint: str | None
+) -> tuple[str | None, str | None, AuthIdentifierKind | None]:
+    """Validate+normalize a raw contact hint the same way auth does, so a
+    bad address/number 400s immediately instead of silently failing to
+    send later. Returns (email_hint, phone_hint, kind-to-send-to) — the
+    third element is None when no contact was given at all."""
+    raw = email_hint or phone_hint
+    if not raw:
+        return None, None, None
+    identifier, kind = normalize_identifier(raw)
+    if kind is AuthIdentifierKind.email:
+        return identifier, None, kind
+    return None, identifier, kind
+
+
+def _create_and_send_invitation(
+    db: Session,
+    *,
+    family_id: uuid.UUID,
+    birth_id: uuid.UUID,
+    birth_name: str | None,
+    invited_by: User,
+    display_name_hint: str | None,
+    email_hint: str | None,
+    phone_hint: str | None,
+    role: FamilyRole = FamilyRole.family_viewer,
+) -> InvitationCreatedOut:
+    norm_email, norm_phone, send_kind = _resolve_invite_contact(email_hint, phone_hint)
+    invitation, plaintext_token = invitations_repo.create_invitation(
+        db,
+        family_id=family_id,
+        birth_id=birth_id,
+        invited_by_user_id=invited_by.id,
+        display_name_hint=display_name_hint,
+        email_hint=norm_email,
+        phone_hint=norm_phone,
+        role=role,
+    )
+    db.commit()
+    db.refresh(invitation)
+    invite_url = _invitation_url(plaintext_token)
+
+    # Best-effort: the link above already works regardless, so a delivery
+    # failure shouldn't fail invite creation — it just means the parent
+    # falls back to sharing the link themselves (same fallback the copy
+    # button always offered).
+    sent = False
+    if send_kind is not None:
+        try:
+            get_active_messenger().send_invitation(
+                norm_email or norm_phone,
+                send_kind,
+                inviter_name=invited_by.display_name or "A family member",
+                birth_name=birth_name or "the family",
+                role_label=_INVITE_ROLE_LABELS.get(role, "family member"),
+                invite_url=invite_url,
+            )
+            sent = True
+        except Exception:
+            sent = False
+
+    return InvitationCreatedOut(
+        **InvitationOut.model_validate(invitation).model_dump(exclude={"invite_url"}),
+        token=plaintext_token,
+        invite_url=invite_url,
+        sent=sent,
+    )
 
 
 @app.post(
@@ -1798,21 +1877,15 @@ def create_invitation(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> InvitationCreatedOut:
-    invitation, plaintext_token = invitations_repo.create_invitation(
+    return _create_and_send_invitation(
         db,
         family_id=access.birth.family_id,
         birth_id=access.birth.id,
-        invited_by_user_id=current_user.id,
+        birth_name=access.birth.child_name,
+        invited_by=current_user,
         display_name_hint=payload.display_name_hint,
         email_hint=payload.email_hint,
         phone_hint=payload.phone_hint,
-    )
-    db.commit()
-    db.refresh(invitation)
-    return InvitationCreatedOut(
-        **InvitationOut.model_validate(invitation).model_dump(exclude={"invite_url"}),
-        token=plaintext_token,
-        invite_url=_invitation_url(plaintext_token),
     )
 
 
@@ -2218,22 +2291,16 @@ def invite_co_parent(
             status_code=400,
             detail="Add a birth before inviting a co-parent",
         )
-    invitation, plaintext_token = invitations_repo.create_invitation(
+    return _create_and_send_invitation(
         db,
         family_id=access.family.id,
         birth_id=birth.id,
-        invited_by_user_id=current_user.id,
+        birth_name=birth.child_name,
+        invited_by=current_user,
         display_name_hint=payload.display_name_hint,
         email_hint=payload.email_hint,
         phone_hint=payload.phone_hint,
         role=FamilyRole.co_parent,
-    )
-    db.commit()
-    db.refresh(invitation)
-    return InvitationCreatedOut(
-        **InvitationOut.model_validate(invitation).model_dump(exclude={"invite_url"}),
-        token=plaintext_token,
-        invite_url=_invitation_url(plaintext_token),
     )
 
 

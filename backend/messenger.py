@@ -1,4 +1,4 @@
-"""Auth challenge dispatch.
+"""Auth challenge + invitation dispatch.
 
 `Messenger` is the interface. `ConsoleMessenger` prints credentials to the
 backend log (the dev default); `ResendMessenger` (email) and
@@ -7,10 +7,15 @@ vars — see `get_messenger()`. Channels fall back independently, so a
 partly-configured environment still works and zero config keeps today's
 console behavior.
 
-The contract: given a verified-identifier (email or e164 phone), an OTP
-code, and a magic-link URL, deliver the credentials so the user can verify.
-For email, both the code and the link are useful. For SMS, only the code
-is sent (links over SMS are jankier).
+Two contracts:
+- `send_challenge`: given a verified identifier (email or e164 phone), an
+  OTP code, and a magic-link URL, deliver the credentials so the user can
+  verify. For email, both the code and the link are useful. For SMS, only
+  the code is sent (links over SMS are jankier).
+- `send_invitation`: given an identifier and an already-built invite URL,
+  tell someone they've been invited to a birth page. Unlike the OTP flow,
+  SMS carries the link too — there's no code to fall back on, the link is
+  the whole point.
 """
 from __future__ import annotations
 
@@ -33,7 +38,7 @@ _TWILIO_URL = "https://api.twilio.com/2010-04-01/Accounts/{sid}/Messages.json"
 
 
 class ChallengeDeliveryError(Exception):
-    """The provider couldn't deliver the code — worth a 503, not a 500."""
+    """The provider couldn't deliver the message — worth a 503, not a 500."""
 
 
 class Messenger(ABC):
@@ -44,6 +49,18 @@ class Messenger(ABC):
         identifier_kind: AuthIdentifierKind,
         code: str,
         magic_link_url: str,
+    ) -> None: ...
+
+    @abstractmethod
+    def send_invitation(
+        self,
+        identifier: str,
+        identifier_kind: AuthIdentifierKind,
+        *,
+        inviter_name: str,
+        birth_name: str,
+        role_label: str,
+        invite_url: str,
     ) -> None: ...
 
 
@@ -82,6 +99,27 @@ class ConsoleMessenger(Messenger):
             )
         print(body, flush=True, file=sys.stderr)
 
+    def send_invitation(
+        self,
+        identifier: str,
+        identifier_kind: AuthIdentifierKind,
+        *,
+        inviter_name: str,
+        birth_name: str,
+        role_label: str,
+        invite_url: str,
+    ) -> None:
+        banner = "=" * 72
+        channel = "EMAIL" if identifier_kind is AuthIdentifierKind.email else "SMS"
+        body = (
+            f"\n{banner}\n"
+            f"  {channel} INVITE for {identifier}\n"
+            f"  {inviter_name} invited you as a {role_label} to {birth_name}'s page\n"
+            f"  Link: {invite_url}\n"
+            f"{banner}"
+        )
+        print(body, flush=True, file=sys.stderr)
+
 
 def _email_html(code: str, magic_link_url: str) -> str:
     """Minimal, inline-styled, on-brand: the code big, one button, the
@@ -101,6 +139,28 @@ def _email_html(code: str, magic_link_url: str) -> str:
   <p style="font-size: 13px; color: #6d6076; margin: 24px 0 0;">
     The code and link expire in 15 minutes. If you didn't request this,
     you can ignore it.
+  </p>
+</div>
+"""
+
+
+def _invitation_email_html(inviter_name: str, birth_name: str, role_label: str, invite_url: str) -> str:
+    """Same visual identity as the sign-in email, different content: no
+    code, just the invite and a single button to the page."""
+    return f"""\
+<div style="font-family: Georgia, 'Times New Roman', serif; max-width: 420px;
+            margin: 0 auto; padding: 32px 24px; color: #44364a;">
+  <p style="font-size: 14px; letter-spacing: 2px; color: #a21caf;
+            text-transform: uppercase; margin: 0 0 16px;">Lily</p>
+  <p style="font-size: 16px; margin: 0 0 24px;">
+    {inviter_name} invited you as a {role_label} to {birth_name}'s page.
+  </p>
+  <a href="{invite_url}"
+     style="display: inline-block; background: #a21caf; color: #ffffff;
+            text-decoration: none; padding: 12px 24px; border-radius: 8px;
+            font-size: 16px;">View the page</a>
+  <p style="font-size: 13px; color: #6d6076; margin: 24px 0 0;">
+    If you weren't expecting this, you can ignore it.
   </p>
 </div>
 """
@@ -146,6 +206,36 @@ class ResendMessenger(Messenger):
         except httpx.HTTPError as exc:
             raise ChallengeDeliveryError(f"resend: {exc}") from exc
 
+    def send_invitation(
+        self,
+        identifier: str,
+        identifier_kind: AuthIdentifierKind,
+        *,
+        inviter_name: str,
+        birth_name: str,
+        role_label: str,
+        invite_url: str,
+    ) -> None:
+        try:
+            resp = self._client.post(
+                _RESEND_URL,
+                json={
+                    "from": self._from,
+                    "to": [identifier],
+                    "subject": f"{inviter_name} invited you to {birth_name}'s page",
+                    "html": _invitation_email_html(
+                        inviter_name, birth_name, role_label, invite_url
+                    ),
+                    "text": (
+                        f"{inviter_name} invited you as a {role_label} to "
+                        f"{birth_name}'s page.\n\n{invite_url}"
+                    ),
+                },
+            )
+            resp.raise_for_status()
+        except httpx.HTTPError as exc:
+            raise ChallengeDeliveryError(f"resend: {exc}") from exc
+
 
 class TwilioMessenger(Messenger):
     """SMS via Twilio's REST API (one form-encoded POST, no SDK)."""
@@ -184,6 +274,32 @@ class TwilioMessenger(Messenger):
         except httpx.HTTPError as exc:
             raise ChallengeDeliveryError(f"twilio: {exc}") from exc
 
+    def send_invitation(
+        self,
+        identifier: str,
+        identifier_kind: AuthIdentifierKind,
+        *,
+        inviter_name: str,
+        birth_name: str,
+        role_label: str,
+        invite_url: str,
+    ) -> None:
+        try:
+            resp = self._client.post(
+                self._url,
+                data={
+                    "To": identifier,
+                    "From": self._from,
+                    "Body": (
+                        f"{inviter_name} invited you as a {role_label} to "
+                        f"{birth_name}'s page on Lily: {invite_url}"
+                    ),
+                },
+            )
+            resp.raise_for_status()
+        except httpx.HTTPError as exc:
+            raise ChallengeDeliveryError(f"twilio: {exc}") from exc
+
 
 class RoutingMessenger(Messenger):
     """Delegates by identifier kind — email and SMS providers are configured
@@ -206,6 +322,30 @@ class RoutingMessenger(Messenger):
             else self._phone
         )
         channel.send_challenge(identifier, identifier_kind, code, magic_link_url)
+
+    def send_invitation(
+        self,
+        identifier: str,
+        identifier_kind: AuthIdentifierKind,
+        *,
+        inviter_name: str,
+        birth_name: str,
+        role_label: str,
+        invite_url: str,
+    ) -> None:
+        channel = (
+            self._email
+            if identifier_kind is AuthIdentifierKind.email
+            else self._phone
+        )
+        channel.send_invitation(
+            identifier,
+            identifier_kind,
+            inviter_name=inviter_name,
+            birth_name=birth_name,
+            role_label=role_label,
+            invite_url=invite_url,
+        )
 
 
 def get_messenger() -> Messenger:

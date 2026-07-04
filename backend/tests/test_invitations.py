@@ -8,9 +8,11 @@ from __future__ import annotations
 
 import uuid
 
+import pytest
+from fastapi import HTTPException
 from fastapi.testclient import TestClient
 
-from models import FamilyMembership, FamilyRole
+from models import AuthIdentifierKind, FamilyMembership, FamilyRole
 from repositories import invitations as invitations_repo
 
 
@@ -243,3 +245,38 @@ def test_remove_viewer_missing_membership_returns_false() -> None:
     )
     assert removed is False
     assert db.deleted == []
+
+
+# --- _resolve_invite_contact() (no real DB) --------------------------------
+
+
+def test_resolve_invite_contact_none_when_no_hint() -> None:
+    from main import _resolve_invite_contact
+
+    assert _resolve_invite_contact(None, None) == (None, None, None)
+
+
+def test_resolve_invite_contact_normalizes_email() -> None:
+    from main import _resolve_invite_contact
+
+    email, phone, kind = _resolve_invite_contact(" Janet@Example.com ", None)
+    assert email == "janet@example.com"
+    assert phone is None
+    assert kind is AuthIdentifierKind.email
+
+
+def test_resolve_invite_contact_normalizes_phone() -> None:
+    from main import _resolve_invite_contact
+
+    email, phone, kind = _resolve_invite_contact(None, "555-555-0123")
+    assert email is None
+    assert phone == "+15555550123"
+    assert kind is AuthIdentifierKind.phone
+
+
+def test_resolve_invite_contact_rejects_garbage() -> None:
+    from main import _resolve_invite_contact
+
+    with pytest.raises(HTTPException) as exc_info:
+        _resolve_invite_contact("not an email or phone", None)
+    assert exc_info.value.status_code == 400
