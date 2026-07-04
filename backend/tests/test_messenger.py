@@ -3,6 +3,8 @@ transports (no real provider calls), the env-gated factory, and the
 kind-based routing."""
 from __future__ import annotations
 
+from urllib.parse import unquote_plus
+
 import httpx
 import pytest
 
@@ -57,6 +59,45 @@ def test_resend_failure_raises_delivery_error():
         m.send_challenge("j@example.com", AuthIdentifierKind.email, "1", _LINK)
 
 
+def test_resend_sends_invitation():
+    seen = {}
+
+    def handler(req: httpx.Request) -> httpx.Response:
+        seen["body"] = req.read().decode()
+        return httpx.Response(200, json={"id": "email_123"})
+
+    m = ResendMessenger(api_key="re_test", client=_client(handler))
+    m.send_invitation(
+        "janet@example.com",
+        AuthIdentifierKind.email,
+        inviter_name="Sarah",
+        birth_name="Lily",
+        role_label="family member",
+        invite_url=_LINK,
+    )
+
+    assert "janet@example.com" in seen["body"]
+    assert "Sarah" in seen["body"]
+    assert "Lily" in seen["body"]
+    assert _LINK in seen["body"]
+
+
+def test_resend_invitation_failure_raises_delivery_error():
+    m = ResendMessenger(
+        api_key="re_bad",
+        client=_client(lambda r: httpx.Response(401, json={"message": "nope"})),
+    )
+    with pytest.raises(ChallengeDeliveryError):
+        m.send_invitation(
+            "j@example.com",
+            AuthIdentifierKind.email,
+            inviter_name="Sarah",
+            birth_name="Lily",
+            role_label="family member",
+            invite_url=_LINK,
+        )
+
+
 # ── Twilio ────────────────────────────────────────────────────────────────
 
 
@@ -102,15 +143,66 @@ def test_twilio_failure_raises_delivery_error():
         m.send_challenge("+1999", AuthIdentifierKind.phone, "1", _LINK)
 
 
+def test_twilio_sends_invitation_with_link():
+    seen = {}
+
+    def handler(req: httpx.Request) -> httpx.Response:
+        seen["body"] = req.read().decode()
+        return httpx.Response(201, json={"sid": "SM123"})
+
+    m = TwilioMessenger(
+        account_sid="AC_test",
+        auth_token="tok",
+        from_number="+15550001111",
+        client=_client(handler),
+    )
+    m.send_invitation(
+        "+15557772222",
+        AuthIdentifierKind.phone,
+        inviter_name="Sarah",
+        birth_name="Lily",
+        role_label="co-parent",
+        invite_url=_LINK,
+    )
+
+    assert "To=%2B15557772222" in seen["body"]
+    assert "Sarah" in seen["body"]
+    # unlike the OTP SMS, the invitation SMS does carry the link — there's
+    # no code to fall back on
+    assert _LINK in unquote_plus(seen["body"])
+
+
+def test_twilio_invitation_failure_raises_delivery_error():
+    m = TwilioMessenger(
+        account_sid="AC_x",
+        auth_token="tok",
+        from_number="+1555",
+        client=_client(lambda r: httpx.Response(400, json={"message": "bad To"})),
+    )
+    with pytest.raises(ChallengeDeliveryError):
+        m.send_invitation(
+            "+1999",
+            AuthIdentifierKind.phone,
+            inviter_name="Sarah",
+            birth_name="Lily",
+            role_label="co-parent",
+            invite_url=_LINK,
+        )
+
+
 # ── Routing + factory ─────────────────────────────────────────────────────
 
 
 class _Recorder(ConsoleMessenger):
     def __init__(self):
         self.calls = []
+        self.invitation_calls = []
 
     def send_challenge(self, identifier, identifier_kind, code, magic_link_url):
         self.calls.append(identifier_kind)
+
+    def send_invitation(self, identifier, identifier_kind, **kwargs):
+        self.invitation_calls.append(identifier_kind)
 
 
 def test_routing_delegates_by_kind():
@@ -120,6 +212,29 @@ def test_routing_delegates_by_kind():
     r.send_challenge("+1555", AuthIdentifierKind.phone, "2", _LINK)
     assert email.calls == [AuthIdentifierKind.email]
     assert phone.calls == [AuthIdentifierKind.phone]
+
+
+def test_routing_delegates_invitations_by_kind():
+    email, phone = _Recorder(), _Recorder()
+    r = RoutingMessenger(email=email, phone=phone)
+    r.send_invitation(
+        "j@example.com",
+        AuthIdentifierKind.email,
+        inviter_name="Sarah",
+        birth_name="Lily",
+        role_label="family member",
+        invite_url=_LINK,
+    )
+    r.send_invitation(
+        "+1555",
+        AuthIdentifierKind.phone,
+        inviter_name="Sarah",
+        birth_name="Lily",
+        role_label="co-parent",
+        invite_url=_LINK,
+    )
+    assert email.invitation_calls == [AuthIdentifierKind.email]
+    assert phone.invitation_calls == [AuthIdentifierKind.phone]
 
 
 def _channels(m: RoutingMessenger):

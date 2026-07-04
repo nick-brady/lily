@@ -19,6 +19,9 @@ export default function InviteManager({ birthId }) {
   const [creating, setCreating] = useState(false);
   const [lastCreated, setLastCreated] = useState(null);
   const [copiedId, setCopiedId] = useState(null);
+  const [showForm, setShowForm] = useState(false);
+  const [name, setName] = useState('');
+  const [contact, setContact] = useState('');
   // Bumped after a viewer is removed. Removal drops that person across
   // every link, so all rows' cached redemption lists go stale at once —
   // this forces each one to refetch.
@@ -40,12 +43,24 @@ export default function InviteManager({ birthId }) {
     refresh();
   }, [refresh]);
 
-  const handleCreate = async () => {
+  const handleCreate = async (e) => {
+    e?.preventDefault();
     setCreating(true);
     setError('');
     try {
-      const created = await api.createInvitation(birthId);
+      // A single contact field — route it by shape, same as the
+      // co-parent invite form. Both are optional: leave it blank for a
+      // plain share-it-yourself link.
+      const isEmail = contact.includes('@');
+      const created = await api.createInvitation(birthId, {
+        displayNameHint: name.trim() || undefined,
+        emailHint: isEmail ? contact.trim() : undefined,
+        phoneHint: !isEmail && contact.trim() ? contact.trim() : undefined,
+      });
       setLastCreated(created);
+      setName('');
+      setContact('');
+      setShowForm(false);
       await refresh();
     } catch (err) {
       setError(err.message || 'Could not create invitation');
@@ -101,13 +116,14 @@ export default function InviteManager({ birthId }) {
             Invite people to follow along. They see public + family posts; not parent-only.
           </p>
         </div>
-        <button
-          onClick={handleCreate}
-          disabled={creating}
-          className="px-3 py-2 text-sm rounded-lg t-btn-accent font-medium disabled:opacity-50"
-        >
-          {creating ? 'Creating…' : 'New invite link'}
-        </button>
+        {!showForm && (
+          <button
+            onClick={() => setShowForm(true)}
+            className="px-3 py-2 text-sm rounded-lg t-btn-accent font-medium"
+          >
+            New invite link
+          </button>
+        )}
       </div>
 
       {error && (
@@ -116,13 +132,57 @@ export default function InviteManager({ birthId }) {
         </div>
       )}
 
+      {showForm && (
+        <form onSubmit={handleCreate} className="mb-4 space-y-3 p-3 rounded-lg border" style={{ borderColor: 'var(--t-soft-ring)' }}>
+          <input
+            type="text"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            placeholder="Their name (e.g. Aunt Linda)"
+            className="w-full px-3 py-2 rounded-lg border text-sm t-ink"
+            style={{ borderColor: 'var(--t-soft-ring)' }}
+          />
+          <input
+            type="text"
+            value={contact}
+            onChange={(e) => setContact(e.target.value)}
+            autoCapitalize="none"
+            autoCorrect="off"
+            placeholder="Their email or phone (optional)"
+            className="w-full px-3 py-2 rounded-lg border text-sm t-ink"
+            style={{ borderColor: 'var(--t-soft-ring)' }}
+          />
+          <div className="flex gap-2">
+            <button
+              type="submit"
+              disabled={creating}
+              className="px-4 py-2 text-sm rounded-lg t-btn-accent font-medium disabled:opacity-50"
+            >
+              {creating ? 'Creating…' : 'Create invite link'}
+            </button>
+            <button
+              type="button"
+              onClick={() => setShowForm(false)}
+              className="px-4 py-2 text-sm t-muted hover:opacity-80"
+            >
+              Cancel
+            </button>
+          </div>
+          <p className="text-xs t-muted">
+            Add an email or phone and we&rsquo;ll send the invite for you — or leave it blank and share the link yourself.
+          </p>
+        </form>
+      )}
+
       {lastCreated && (
         <div
           className="mb-4 p-3 rounded-lg border"
           style={{ backgroundColor: 'var(--t-soft-bg)', borderColor: 'var(--t-soft-ring)' }}
         >
           <p className="text-sm font-medium mb-2" style={{ color: 'var(--t-soft-text)' }}>
-            New invite link ready
+            {lastCreated.sent
+              ? `Invite sent to ${lastCreated.email_hint || lastCreated.phone_hint}`
+              : 'New invite link ready'}
           </p>
           <div className="flex gap-2">
             <input

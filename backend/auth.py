@@ -62,6 +62,13 @@ def set_messenger(messenger: Messenger) -> None:
     _messenger = messenger
 
 
+def get_active_messenger() -> Messenger:
+    """The messenger callers outside this module should send through —
+    keeps invitation sends on the same (possibly test-overridden) instance
+    as auth challenges, instead of constructing a second one."""
+    return _messenger
+
+
 def normalize_identifier(raw: str) -> tuple[str, AuthIdentifierKind]:
     candidate = raw.strip()
     if "@" in candidate:
