@@ -5,18 +5,20 @@ function formatPrice(cents) {
   return `$${(cents / 100).toFixed(2)}`;
 }
 
-export default function GiftGallery({ birthId }) {
+export default function GiftGallery({ birthId, isParent = true }) {
   const [items, setItems] = useState(null);
+  const [familyHasAddress, setFamilyHasAddress] = useState(false);
   const [error, setError] = useState('');
   const [regenerating, setRegenerating] = useState(false);
   const pollRef = useRef(null);
 
   const load = useCallback(async () => {
     try {
-      const rows = await api.listGifts(birthId);
-      setItems(rows);
+      const gallery = await api.listGifts(birthId);
+      setItems(gallery.items);
+      setFamilyHasAddress(gallery.family_has_shipping_address);
       setError('');
-      return rows;
+      return gallery.items;
     } catch (err) {
       setError(err.message || 'Could not load gifts');
       return null;
@@ -41,8 +43,9 @@ export default function GiftGallery({ birthId }) {
   const handleRegenerate = async () => {
     setRegenerating(true);
     try {
-      const rows = await api.generateGifts(birthId);
-      setItems(rows);
+      const gallery = await api.generateGifts(birthId);
+      setItems(gallery.items);
+      setFamilyHasAddress(gallery.family_has_shipping_address);
     } catch (err) {
       setError(err.message || 'Could not regenerate');
     } finally {
@@ -59,13 +62,15 @@ export default function GiftGallery({ birthId }) {
             Auto-designed from this birth's story — ready to send to family.
           </p>
         </div>
-        <button
-          onClick={handleRegenerate}
-          disabled={regenerating || items === null}
-          className="px-3 py-2 text-sm rounded-lg t-btn-accent font-medium disabled:opacity-50"
-        >
-          {regenerating ? 'Regenerating…' : 'Regenerate'}
-        </button>
+        {isParent && (
+          <button
+            onClick={handleRegenerate}
+            disabled={regenerating || items === null}
+            className="px-3 py-2 text-sm rounded-lg t-btn-accent font-medium disabled:opacity-50"
+          >
+            {regenerating ? 'Regenerating…' : 'Regenerate'}
+          </button>
+        )}
       </div>
 
       {error && (
@@ -79,7 +84,7 @@ export default function GiftGallery({ birthId }) {
       ) : (
         <div className="space-y-6">
           {items.map((item) => (
-            <GiftItemCard key={item.id} item={item} birthId={birthId} />
+            <GiftItemCard key={item.id} item={item} birthId={birthId} familyHasAddress={familyHasAddress} />
           ))}
         </div>
       )}
@@ -87,12 +92,22 @@ export default function GiftGallery({ birthId }) {
   );
 }
 
-function GiftItemCard({ item, birthId }) {
+function GiftItemCard({ item, birthId, familyHasAddress }) {
   return (
     <div>
       <div className="flex items-baseline justify-between mb-2">
         <span className="text-sm font-medium t-ink">{item.display_name}</span>
-        <span className="text-sm t-muted">{formatPrice(item.base_price_cents)}</span>
+        <span className="text-sm t-muted">
+          {formatPrice(item.base_price_cents)}
+          {item.kind === 'physical' && !item.is_purchasable && (
+            <span className="ml-2 text-xs t-muted italic">coming soon</span>
+          )}
+          {item.is_claimed_for_family && (
+            <span className="ml-2 text-xs" title="A family-bound copy has been gifted">
+              Already gifted 🤍
+            </span>
+          )}
+        </span>
       </div>
 
       {item.kind === 'storage_gift' ? (
@@ -111,7 +126,7 @@ function GiftItemCard({ item, birthId }) {
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           {item.renderings.map((r) => (
-            <RenderingTile key={r.id} rendering={r} birthId={birthId} />
+            <RenderingTile key={r.id} rendering={r} birthId={birthId} item={item} familyHasAddress={familyHasAddress} />
           ))}
         </div>
       )}
@@ -119,8 +134,9 @@ function GiftItemCard({ item, birthId }) {
   );
 }
 
-function RenderingTile({ rendering, birthId }) {
+function RenderingTile({ rendering, birthId, item, familyHasAddress }) {
   const [pickerOpen, setPickerOpen] = useState(false);
+  const [buyOpen, setBuyOpen] = useState(false);
   // Prefer the product mockup (artwork on the real mug/card) when ready;
   // otherwise show the flat artwork.
   const src = rendering.mockup_url || rendering.artwork_url;
@@ -147,6 +163,16 @@ function RenderingTile({ rendering, birthId }) {
         </div>
       )}
 
+      {rendering.status === 'ready' && item?.is_purchasable && (
+        <button
+          type="button"
+          onClick={() => setBuyOpen(true)}
+          className="w-full px-3 py-2 text-sm font-medium text-left transition-colors t-btn-accent rounded-none"
+        >
+          Send this gift · {formatPrice(item.base_price_cents)}
+        </button>
+      )}
+
       {rendering.status === 'ready' && (
         <button
           type="button"
@@ -155,6 +181,16 @@ function RenderingTile({ rendering, birthId }) {
         >
           See this design on another product →
         </button>
+      )}
+
+      {buyOpen && (
+        <GiftCheckoutSheet
+          birthId={birthId}
+          rendering={rendering}
+          item={item}
+          familyHasAddress={familyHasAddress}
+          onClose={() => setBuyOpen(false)}
+        />
       )}
 
       {pickerOpen && (
@@ -314,5 +350,144 @@ function ProductOption({ product, onRequest }) {
         {product.display_name}
       </div>
     </button>
+  );
+}
+
+function GiftCheckoutSheet({ birthId, rendering, item, familyHasAddress, onClose }) {
+  const [recipient, setRecipient] = useState(
+    item.is_claimed_for_family ? 'self' : 'family',
+  );
+  const [note, setNote] = useState('');
+  const [starting, setStarting] = useState(false);
+  const [error, setError] = useState('');
+
+  async function startCheckout() {
+    setStarting(true);
+    setError('');
+    try {
+      const { url } = await api.createGiftCheckout(birthId, rendering.id, {
+        recipientKind: recipient,
+        giftMessage: note.trim() || null,
+      });
+      window.location.assign(url);
+    } catch (err) {
+      if (err.status === 409) {
+        setError(
+          "Someone already gifted this to the family — you can still get one for yourself.",
+        );
+        setRecipient('self');
+      } else if (err.status === 503) {
+        setError("Payments aren't available right now — try again soon.");
+      } else {
+        setError(err.message || "Couldn't start checkout");
+      }
+      setStarting(false);
+    }
+  }
+
+  return (
+    <div
+      className="fixed inset-0 z-50 bg-black/40 flex items-end sm:items-center justify-center"
+      onClick={onClose}
+    >
+      <div
+        className="animate-slide-up w-full sm:max-w-lg bg-white dark:bg-gray-900
+                   rounded-t-2xl sm:rounded-2xl shadow-xl p-5 space-y-4 max-h-[85vh] overflow-y-auto"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="text-center">
+          <h2 className="text-base font-semibold text-gray-800 dark:text-white">
+            {item.display_name} · {formatPrice(item.base_price_cents)}
+          </h2>
+          <p className="text-xs t-muted mt-1">Shipping included.</p>
+        </div>
+
+        {error && (
+          <div className="p-3 rounded-lg bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-300 text-sm">
+            {error}
+          </div>
+        )}
+
+        <div className="space-y-2">
+          <label
+            className={`flex items-start gap-3 p-3 rounded-lg border cursor-pointer ${
+              item.is_claimed_for_family ? 'opacity-50 cursor-default' : ''
+            }`}
+            style={{ borderColor: 'var(--t-soft-ring)' }}
+          >
+            <input
+              type="radio"
+              name="recipient"
+              value="family"
+              checked={recipient === 'family'}
+              disabled={item.is_claimed_for_family}
+              onChange={() => setRecipient('family')}
+              className="mt-1"
+            />
+            <span className="text-sm t-ink">
+              Send to the family
+              <span className="block text-xs t-muted mt-0.5">
+                {item.is_claimed_for_family
+                  ? 'Already gifted 🤍'
+                  : familyHasAddress
+                    ? "Ships to the family's saved address."
+                    : "You'll enter their address at checkout."}
+              </span>
+            </span>
+          </label>
+          <label
+            className="flex items-start gap-3 p-3 rounded-lg border cursor-pointer"
+            style={{ borderColor: 'var(--t-soft-ring)' }}
+          >
+            <input
+              type="radio"
+              name="recipient"
+              value="self"
+              checked={recipient === 'self'}
+              onChange={() => setRecipient('self')}
+              className="mt-1"
+            />
+            <span className="text-sm t-ink">
+              Get one for myself
+              <span className="block text-xs t-muted mt-0.5">
+                Ships to you — you'll enter your address at checkout.
+              </span>
+            </span>
+          </label>
+        </div>
+
+        {recipient === 'family' && (
+          <label className="block text-xs t-muted">
+            A note for the family (printed on the packing slip)
+            <textarea
+              value={note}
+              onChange={(e) => setNote(e.target.value)}
+              rows={2}
+              maxLength={500}
+              placeholder="With so much love…"
+              className="mt-1 w-full px-3 py-2 rounded-lg border text-sm bg-white dark:bg-gray-800 t-ink resize-none"
+              style={{ borderColor: 'var(--t-soft-ring)' }}
+            />
+          </label>
+        )}
+
+        <button
+          type="button"
+          onClick={startCheckout}
+          disabled={starting}
+          className="w-full py-3 rounded-xl text-sm font-medium text-white disabled:opacity-50"
+          style={{ backgroundColor: 'var(--t-accent)' }}
+        >
+          {starting ? 'Opening checkout…' : 'Continue to checkout'}
+        </button>
+        <button
+          type="button"
+          onClick={onClose}
+          className="w-full py-2 rounded-xl text-sm text-gray-600 dark:text-gray-300"
+        >
+          Cancel
+        </button>
+      </div>
+    </div>
   );
 }

@@ -17,7 +17,13 @@ import time
 
 import httpx
 
-from fulfillment.base import FulfillmentAdapter, MockupError, MockupResult
+from fulfillment.base import (
+    FulfillmentAdapter,
+    MockupError,
+    MockupResult,
+    OrderError,
+    OrderResult,
+)
 
 _BASE_URL = "https://api.printful.com"
 
@@ -67,6 +73,38 @@ class PrintfulAdapter(FulfillmentAdapter):
         )
         mockup_url = self._poll_for_mockup(task_key)
         return self._download(mockup_url)
+
+    def create_order(
+        self,
+        *,
+        recipient: dict,
+        items: list[dict],
+        external_id: str,
+        confirm: bool,
+        gift: dict | None = None,
+    ) -> OrderResult:
+        """POST /orders. confirm=0 leaves the order as a dashboard draft
+        (no charge until a human approves it); `gift` prints a note on the
+        packing slip."""
+        body: dict = {
+            "external_id": external_id,
+            "recipient": recipient,
+            "items": items,
+        }
+        if gift:
+            body["gift"] = gift
+        try:
+            resp = self._client.post(
+                f"/orders?confirm={'1' if confirm else '0'}", json=body
+            )
+            resp.raise_for_status()
+            result = (resp.json() or {}).get("result") or {}
+            order_id = result.get("id")
+            if order_id is None:
+                raise OrderError("printful order response missing id")
+            return OrderResult(order_id=str(order_id), status=result.get("status", ""))
+        except httpx.HTTPError as exc:
+            raise OrderError(f"printful order: {exc}") from exc
 
     def _create_task(
         self, *, product_id: int, variant_id: int, placement: str, artwork_url: str

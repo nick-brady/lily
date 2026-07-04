@@ -7,6 +7,7 @@ import CelebrationOverlay from '../components/CelebrationOverlay';
 import ConnectionStatus from '../components/ConnectionStatus';
 import Timeline from '../components/Timeline';
 import Predictions from '../components/Predictions';
+import GiftGallery from '../components/GiftGallery';
 import { bumpCommentCount, updateReaction } from '../utils/engagement';
 import { getTheme, themeVars } from '../utils/themes';
 
@@ -14,6 +15,7 @@ export default function PublicBirthPage() {
   const { slug } = useParams();
   const [searchParams, setSearchParams] = useSearchParams();
   const [unlockBanner, setUnlockBanner] = useState(false);
+  const [giftBanner, setGiftBanner] = useState('');
   const { isAuthenticated, me } = useAuth();
   const [birth, setBirth] = useState(null);
   const [events, setEvents] = useState(() => new Map());
@@ -81,6 +83,29 @@ export default function PublicBirthPage() {
       .catch(() => {
         // pending or transient failure — the webhook is the safety net
       });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [slug, searchParams]);
+
+  // Returning from a gift checkout: confirm server-side (dev path; the
+  // webhook is the prod source of truth) and strip the param.
+  useEffect(() => {
+    const sessionId = searchParams.get('gift_session');
+    if (!sessionId) return;
+    const next = new URLSearchParams(searchParams);
+    next.delete('gift_session');
+    setSearchParams(next, { replace: true });
+    api
+      .confirmGift(slug, sessionId)
+      .then((res) => {
+        if (res.status === 'fulfilled' || res.status === 'already_processed') {
+          setGiftBanner('Your gift is on its way — thank you 🤍');
+        } else if (res.status === 'refunded') {
+          setGiftBanner(
+            'Someone beat you to this gift — your payment has been refunded.',
+          );
+        }
+      })
+      .catch(() => {});
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [slug, searchParams]);
 
@@ -244,6 +269,17 @@ export default function PublicBirthPage() {
       </header>
 
       <main className="max-w-4xl mx-auto px-4 py-6 space-y-6">
+        {giftBanner && (
+          <div
+            className="card flex items-center gap-3 py-3"
+            style={{ backgroundColor: 'var(--t-soft-bg)' }}
+          >
+            <span className="text-lg">🎁</span>
+            <p className="text-sm" style={{ color: 'var(--t-soft-text)' }}>
+              {giftBanner}
+            </p>
+          </div>
+        )}
         {unlockBanner && (
           <div
             className="card flex items-center gap-3 py-3"
@@ -295,6 +331,10 @@ export default function PublicBirthPage() {
             status={birth.status}
             isParent={canManageThisBirth}
           />
+        )}
+
+        {!loading && birth && isAuthenticated && (
+          <MemberGifts birthId={birth.id} isParent={canManageThisBirth} />
         )}
 
         {loading ? (
@@ -349,4 +389,24 @@ function DarkModeToggle({ darkMode, setDarkMode }) {
       )}
     </button>
   );
+}
+
+
+// Gifts are member-only (the API 403s non-members); probe once and render
+// the gallery only for family members, so Aunt-Linda-before-joining sees
+// nothing rather than an error.
+function MemberGifts({ birthId, isParent }) {
+  const [isMember, setIsMember] = useState(null);
+  useEffect(() => {
+    let cancelled = false;
+    api
+      .listGifts(birthId)
+      .then(() => !cancelled && setIsMember(true))
+      .catch(() => !cancelled && setIsMember(false));
+    return () => {
+      cancelled = true;
+    };
+  }, [birthId]);
+  if (!isMember) return null;
+  return <GiftGallery birthId={birthId} isParent={isParent} />;
 }

@@ -15,6 +15,10 @@ class MockupError(Exception):
     """Mockup generation failed for a reason worth recording on the row."""
 
 
+class OrderError(Exception):
+    """Order submission failed for a reason worth recording on the shipment."""
+
+
 @dataclass
 class MockupResult:
     image_bytes: bytes
@@ -22,8 +26,30 @@ class MockupResult:
     source_url: str
 
 
+@dataclass
+class OrderResult:
+    order_id: str
+    status: str
+
+
 class FulfillmentAdapter(ABC):
     name: str
+
+    @abstractmethod
+    def create_order(
+        self,
+        *,
+        recipient: dict,
+        items: list[dict],
+        external_id: str,
+        confirm: bool,
+        gift: dict | None = None,
+    ) -> OrderResult:
+        """Submit a fulfillment order (confirm=False → a draft the merchant
+        approves by hand — the safe default). `recipient` is the partner's
+        address shape; `items` carry variant ids + artwork file URLs, which
+        must stay publicly reachable long enough for a draft to be confirmed.
+        Raises OrderError on failure."""
 
     @abstractmethod
     def generate_mockup(

@@ -180,6 +180,61 @@ export const api = {
     return jsonOrThrow(res);
   },
 
+  async createGiftCheckout(birthId, renderingId, { recipientKind, giftMessage }) {
+    const res = await fetch(
+      `${API_URL}/birth/${birthId}/gifts/${renderingId}/checkout`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...authHeaders() },
+        body: JSON.stringify({
+          recipient_kind: recipientKind,
+          gift_message: giftMessage || null,
+        }),
+      },
+    );
+    return jsonOrThrow(res);
+  },
+
+  async confirmGift(slug, sessionId) {
+    const res = await fetch(`${API_URL}/b/${slug}/gifts/confirm`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ session_id: sessionId }),
+    });
+    return jsonOrThrow(res);
+  },
+
+  async getShippingAddress(birthId) {
+    const res = await fetch(`${API_URL}/birth/${birthId}/shipping-address`, {
+      headers: authHeaders(),
+    });
+    return jsonOrThrow(res);
+  },
+
+  async putShippingAddress(birthId, address) {
+    const res = await fetch(`${API_URL}/birth/${birthId}/shipping-address`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json', ...authHeaders() },
+      body: JSON.stringify(address),
+    });
+    return jsonOrThrow(res);
+  },
+
+  async listGiftOrders(birthId) {
+    const res = await fetch(`${API_URL}/birth/${birthId}/gifts/orders`, {
+      headers: authHeaders(),
+    });
+    return jsonOrThrow(res);
+  },
+
+  async retryGiftFulfillment(birthId, orderId) {
+    const res = await fetch(
+      `${API_URL}/birth/${birthId}/gifts/orders/${orderId}/retry-fulfillment`,
+      { method: 'POST', headers: authHeaders() },
+    );
+    return jsonOrThrow(res);
+  },
+
   async listRenderingProducts(birthId, renderingId) {
     const res = await fetch(
       `${API_URL}/birth/${birthId}/gifts/${renderingId}/products`,

@@ -245,6 +245,11 @@ class Birth(Base):
     # Actual measurements, recorded by the parents once known. The family's
     # guesses live in `birth_guesses` and are scored against these.
     child_weight_lbs: Mapped[float | None] = mapped_column(sa.Float, nullable=True)
+    # Parent-saved destination for family-bound gifts:
+    # {name, line1, line2?, city, state, postal_code, country}.
+    # NEVER exposed on BirthOut — the public birth payload must not leak a
+    # home address; parent-only routes read/write it.
+    shipping_address: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
     child_length_in: Mapped[float | None] = mapped_column(sa.Float, nullable=True)
     deleted_at: Mapped[datetime | None] = mapped_column(
         sa.DateTime(timezone=True), nullable=True
@@ -757,3 +762,96 @@ class UnlockPurchase(Base):
         sa.Text, nullable=True
     )
     purchased_at: Mapped[datetime] = _created_at()
+
+
+class GiftOrder(Base):
+    """A viewer's gift purchase. The partial unique index
+    uq_gift_orders_family_claim (birth_id, gift_catalog_item_id WHERE
+    status='paid' AND recipient_kind='family') is the registry claim — one
+    family-bound purchase per item per birth; "one for me" copies never
+    count. Pending rows are inert (abandoned checkouts expire at Stripe);
+    a racing second family-bound payment loses the claim at pending→paid
+    and is refunded, recorded as status='refunded'."""
+
+    __tablename__ = "gift_orders"
+
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    birth_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        sa.ForeignKey("births.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    gift_catalog_item_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        sa.ForeignKey("gift_catalog_items.id", ondelete="RESTRICT"),
+        nullable=False,
+    )
+    gift_rendering_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        sa.ForeignKey("gift_renderings.id", ondelete="RESTRICT"),
+        nullable=False,
+    )
+    purchased_by_user_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        sa.ForeignKey("users.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    status: Mapped[str] = mapped_column(
+        sa.Text, nullable=False, server_default="pending"
+    )  # pending | paid | refunded
+    recipient_kind: Mapped[str] = mapped_column(sa.Text, nullable=False)  # family | self
+    gift_message: Mapped[str | None] = mapped_column(sa.Text, nullable=True)
+    amount_cents: Mapped[int] = mapped_column(sa.Integer, nullable=False)
+    currency: Mapped[str] = mapped_column(
+        sa.Text, nullable=False, server_default="usd"
+    )
+    stripe_checkout_session_id: Mapped[str | None] = mapped_column(
+        sa.Text, nullable=True, unique=True
+    )
+    stripe_payment_intent_id: Mapped[str | None] = mapped_column(
+        sa.Text, nullable=True, unique=True
+    )
+    created_at: Mapped[datetime] = _created_at()
+    paid_at: Mapped[datetime | None] = mapped_column(
+        sa.DateTime(timezone=True), nullable=True
+    )
+
+    __table_args__ = (
+        sa.Index("ix_gift_orders_birth", "birth_id"),
+        sa.Index(
+            "uq_gift_orders_family_claim",
+            "birth_id",
+            "gift_catalog_item_id",
+            unique=True,
+            postgresql_where=sa.text(
+                "status = 'paid' AND recipient_kind = 'family'"
+            ),
+        ),
+    )
+
+
+class GiftShipment(Base):
+    """One physical shipment of an order. Separate from the order because
+    the spec's "Both" mechanic (one payment, two shipments) is a near-term
+    follow-up. fulfillment_status: none | submitting | submitted | failed —
+    the background submitter CASes none→submitting so a retry endpoint can
+    safely CAS failed→submitting without ever double-POSTing Printful."""
+
+    __tablename__ = "gift_shipments"
+
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    gift_order_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        sa.ForeignKey("gift_orders.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    recipient_kind: Mapped[str] = mapped_column(sa.Text, nullable=False)
+    address: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    printful_order_id: Mapped[str | None] = mapped_column(sa.Text, nullable=True)
+    fulfillment_status: Mapped[str] = mapped_column(
+        sa.Text, nullable=False, server_default="none"
+    )
+    failure_reason: Mapped[str | None] = mapped_column(sa.Text, nullable=True)
+    created_at: Mapped[datetime] = _created_at()
+
+    __table_args__ = (sa.Index("ix_gift_shipments_order", "gift_order_id"),)
