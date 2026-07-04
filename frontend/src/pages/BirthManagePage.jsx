@@ -384,6 +384,7 @@ export default function BirthManagePage() {
 
         {activeTab === 'stats' && (
           <StatsTab
+            birth={birth}
             contractions={contractions}
             statsTimeRange={statsTimeRange}
             setStatsTimeRange={setStatsTimeRange}
@@ -414,7 +415,7 @@ export default function BirthManagePage() {
 }
 
 function StatsTab({
-  contractions, statsTimeRange, setStatsTimeRange, customRange, setCustomRange, getCustomTimestamps,
+  birth, contractions, statsTimeRange, setStatsTimeRange, customRange, setCustomRange, getCustomTimestamps,
 }) {
   const timestamps = getCustomTimestamps();
   const formatTime = (date) =>

@@ -90,14 +90,14 @@ export const api = {
   },
 
   async listTimeline(birthId, { afterSequenceId } = {}) {
-    const url = new URL(`${API_URL}/birth/${birthId}/timeline`);
+    const url = new URL(`${API_URL}/birth/${birthId}/timeline`, window.location.origin);
     if (afterSequenceId != null) url.searchParams.set('after_sequence_id', afterSequenceId);
     const res = await fetch(url, { headers: authHeaders() });
     return jsonOrThrow(res);
   },
 
   async listPublicTimeline(slug, { afterSequenceId } = {}) {
-    const url = new URL(`${API_URL}/b/${slug}/timeline`);
+    const url = new URL(`${API_URL}/b/${slug}/timeline`, window.location.origin);
     if (afterSequenceId != null) url.searchParams.set('after_sequence_id', afterSequenceId);
     // Sending Bearer here is intentional: authed viewers get widened
     // audience visibility on the same public endpoint.
