@@ -42,6 +42,17 @@ def test_birth_routes_require_auth() -> None:
         assert response.status_code == 401, f"{method} {path} should require auth"
 
 
+def test_gift_checkout_routes_require_auth() -> None:
+    fake_id = "00000000-0000-0000-0000-000000000000"
+    client = _client()
+    for path in (
+        f"/birth/{fake_id}/gifts/{fake_id}/checkout",
+        f"/birth/{fake_id}/gifts/storage/{fake_id}/checkout",
+    ):
+        response = client.post(path)
+        assert response.status_code == 401, f"POST {path} should require auth"
+
+
 def test_public_birth_routes_do_not_require_auth() -> None:
     """Public read-only routes must not return 401 when called without
     credentials. A 401 here would mean access control snuck in by

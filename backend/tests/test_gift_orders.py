@@ -15,6 +15,7 @@ from sqlalchemy.exc import IntegrityError
 import payments
 from fulfillment.base import OrderError
 from fulfillment.printful import PrintfulAdapter
+from models import GiftKind
 from payments import StripeClient
 
 
@@ -167,6 +168,7 @@ def _order(status="pending", session_id=None):
     return SimpleNamespace(
         id=uuid.uuid4(),
         birth_id=uuid.uuid4(),
+        gift_catalog_item_id=uuid.uuid4(),
         status=status,
         recipient_kind="family",
         stripe_checkout_session_id=session_id,
@@ -247,12 +249,30 @@ class _Tasks:
         self.scheduled.append((fn, args))
 
 
+def _dispatching_db(birth, item):
+    """A fake session whose get() returns the right fixture per model —
+    _fulfill_gift_from_session now loads both the birth and the catalog
+    item to decide physical-vs-storage handling."""
+    import main
+
+    class _DB:
+        def get(self, model, _pk):
+            if model is main.Birth:
+                return birth
+            if model is main.GiftCatalogItem:
+                return item
+            raise AssertionError(f"unexpected model {model}")
+
+    return _DB()
+
+
 def test_funnel_paid_schedules_exactly_one_submission(monkeypatch):
     import main
 
     order = _order(session_id="cs_1")
     shipment = SimpleNamespace(id=uuid.uuid4(), fulfillment_status="none")
     birth = SimpleNamespace(id=order.birth_id, shipping_address={"name": "Fam", "line1": "1 St"})
+    item = SimpleNamespace(kind=GiftKind.physical, storage_years_granted=None)
 
     monkeypatch.setattr(
         main.gift_orders_repo, "mark_paid", lambda db, **kw: ("paid", order)
@@ -264,14 +284,10 @@ def test_funnel_paid_schedules_exactly_one_submission(monkeypatch):
         lambda db, **kw: created.append(kw) or shipment,
     )
 
-    class _DB:
-        def get(self, model, pk):
-            return birth
-
     tasks = _Tasks()
     status = asyncio.run(
         main._fulfill_gift_from_session(
-            _DB(), SimpleNamespace(), _session_obj(order), tasks,
+            _dispatching_db(birth, item), SimpleNamespace(), _session_obj(order), tasks,
             raise_on_refund_error=True,
         )
     )
@@ -279,6 +295,43 @@ def test_funnel_paid_schedules_exactly_one_submission(monkeypatch):
     assert len(tasks.scheduled) == 1
     # family recipient with a saved address uses it
     assert created[0]["address"]["name"] == "Fam"
+
+
+def test_funnel_paid_storage_gift_grants_storage_no_shipment(monkeypatch):
+    import main
+
+    order = _order(session_id="cs_1")
+    birth = SimpleNamespace(id=order.birth_id, shipping_address=None)
+    item = SimpleNamespace(kind=GiftKind.storage_gift, storage_years_granted=5)
+
+    monkeypatch.setattr(
+        main.gift_orders_repo, "mark_paid", lambda db, **kw: ("paid", order)
+    )
+    granted = []
+    monkeypatch.setattr(
+        main.gift_orders_repo,
+        "grant_storage_gift",
+        lambda db, **kw: granted.append(kw),
+    )
+    shipment_calls = []
+    monkeypatch.setattr(
+        main.gift_orders_repo,
+        "create_shipment",
+        lambda db, **kw: shipment_calls.append(kw),
+    )
+
+    tasks = _Tasks()
+    status = asyncio.run(
+        main._fulfill_gift_from_session(
+            _dispatching_db(birth, item), SimpleNamespace(), _session_obj(order), tasks,
+            raise_on_refund_error=True,
+        )
+    )
+    assert status == "fulfilled"
+    assert granted == [{"birth": birth, "storage_years_granted": 5}]
+    # no shipment for a storage gift — nothing to ship
+    assert shipment_calls == []
+    assert tasks.scheduled == []
 
 
 def test_funnel_claim_lost_refunds_then_marks(monkeypatch):
@@ -339,6 +392,65 @@ def test_funnel_already_paid_schedules_nothing(monkeypatch):
         )
     )
     assert status == "already_processed" and tasks.scheduled == []
+
+
+# ── grant_storage_gift ──────────────────────────────────────────────────────
+
+
+class _FakeCommitSession:
+    def __init__(self):
+        self.commits = 0
+
+    def commit(self):
+        self.commits += 1
+
+
+def test_grant_storage_gift_from_nothing():
+    from datetime import datetime, timedelta, timezone
+
+    from repositories import gift_orders as repo
+
+    birth = SimpleNamespace(storage_paid_until=None)
+    db = _FakeCommitSession()
+    before = datetime.now(timezone.utc)
+
+    repo.grant_storage_gift(db, birth=birth, storage_years_granted=5)
+
+    assert db.commits == 1
+    # ~5 years out, give or take the leap-year approximation
+    assert birth.storage_paid_until > before + timedelta(days=5 * 365 - 1)
+    assert birth.storage_paid_until < before + timedelta(days=5 * 365 + 1)
+
+
+def test_grant_storage_gift_stacks_on_existing():
+    from datetime import datetime, timedelta, timezone
+
+    from repositories import gift_orders as repo
+
+    existing = datetime.now(timezone.utc) + timedelta(days=365)  # 1 year out
+    birth = SimpleNamespace(storage_paid_until=existing)
+    db = _FakeCommitSession()
+
+    repo.grant_storage_gift(db, birth=birth, storage_years_granted=5)
+
+    # stacks on top of the existing grant, not from today
+    assert birth.storage_paid_until > existing + timedelta(days=5 * 365 - 1)
+
+
+def test_grant_storage_gift_ignores_expired_grant():
+    from datetime import datetime, timedelta, timezone
+
+    from repositories import gift_orders as repo
+
+    expired = datetime.now(timezone.utc) - timedelta(days=30)
+    birth = SimpleNamespace(storage_paid_until=expired)
+    db = _FakeCommitSession()
+    before = datetime.now(timezone.utc)
+
+    repo.grant_storage_gift(db, birth=birth, storage_years_granted=5)
+
+    # bases from now, not from the stale past date
+    assert birth.storage_paid_until > before + timedelta(days=5 * 365 - 1)
 
 
 # ── printful create_order ─────────────────────────────────────────────────

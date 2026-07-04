@@ -196,6 +196,18 @@ export const api = {
     return jsonOrThrow(res);
   },
 
+  async createStorageGiftCheckout(birthId, itemId, { giftMessage } = {}) {
+    const res = await fetch(
+      `${API_URL}/birth/${birthId}/gifts/storage/${itemId}/checkout`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...authHeaders() },
+        body: JSON.stringify({ gift_message: giftMessage || null }),
+      },
+    );
+    return jsonOrThrow(res);
+  },
+
   async confirmGift(slug, sessionId) {
     const res = await fetch(`${API_URL}/b/${slug}/gifts/confirm`, {
       method: 'POST',

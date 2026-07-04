@@ -177,6 +177,13 @@ class GiftCheckoutIn(BaseModel):
     gift_message: Optional[str] = Field(default=None, max_length=500)
 
 
+class StorageGiftCheckoutIn(BaseModel):
+    """Storage gifts always go to the family — no recipient choice, no
+    shipping — so this is just the optional note from the giver."""
+
+    gift_message: Optional[str] = Field(default=None, max_length=500)
+
+
 class GiftCheckoutOut(BaseModel):
     url: str
 
@@ -555,6 +562,7 @@ class GiftGalleryOut(BaseModel):
 
     items: list["GiftItemOut"] = []
     family_has_shipping_address: bool = False
+    storage_paid_until: Optional[datetime] = None
 
 
 class GiftRenderingPatchIn(BaseModel):

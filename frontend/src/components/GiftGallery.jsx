@@ -5,9 +5,14 @@ function formatPrice(cents) {
   return `$${(cents / 100).toFixed(2)}`;
 }
 
+function formatDate(timestamp) {
+  return new Date(timestamp).toLocaleDateString([], { dateStyle: 'long' });
+}
+
 export default function GiftGallery({ birthId, isParent = true }) {
   const [items, setItems] = useState(null);
   const [familyHasAddress, setFamilyHasAddress] = useState(false);
+  const [storagePaidUntil, setStoragePaidUntil] = useState(null);
   const [error, setError] = useState('');
   const [regenerating, setRegenerating] = useState(false);
   const pollRef = useRef(null);
@@ -17,6 +22,7 @@ export default function GiftGallery({ birthId, isParent = true }) {
       const gallery = await api.listGifts(birthId);
       setItems(gallery.items);
       setFamilyHasAddress(gallery.family_has_shipping_address);
+      setStoragePaidUntil(gallery.storage_paid_until);
       setError('');
       return gallery.items;
     } catch (err) {
@@ -46,6 +52,7 @@ export default function GiftGallery({ birthId, isParent = true }) {
       const gallery = await api.generateGifts(birthId);
       setItems(gallery.items);
       setFamilyHasAddress(gallery.family_has_shipping_address);
+      setStoragePaidUntil(gallery.storage_paid_until);
     } catch (err) {
       setError(err.message || 'Could not regenerate');
     } finally {
@@ -77,6 +84,12 @@ export default function GiftGallery({ birthId, isParent = true }) {
         <div className="mb-4 p-3 rounded-lg bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-300 text-sm">
           {error}
         </div>
+      )}
+
+      {storagePaidUntil && (
+        <p className="mb-4 text-sm t-muted">
+          🤍 This page&rsquo;s storage is gifted through {formatDate(storagePaidUntil)}.
+        </p>
       )}
 
       {items === null ? (
@@ -111,16 +124,7 @@ function GiftItemCard({ item, birthId, familyHasAddress }) {
       </div>
 
       {item.kind === 'storage_gift' ? (
-        <div
-          className="p-4 rounded-lg border text-sm t-ink flex items-center gap-3"
-          style={{ backgroundColor: 'var(--t-soft-bg)', borderColor: 'var(--t-soft-ring)' }}
-        >
-          <span className="text-2xl" aria-hidden="true">🎁</span>
-          <span>
-            Gift {item.storage_years_granted} years of storage — keep this
-            keepsake online for the family.
-          </span>
-        </div>
+        <StorageGiftCard item={item} birthId={birthId} />
       ) : item.renderings.length === 0 ? (
         <p className="text-sm t-muted">No designs yet.</p>
       ) : (
@@ -130,6 +134,126 @@ function GiftItemCard({ item, birthId, familyHasAddress }) {
           ))}
         </div>
       )}
+    </div>
+  );
+}
+
+function StorageGiftCard({ item, birthId }) {
+  const [buyOpen, setBuyOpen] = useState(false);
+  return (
+    <div className="rounded-lg border overflow-hidden" style={{ borderColor: 'var(--t-soft-ring)' }}>
+      <div
+        className="p-4 text-sm t-ink flex items-center gap-3"
+        style={{ backgroundColor: 'var(--t-soft-bg)' }}
+      >
+        <span className="text-2xl" aria-hidden="true">🎁</span>
+        <span>
+          Gift {item.storage_years_granted} years of storage — keep this
+          keepsake online for the family.
+        </span>
+      </div>
+
+      {item.is_purchasable && !item.is_claimed_for_family && (
+        <button
+          type="button"
+          onClick={() => setBuyOpen(true)}
+          className="w-full px-3 py-2 text-sm font-medium text-left transition-colors t-btn-accent rounded-none"
+        >
+          Send this gift · {formatPrice(item.base_price_cents)}
+        </button>
+      )}
+
+      {buyOpen && (
+        <StorageGiftCheckoutSheet
+          birthId={birthId}
+          item={item}
+          onClose={() => setBuyOpen(false)}
+        />
+      )}
+    </div>
+  );
+}
+
+function StorageGiftCheckoutSheet({ birthId, item, onClose }) {
+  const [note, setNote] = useState('');
+  const [starting, setStarting] = useState(false);
+  const [error, setError] = useState('');
+
+  async function startCheckout() {
+    setStarting(true);
+    setError('');
+    try {
+      const { url } = await api.createStorageGiftCheckout(birthId, item.id, {
+        giftMessage: note.trim() || null,
+      });
+      window.location.assign(url);
+    } catch (err) {
+      if (err.status === 409) {
+        setError('Someone already gifted storage for this family.');
+      } else if (err.status === 503) {
+        setError("Payments aren't available right now — try again soon.");
+      } else {
+        setError(err.message || "Couldn't start checkout");
+      }
+      setStarting(false);
+    }
+  }
+
+  return (
+    <div
+      className="fixed inset-0 z-50 bg-black/40 flex items-end sm:items-center justify-center"
+      onClick={onClose}
+    >
+      <div
+        className="animate-slide-up w-full sm:max-w-lg bg-white dark:bg-gray-900
+                   rounded-t-2xl sm:rounded-2xl shadow-xl p-5 space-y-4 max-h-[85vh] overflow-y-auto"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="text-center">
+          <h2 className="text-base font-semibold text-gray-800 dark:text-white">
+            {item.display_name} · {formatPrice(item.base_price_cents)}
+          </h2>
+          <p className="text-xs t-muted mt-1">
+            A gift to the family — keeps this page live {item.storage_years_granted} more years.
+          </p>
+        </div>
+
+        {error && (
+          <div className="p-3 rounded-lg bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-300 text-sm">
+            {error}
+          </div>
+        )}
+
+        <label className="block text-xs t-muted">
+          A note for the family (optional)
+          <textarea
+            value={note}
+            onChange={(e) => setNote(e.target.value)}
+            rows={2}
+            maxLength={500}
+            placeholder="I wanted you to have this. Love, Mom."
+            className="mt-1 w-full px-3 py-2 rounded-lg border text-sm bg-white dark:bg-gray-800 t-ink resize-none"
+            style={{ borderColor: 'var(--t-soft-ring)' }}
+          />
+        </label>
+
+        <button
+          type="button"
+          onClick={startCheckout}
+          disabled={starting}
+          className="w-full py-3 rounded-xl text-sm font-medium text-white disabled:opacity-50"
+          style={{ backgroundColor: 'var(--t-accent)' }}
+        >
+          {starting ? 'Opening checkout…' : 'Continue to checkout'}
+        </button>
+        <button
+          type="button"
+          onClick={onClose}
+          className="w-full py-2 rounded-xl text-sm text-gray-600 dark:text-gray-300"
+        >
+          Cancel
+        </button>
+      </div>
     </div>
   );
 }
