@@ -1,0 +1,307 @@
+"""Gift orders — the purchase path for physical gifts.
+
+Only the database lives here (Stripe calls and refund decisions belong to
+the route-layer funnel, house style). Two invariants do all the race work:
+
+- pending→paid is a compare-and-swap UPDATE, so the webhook and the
+  redirect-confirm fulfilling the SAME order can't both win — exactly one
+  caller ever creates the shipment and schedules Printful.
+- the partial unique index uq_gift_orders_family_claim makes the loser of a
+  cross-order family-bound race fail its CAS with IntegrityError (Postgres
+  enforces partial unique indexes on the UPDATE's new tuple), mirroring
+  unlocks.fulfill_purchase; the caller refunds and we record 'refunded'.
+"""
+from __future__ import annotations
+
+import os
+import uuid
+from datetime import datetime, timezone
+from typing import Literal
+
+from sqlalchemy import select, update
+from sqlalchemy.exc import IntegrityError
+from sqlalchemy.orm import Session
+
+import fulfillment
+from db import SessionLocal
+from fulfillment import products as fulfillment_products
+from models import (
+    Birth,
+    GiftCatalogItem,
+    GiftOrder,
+    GiftRendering,
+    GiftShipment,
+    User,
+)
+from storage import presigned_get_url
+
+# Draft orders can sit in the Printful dashboard for days before a human
+# confirms them; the artwork file URL must outlive that window (SigV4 max).
+_ORDER_FILE_TTL_SECONDS = 604800
+
+MarkPaidOutcome = Literal["paid", "already_paid", "already_refunded", "claim_lost"]
+
+
+def create_pending_order(
+    db: Session,
+    *,
+    birth: Birth,
+    item: GiftCatalogItem,
+    rendering: GiftRendering,
+    user: User,
+    recipient_kind: str,
+    gift_message: str | None,
+) -> GiftOrder:
+    order = GiftOrder(
+        birth_id=birth.id,
+        gift_catalog_item_id=item.id,
+        gift_rendering_id=rendering.id,
+        purchased_by_user_id=user.id,
+        recipient_kind=recipient_kind,
+        gift_message=gift_message,
+        amount_cents=item.base_price_cents,
+    )
+    db.add(order)
+    db.commit()
+    return order
+
+
+def attach_session(db: Session, order: GiftOrder, session_id: str) -> None:
+    order.stripe_checkout_session_id = session_id
+    db.commit()
+
+
+def claimed_item_ids(db: Session, *, birth_id: uuid.UUID) -> set[uuid.UUID]:
+    """Catalog items already claimed by a family-bound paid order — one
+    set-query for the whole gallery (served by the claim index itself)."""
+    rows = db.scalars(
+        select(GiftOrder.gift_catalog_item_id).where(
+            GiftOrder.birth_id == birth_id,
+            GiftOrder.status == "paid",
+            GiftOrder.recipient_kind == "family",
+        )
+    ).all()
+    return set(rows)
+
+
+def mark_paid(
+    db: Session, *, order_id: uuid.UUID, session_obj: dict
+) -> tuple[MarkPaidOutcome, GiftOrder | None]:
+    """CAS the order pending→paid, recording the payment identifiers and the
+    amount Stripe actually charged. Outcomes:
+
+    - "paid": this caller won — it (alone) creates the shipment and
+      schedules fulfillment.
+    - "already_paid" / "already_refunded": duplicate delivery — no-op.
+    - "claim_lost": the family-bound claim index rejected the transition
+      (another order already claimed the item) — the caller refunds, then
+      calls mark_refunded.
+    """
+    order = db.get(GiftOrder, order_id)
+    if order is None:
+        raise LookupError(f"no gift order {order_id}")
+
+    session_id = session_obj.get("id")
+    # NULL-session window: if the write-back after session creation failed,
+    # accept and backfill; a *different* recorded session can't legitimately
+    # happen (every checkout creates its own order) — treat as foreign.
+    if (
+        order.stripe_checkout_session_id is not None
+        and session_id is not None
+        and order.stripe_checkout_session_id != session_id
+    ):
+        return "already_paid", order
+
+    try:
+        result = db.execute(
+            update(GiftOrder)
+            .where(GiftOrder.id == order_id, GiftOrder.status == "pending")
+            .values(
+                status="paid",
+                paid_at=datetime.now(timezone.utc),
+                stripe_checkout_session_id=session_id
+                or order.stripe_checkout_session_id,
+                stripe_payment_intent_id=session_obj.get("payment_intent"),
+                amount_cents=session_obj.get("amount_total")
+                or order.amount_cents,
+            )
+        )
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        db.refresh(order)
+        return "claim_lost", order
+
+    if result.rowcount == 0:
+        db.refresh(order)
+        if order.status == "refunded":
+            return "already_refunded", order
+        return "already_paid", order
+    db.refresh(order)
+    return "paid", order
+
+
+def mark_refunded(db: Session, *, order_id: uuid.UUID) -> None:
+    db.execute(
+        update(GiftOrder)
+        .where(GiftOrder.id == order_id)
+        .values(status="refunded")
+    )
+    db.commit()
+
+
+def create_shipment(
+    db: Session, *, order: GiftOrder, address: dict | None
+) -> GiftShipment:
+    """The single shipment of this phase. A missing address (shouldn't
+    happen given the collection rules; belt-and-braces) records an
+    immediately-failed shipment — the order stays paid and a human fixes
+    it via retry."""
+    shipment = GiftShipment(
+        gift_order_id=order.id,
+        recipient_kind=order.recipient_kind,
+        address=address,
+    )
+    if address is None:
+        shipment.fulfillment_status = "failed"
+        shipment.failure_reason = "missing address"
+    db.add(shipment)
+    db.commit()
+    return shipment
+
+
+def retryable_shipment(db: Session, *, order_id: uuid.UUID) -> GiftShipment | None:
+    return db.scalar(
+        select(GiftShipment).where(
+            GiftShipment.gift_order_id == order_id,
+            GiftShipment.fulfillment_status == "failed",
+        )
+    )
+
+
+def list_orders_for_birth(db: Session, *, birth_id: uuid.UUID) -> list[dict]:
+    """Paid + refunded orders with what the parents care about: who, what,
+    the note, and where fulfillment stands."""
+    rows = db.execute(
+        select(GiftOrder, GiftCatalogItem, User, GiftShipment)
+        .join(GiftCatalogItem, GiftCatalogItem.id == GiftOrder.gift_catalog_item_id)
+        .outerjoin(User, User.id == GiftOrder.purchased_by_user_id)
+        .outerjoin(GiftShipment, GiftShipment.gift_order_id == GiftOrder.id)
+        .where(
+            GiftOrder.birth_id == birth_id,
+            GiftOrder.status.in_(["paid", "refunded"]),
+        )
+        .order_by(GiftOrder.created_at.desc())
+    ).all()
+    out = []
+    for order, item, user, shipment in rows:
+        out.append(
+            {
+                "id": order.id,
+                "status": order.status,
+                "recipient_kind": order.recipient_kind,
+                "gift_message": order.gift_message,
+                "amount_cents": order.amount_cents,
+                "purchased_by": user.display_name if user else None,
+                "item_display_name": item.display_name,
+                "fulfillment_status": shipment.fulfillment_status
+                if shipment
+                else "none",
+                "fulfillment_failure": shipment.failure_reason if shipment else None,
+                "created_at": order.created_at,
+            }
+        )
+    return out
+
+
+def _printful_confirm_enabled() -> bool:
+    return os.getenv("PRINTFUL_CONFIRM_ORDERS", "").lower() in ("1", "true", "yes")
+
+
+def submit_shipment(shipment_id: uuid.UUID) -> None:
+    """Submit one shipment to the fulfillment partner as a (default: draft)
+    order. Runs as a BackgroundTask after the response, so it owns its own
+    DB session; never raises. The none→submitting CAS means a duplicate
+    schedule or a concurrent retry can never double-POST the partner."""
+    db = SessionLocal()
+    try:
+        claimed = db.execute(
+            update(GiftShipment)
+            .where(
+                GiftShipment.id == shipment_id,
+                GiftShipment.fulfillment_status.in_(["none", "failed"]),
+            )
+            .values(fulfillment_status="submitting", failure_reason=None)
+        )
+        db.commit()
+        if claimed.rowcount == 0:
+            return  # someone else is on it (or it's already submitted)
+
+        shipment = db.get(GiftShipment, shipment_id)
+        order = db.get(GiftOrder, shipment.gift_order_id)
+        item = db.get(GiftCatalogItem, order.gift_catalog_item_id)
+        rendering = db.get(GiftRendering, order.gift_rendering_id)
+
+        def fail(reason: str) -> None:
+            shipment.fulfillment_status = "failed"
+            shipment.failure_reason = reason[:500]
+            db.commit()
+
+        adapter = fulfillment.get_adapter()
+        if adapter is None:
+            fail("no fulfillment partner configured")
+            return
+        if shipment.address is None:
+            fail("missing address")
+            return
+        product = fulfillment_products.default_for_product_kind(item.product_kind)
+        if product is None:
+            fail(f"no fulfillment product mapped for {item.product_kind}")
+            return
+        if rendering is None or not rendering.artwork_s3_key:
+            fail("missing artwork")
+            return
+
+        addr = shipment.address
+        recipient = {
+            "name": addr.get("name") or "Gift recipient",
+            "address1": addr.get("line1"),
+            "address2": addr.get("line2") or "",
+            "city": addr.get("city"),
+            "state_code": addr.get("state") or "",
+            "country_code": addr.get("country") or "US",
+            "zip": addr.get("postal_code"),
+        }
+        try:
+            artwork = presigned_get_url(
+                rendering.artwork_s3_key, expires_in=_ORDER_FILE_TTL_SECONDS
+            )
+            result = adapter.create_order(
+                recipient=recipient,
+                items=[
+                    {
+                        "variant_id": product.variant_id,
+                        "quantity": 1,
+                        "files": [{"url": artwork}],
+                    }
+                ],
+                external_id=str(order.id),
+                confirm=_printful_confirm_enabled(),
+                gift=(
+                    {"subject": "A gift for you", "message": order.gift_message}
+                    if order.gift_message
+                    else None
+                ),
+            )
+            shipment.printful_order_id = result.order_id
+            shipment.fulfillment_status = "submitted"
+            db.commit()
+        except Exception as exc:  # OrderError or any transport/storage error
+            db.rollback()
+            shipment = db.get(GiftShipment, shipment_id)
+            if shipment is not None:
+                shipment.fulfillment_status = "failed"
+                shipment.failure_reason = str(exc)[:500]
+                db.commit()
+    finally:
+        db.close()

@@ -82,6 +82,8 @@ services:
       STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY:-}
       STRIPE_WEBHOOK_SECRET: ${STRIPE_WEBHOOK_SECRET:-}
       UNLOCK_PRICE_CENTS: ${UNLOCK_PRICE_CENTS:-1200}
+      PRINTFUL_CONFIRM_ORDERS: ${PRINTFUL_CONFIRM_ORDERS:-}
+      GIFT_SHIPPING_COUNTRIES: ${GIFT_SHIPPING_COUNTRIES:-US}
     # No published host port: the browser reaches the API same-origin via
     # the frontend's /api proxy, and containers use the compose network.
     volumes:

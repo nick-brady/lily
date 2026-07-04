@@ -414,7 +414,7 @@ def test_webhook_ignores_foreign_events(client_app, monkeypatch):
     body = json.dumps(
         {
             "type": "checkout.session.completed",
-            "data": {"object": {"metadata": {"kind": "gift_order"}, "payment_status": "paid"}},
+            "data": {"object": {"metadata": {"kind": "storage_gift"}, "payment_status": "paid"}},
         }
     ).encode()
     r = client.post(

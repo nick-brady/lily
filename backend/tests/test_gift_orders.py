@@ -1,0 +1,436 @@
+"""Gift checkout tests — the Stripe gift session, shipping extraction across
+API-version shapes, the CAS mark_paid transitions, the fulfillment funnel,
+webhook dispatch, and the Printful order call. All DB-free."""
+from __future__ import annotations
+
+import asyncio
+import uuid
+from types import SimpleNamespace
+from urllib.parse import parse_qs
+
+import httpx
+import pytest
+from sqlalchemy.exc import IntegrityError
+
+import payments
+from fulfillment.base import OrderError
+from fulfillment.printful import PrintfulAdapter
+from payments import StripeClient
+
+
+def _client(handler, base="https://api.stripe.com"):
+    return httpx.Client(transport=httpx.MockTransport(handler), base_url=base)
+
+
+# ── gift checkout session ─────────────────────────────────────────────────
+
+
+def _gift_session_kwargs(**overrides):
+    kw = dict(
+        order_id="o-1",
+        birth_id="b-1",
+        user_id="u-1",
+        slug="lily-wren",
+        product_name="Birth Story Mug",
+        amount_cents=1800,
+        collect_shipping=True,
+        allowed_countries=["US"],
+    )
+    kw.update(overrides)
+    return kw
+
+
+def test_gift_session_form_fields_with_shipping():
+    seen = {}
+
+    def handler(req: httpx.Request) -> httpx.Response:
+        seen["form"] = parse_qs(req.read().decode())
+        return httpx.Response(200, json={"id": "cs_1", "url": "https://checkout/x"})
+
+    c = StripeClient(secret_key="sk", client=_client(handler))
+    c.create_gift_checkout_session(**_gift_session_kwargs())
+    form = seen["form"]
+    assert form["metadata[kind]"] == ["gift_order"]
+    assert form["metadata[order_id]"] == ["o-1"]
+    assert form["payment_intent_data[metadata][kind]"] == ["gift_order"]
+    assert form["line_items[0][price_data][unit_amount]"] == ["1800"]
+    assert form["shipping_address_collection[allowed_countries][0]"] == ["US"]
+    assert "{CHECKOUT_SESSION_ID}" in form["success_url"][0]
+    assert "gift_session=" in form["success_url"][0]
+
+
+def test_gift_session_omits_shipping_when_saved_address():
+    seen = {}
+
+    def handler(req: httpx.Request) -> httpx.Response:
+        seen["form"] = parse_qs(req.read().decode())
+        return httpx.Response(200, json={"id": "cs_1", "url": "u"})
+
+    c = StripeClient(secret_key="sk", client=_client(handler))
+    c.create_gift_checkout_session(**_gift_session_kwargs(collect_shipping=False))
+    assert not any(k.startswith("shipping_address_collection") for k in seen["form"])
+
+
+def test_refund_kind_namespaces_idempotency_key():
+    seen = {}
+
+    def handler(req: httpx.Request) -> httpx.Response:
+        seen["idem"] = req.headers.get("idempotency-key")
+        return httpx.Response(200, json={"id": "re_1"})
+
+    c = StripeClient(secret_key="sk", client=_client(handler))
+    c.create_refund(payment_intent_id="pi_x", kind="gift")
+    assert seen["idem"] == "gift-refund-pi_x"
+    c.create_refund(payment_intent_id="pi_x")  # default stays unlock
+    assert seen["idem"] == "unlock-refund-pi_x"
+
+
+# ── shipping extraction across Stripe API versions ────────────────────────
+
+_ADDR = {
+    "line1": "123 Fern St",
+    "line2": None,
+    "city": "Raleigh",
+    "state": "NC",
+    "postal_code": "27601",
+    "country": "US",
+}
+
+
+def test_extract_shipping_new_shape():
+    session = {
+        "collected_information": {
+            "shipping_details": {"name": "Janet W", "address": dict(_ADDR)}
+        }
+    }
+    out = payments.extract_shipping(session)
+    assert out["name"] == "Janet W" and out["line1"] == "123 Fern St"
+    assert out["state"] == "NC" and out["postal_code"] == "27601"
+
+
+def test_extract_shipping_legacy_shape():
+    session = {"shipping_details": {"name": "Janet W", "address": dict(_ADDR)}}
+    assert payments.extract_shipping(session)["city"] == "Raleigh"
+
+
+def test_extract_shipping_billing_fallback_and_none():
+    session = {"customer_details": {"name": "Lisa", "address": dict(_ADDR)}}
+    assert payments.extract_shipping(session)["name"] == "Lisa"
+    assert payments.extract_shipping({}) is None
+    # an address without line1 (billing country-only) is not usable
+    assert (
+        payments.extract_shipping(
+            {"customer_details": {"name": "x", "address": {"country": "US"}}}
+        )
+        is None
+    )
+
+
+# ── mark_paid CAS transitions ─────────────────────────────────────────────
+
+
+class _Result:
+    def __init__(self, rowcount):
+        self.rowcount = rowcount
+
+
+class _FakeOrderSession:
+    """Session stub for mark_paid: get() returns the order, execute()
+    returns a configurable rowcount or raises IntegrityError."""
+
+    def __init__(self, order, *, rowcount=1, integrity=False):
+        self._order = order
+        self._rowcount = rowcount
+        self._integrity = integrity
+        self.commits = 0
+        self.rollbacks = 0
+
+    def get(self, _model, _pk):
+        return self._order
+
+    def execute(self, _stmt):
+        if self._integrity:
+            raise IntegrityError("claim", None, Exception("unique"))
+        return _Result(self._rowcount)
+
+    def commit(self):
+        self.commits += 1
+
+    def rollback(self):
+        self.rollbacks += 1
+
+    def refresh(self, _obj):
+        pass
+
+
+def _order(status="pending", session_id=None):
+    return SimpleNamespace(
+        id=uuid.uuid4(),
+        birth_id=uuid.uuid4(),
+        status=status,
+        recipient_kind="family",
+        stripe_checkout_session_id=session_id,
+        amount_cents=1800,
+    )
+
+
+def _session_obj(order, pi="pi_1", session_id="cs_1"):
+    return {
+        "id": session_id,
+        "payment_intent": pi,
+        "amount_total": 1800,
+        "payment_status": "paid",
+        "metadata": {"kind": "gift_order", "order_id": str(order.id), "birth_id": str(order.birth_id)},
+    }
+
+
+def test_mark_paid_winner():
+    from repositories import gift_orders as repo
+
+    order = _order(session_id="cs_1")
+    db = _FakeOrderSession(order, rowcount=1)
+    outcome, _ = repo.mark_paid(db, order_id=order.id, session_obj=_session_obj(order))
+    assert outcome == "paid" and db.commits == 1
+
+
+def test_mark_paid_duplicate_is_noop():
+    from repositories import gift_orders as repo
+
+    order = _order(status="paid", session_id="cs_1")
+    db = _FakeOrderSession(order, rowcount=0)
+    outcome, _ = repo.mark_paid(db, order_id=order.id, session_obj=_session_obj(order))
+    assert outcome == "already_paid"
+
+
+def test_mark_paid_refunded_duplicate():
+    from repositories import gift_orders as repo
+
+    order = _order(status="refunded", session_id="cs_1")
+    db = _FakeOrderSession(order, rowcount=0)
+    outcome, _ = repo.mark_paid(db, order_id=order.id, session_obj=_session_obj(order))
+    assert outcome == "already_refunded"
+
+
+def test_mark_paid_claim_lost():
+    from repositories import gift_orders as repo
+
+    order = _order(session_id="cs_1")
+    db = _FakeOrderSession(order, integrity=True)
+    outcome, _ = repo.mark_paid(db, order_id=order.id, session_obj=_session_obj(order))
+    assert outcome == "claim_lost" and db.rollbacks == 1
+
+
+def test_mark_paid_null_session_backfills_and_mismatch_rejects():
+    from repositories import gift_orders as repo
+
+    # NULL recorded session id → accept (backfill happens in the UPDATE)
+    order = _order(session_id=None)
+    db = _FakeOrderSession(order, rowcount=1)
+    outcome, _ = repo.mark_paid(db, order_id=order.id, session_obj=_session_obj(order))
+    assert outcome == "paid"
+
+    # different recorded session id → foreign, no transition
+    order2 = _order(session_id="cs_other")
+    db2 = _FakeOrderSession(order2, rowcount=1)
+    outcome, _ = repo.mark_paid(db2, order_id=order2.id, session_obj=_session_obj(order2))
+    assert outcome == "already_paid" and db2.commits == 0
+
+
+# ── the funnel ────────────────────────────────────────────────────────────
+
+
+class _Tasks:
+    def __init__(self):
+        self.scheduled = []
+
+    def add_task(self, fn, *args):
+        self.scheduled.append((fn, args))
+
+
+def test_funnel_paid_schedules_exactly_one_submission(monkeypatch):
+    import main
+
+    order = _order(session_id="cs_1")
+    shipment = SimpleNamespace(id=uuid.uuid4(), fulfillment_status="none")
+    birth = SimpleNamespace(id=order.birth_id, shipping_address={"name": "Fam", "line1": "1 St"})
+
+    monkeypatch.setattr(
+        main.gift_orders_repo, "mark_paid", lambda db, **kw: ("paid", order)
+    )
+    created = []
+    monkeypatch.setattr(
+        main.gift_orders_repo,
+        "create_shipment",
+        lambda db, **kw: created.append(kw) or shipment,
+    )
+
+    class _DB:
+        def get(self, model, pk):
+            return birth
+
+    tasks = _Tasks()
+    status = asyncio.run(
+        main._fulfill_gift_from_session(
+            _DB(), SimpleNamespace(), _session_obj(order), tasks,
+            raise_on_refund_error=True,
+        )
+    )
+    assert status == "fulfilled"
+    assert len(tasks.scheduled) == 1
+    # family recipient with a saved address uses it
+    assert created[0]["address"]["name"] == "Fam"
+
+
+def test_funnel_claim_lost_refunds_then_marks(monkeypatch):
+    import main
+
+    order = _order()
+    calls = []
+    monkeypatch.setattr(
+        main.gift_orders_repo, "mark_paid", lambda db, **kw: ("claim_lost", order)
+    )
+    monkeypatch.setattr(
+        main.gift_orders_repo,
+        "mark_refunded",
+        lambda db, **kw: calls.append("marked"),
+    )
+    stripe = SimpleNamespace(
+        create_refund=lambda **kw: calls.append(("refund", kw["kind"]))
+    )
+    tasks = _Tasks()
+    status = asyncio.run(
+        main._fulfill_gift_from_session(
+            None, stripe, _session_obj(order), tasks, raise_on_refund_error=True
+        )
+    )
+    assert status == "refunded"
+    assert calls == [("refund", "gift"), "marked"]  # refund BEFORE marking
+    assert tasks.scheduled == []
+
+    # refund failure on webhook path bubbles; order stays un-marked
+    calls.clear()
+
+    def failing(**kw):
+        raise payments.StripeError("boom")
+
+    stripe_fail = SimpleNamespace(create_refund=failing)
+    with pytest.raises(payments.StripeError):
+        asyncio.run(
+            main._fulfill_gift_from_session(
+                None, stripe_fail, _session_obj(order), _Tasks(),
+                raise_on_refund_error=True,
+            )
+        )
+    assert "marked" not in calls
+
+
+def test_funnel_already_paid_schedules_nothing(monkeypatch):
+    import main
+
+    order = _order(status="paid")
+    monkeypatch.setattr(
+        main.gift_orders_repo, "mark_paid", lambda db, **kw: ("already_paid", order)
+    )
+    tasks = _Tasks()
+    status = asyncio.run(
+        main._fulfill_gift_from_session(
+            None, SimpleNamespace(), _session_obj(order), tasks,
+            raise_on_refund_error=True,
+        )
+    )
+    assert status == "already_processed" and tasks.scheduled == []
+
+
+# ── printful create_order ─────────────────────────────────────────────────
+
+
+def test_printful_create_order_draft():
+    seen = {}
+
+    def handler(req: httpx.Request) -> httpx.Response:
+        seen["url"] = str(req.url)
+        seen["json"] = req.read().decode()
+        return httpx.Response(200, json={"result": {"id": 4242, "status": "draft"}})
+
+    a = PrintfulAdapter(
+        api_key="k", client=_client(handler, base="https://api.printful.com")
+    )
+    result = a.create_order(
+        recipient={"name": "Janet", "address1": "1 St", "city": "Phx",
+                   "state_code": "AZ", "country_code": "US", "zip": "85001"},
+        items=[{"variant_id": 1320, "quantity": 1, "files": [{"url": "https://s3/x.png"}]}],
+        external_id="order-1",
+        confirm=False,
+        gift={"subject": "A gift for you", "message": "love, mom"},
+    )
+    assert result.order_id == "4242" and result.status == "draft"
+    assert "confirm=0" in seen["url"]
+    assert '"external_id":"order-1"' in seen["json"]
+    assert '"variant_id":1320' in seen["json"]
+    assert '"love, mom"' in seen["json"]
+
+
+def test_printful_create_order_confirm_flag_and_error():
+    def handler(req: httpx.Request) -> httpx.Response:
+        assert "confirm=1" in str(req.url)
+        return httpx.Response(400, json={"error": {"message": "bad"}})
+
+    a = PrintfulAdapter(
+        api_key="k", client=_client(handler, base="https://api.printful.com")
+    )
+    with pytest.raises(OrderError):
+        a.create_order(
+            recipient={}, items=[], external_id="x", confirm=True
+        )
+
+
+# ── webhook dispatch ──────────────────────────────────────────────────────
+
+
+def test_webhook_dispatches_gift_kind(monkeypatch):
+    import hashlib
+    import hmac as hmac_mod
+    import json as json_mod
+    import time as time_mod
+
+    from fastapi.testclient import TestClient
+    import main
+
+    secret = "whsec_gift"
+    monkeypatch.setenv("STRIPE_WEBHOOK_SECRET", secret)
+    monkeypatch.setenv("STRIPE_SECRET_KEY", "sk_test_x")
+
+    called = {"gift": 0, "unlock": 0}
+
+    async def fake_gift(db, stripe, obj, tasks, *, raise_on_refund_error):
+        called["gift"] += 1
+        return "fulfilled"
+
+    async def fake_unlock(db, stripe, obj, *, raise_on_refund_error):
+        called["unlock"] += 1
+        return "unlocked"
+
+    monkeypatch.setattr(main, "_fulfill_gift_from_session", fake_gift)
+    monkeypatch.setattr(main, "_fulfill_unlock_from_session", fake_unlock)
+
+    client = TestClient(main.app)
+
+    def signed(body: bytes) -> dict:
+        ts = int(time_mod.time())
+        mac = hmac_mod.new(secret.encode(), f"{ts}.".encode() + body, hashlib.sha256)
+        return {"stripe-signature": f"t={ts},v1={mac.hexdigest()}"}
+
+    body = json_mod.dumps(
+        {
+            "type": "checkout.session.completed",
+            "data": {
+                "object": {
+                    "metadata": {"kind": "gift_order", "order_id": str(uuid.uuid4())},
+                    "payment_status": "paid",
+                }
+            },
+        }
+    ).encode()
+    r = client.post("/webhooks/stripe", content=body, headers=signed(body))
+    assert r.status_code == 200
+    assert called == {"gift": 1, "unlock": 0}

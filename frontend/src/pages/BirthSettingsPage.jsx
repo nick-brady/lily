@@ -144,7 +144,11 @@ export default function BirthSettingsPage() {
         <InviteManager birthId={birth.id} />
 
         {/* Keepsake gifts */}
-        <GiftGallery birthId={birth.id} />
+        <ShippingAddressCard birthId={birth.id} />
+
+        <GiftsReceivedCard birthId={birth.id} />
+
+        <GiftGallery birthId={birth.id} isParent />
 
         {/* Birth details */}
         <section className="card">
@@ -192,5 +196,166 @@ function CenteredMessage({ children }) {
     <div className="min-h-screen flex items-center justify-center bg-gray-100 dark:bg-gray-900">
       <div className="text-gray-500 dark:text-gray-400 text-center px-4">{children}</div>
     </div>
+  );
+}
+
+
+function ShippingAddressCard({ birthId }) {
+  const empty = { name: '', line1: '', line2: '', city: '', state: '', postal_code: '', country: 'US' };
+  const [addr, setAddr] = useState(empty);
+  const [saved, setSaved] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
+
+  useEffect(() => {
+    api
+      .getShippingAddress(birthId)
+      .then((res) => {
+        if (res.address) {
+          setAddr({ ...empty, ...res.address });
+          setSaved(true);
+        }
+      })
+      .catch(() => {});
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [birthId]);
+
+  const set = (k) => (e) => setAddr((a) => ({ ...a, [k]: e.target.value }));
+
+  async function save() {
+    setSaving(true);
+    setError('');
+    try {
+      await api.putShippingAddress(birthId, addr);
+      setSaved(true);
+    } catch (err) {
+      setError(err.message || "Couldn't save the address");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  const input = (key, placeholder, extra = '') => (
+    <input
+      type="text"
+      value={addr[key] || ''}
+      onChange={set(key)}
+      placeholder={placeholder}
+      className={`px-3 py-2 rounded-lg border text-sm bg-white dark:bg-gray-800 t-ink ${extra}`}
+      style={{ borderColor: 'var(--t-soft-ring)' }}
+    />
+  );
+
+  return (
+    <section className="card">
+      <h3 className="text-lg font-semibold t-ink">Shipping address</h3>
+      <p className="text-sm t-muted mb-3">
+        Where gifts sent "to the family" ship. Family members never see this —
+        their gift options just say it ships to your saved address.
+      </p>
+      {error && (
+        <div className="mb-3 p-3 rounded-lg bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-300 text-sm">
+          {error}
+        </div>
+      )}
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+        {input('name', 'Recipient name', 'sm:col-span-2')}
+        {input('line1', 'Address line 1', 'sm:col-span-2')}
+        {input('line2', 'Address line 2 (optional)', 'sm:col-span-2')}
+        {input('city', 'City')}
+        {input('state', 'State')}
+        {input('postal_code', 'ZIP')}
+        {input('country', 'Country (US)')}
+      </div>
+      <div className="mt-3 flex items-center gap-3">
+        <button
+          type="button"
+          onClick={save}
+          disabled={saving}
+          className="px-4 py-2 rounded-lg text-sm font-medium text-white disabled:opacity-50"
+          style={{ backgroundColor: 'var(--t-accent)' }}
+        >
+          {saving ? 'Saving…' : 'Save address'}
+        </button>
+        {saved && <span className="text-xs t-muted">Saved 🤍</span>}
+      </div>
+    </section>
+  );
+}
+
+function GiftsReceivedCard({ birthId }) {
+  const [orders, setOrders] = useState(null);
+  const [retrying, setRetrying] = useState('');
+
+  const load = () =>
+    api
+      .listGiftOrders(birthId)
+      .then(setOrders)
+      .catch(() => setOrders([]));
+
+  useEffect(() => {
+    load();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [birthId]);
+
+  async function retry(orderId) {
+    setRetrying(orderId);
+    try {
+      await api.retryGiftFulfillment(birthId, orderId);
+      await load();
+    } finally {
+      setRetrying('');
+    }
+  }
+
+  if (!orders || orders.length === 0) return null;
+
+  return (
+    <section className="card">
+      <h3 className="text-lg font-semibold t-ink mb-3">Gifts received</h3>
+      <ul className="space-y-3">
+        {orders.map((o) => (
+          <li
+            key={o.id}
+            className="p-3 rounded-lg border text-sm"
+            style={{ borderColor: 'var(--t-soft-ring)' }}
+          >
+            <div className="flex items-baseline justify-between gap-2">
+              <span className="t-ink font-medium">
+                {o.item_display_name}
+                {o.recipient_kind === 'self' && (
+                  <span className="text-xs t-muted"> (kept a copy)</span>
+                )}
+              </span>
+              <span className="text-xs t-muted">
+                {o.status === 'refunded'
+                  ? 'refunded'
+                  : o.fulfillment_status === 'submitted'
+                    ? 'on its way'
+                    : o.fulfillment_status === 'failed'
+                      ? 'needs attention'
+                      : 'processing'}
+              </span>
+            </div>
+            {o.purchased_by && (
+              <p className="text-xs t-muted mt-1">from {o.purchased_by}</p>
+            )}
+            {o.gift_message && (
+              <p className="mt-2 text-sm t-ink italic">"{o.gift_message}"</p>
+            )}
+            {o.fulfillment_status === 'failed' && o.status === 'paid' && (
+              <button
+                type="button"
+                onClick={() => retry(o.id)}
+                disabled={retrying === o.id}
+                className="mt-2 text-xs underline t-muted hover:t-ink disabled:opacity-50"
+              >
+                {retrying === o.id ? 'Retrying…' : `Retry fulfillment (${o.fulfillment_failure || 'failed'})`}
+              </button>
+            )}
+          </li>
+        ))}
+      </ul>
+    </section>
   );
 }

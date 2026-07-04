@@ -66,6 +66,9 @@ from models import (
     Family,
     FamilyMembership,
     FamilyRole,
+    GiftCatalogItem,
+    GiftKind,
+    GiftOrder,
     GiftRenderingStatus,
     MediaAsset,
     MediaKind,
@@ -78,6 +81,7 @@ from models import (
 from repositories import births as births_repo
 from repositories import comments as comments_repo
 from repositories import families as families_repo
+from repositories import gift_orders as gift_orders_repo
 from repositories import gifts as gifts_repo
 from repositories import guesses as guesses_repo
 from repositories import invitations as invitations_repo
@@ -113,9 +117,17 @@ from schemas import (
     GiftItemOut,
     GiftRenderingOut,
     GiftRenderingPatchIn,
+    GiftCheckoutIn,
+    GiftCheckoutOut,
+    GiftConfirmIn,
+    GiftConfirmOut,
+    GiftGalleryOut,
+    GiftOrderAdminOut,
     GuessBoardOut,
     GuessIn,
     GuessOut,
+    ShippingAddressIn,
+    ShippingAddressOut,
     UnlockCheckoutOut,
     UnlockConfirmIn,
     UnlockConfirmOut,
@@ -1401,11 +1413,16 @@ async def confirm_unlock(
 
 
 @app.post("/webhooks/stripe")
-async def stripe_webhook(request: Request, db: Session = Depends(get_db)) -> dict:
-    """Stripe's source-of-truth fulfillment path. Signature-verified against
-    the raw body; anything that isn't a paid family_unlock checkout is
-    acknowledged and ignored (future products share this endpoint). Errors
-    500 on purpose — Stripe's at-least-once redelivery is the retry loop."""
+async def stripe_webhook(
+    request: Request,
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db),
+) -> dict:
+    """Stripe's source-of-truth fulfillment path, shared by every product.
+    Signature-verified against the raw body; dispatched on metadata.kind
+    (family_unlock, gift_order); anything else is acknowledged and ignored.
+    Errors 500 on purpose — Stripe's at-least-once redelivery is the retry
+    loop."""
     secret = os.getenv("STRIPE_WEBHOOK_SECRET")
     if not secret:
         raise HTTPException(status_code=503, detail="Webhook not configured")
@@ -1419,13 +1436,240 @@ async def stripe_webhook(request: Request, db: Session = Depends(get_db)) -> dic
         return {"received": True}
     obj = (event.get("data") or {}).get("object") or {}
     metadata = obj.get("metadata") or {}
-    if metadata.get("kind") != "family_unlock" or obj.get("payment_status") != "paid":
+    kind = metadata.get("kind")
+    if kind not in ("family_unlock", "gift_order") or obj.get("payment_status") != "paid":
         return {"received": True}
     stripe = payments.get_stripe()
     if stripe is None:  # webhook secret without an API key is a misconfig
         raise HTTPException(status_code=503, detail="Payments aren't configured")
-    await _fulfill_unlock_from_session(db, stripe, obj, raise_on_refund_error=True)
+    if kind == "family_unlock":
+        await _fulfill_unlock_from_session(db, stripe, obj, raise_on_refund_error=True)
+    else:
+        await _fulfill_gift_from_session(
+            db, stripe, obj, background_tasks, raise_on_refund_error=True
+        )
     return {"received": True}
+
+
+# ============ Gift checkout (Stripe → Printful) ============
+
+
+async def _fulfill_gift_from_session(
+    db: Session,
+    stripe: payments.StripeClient,
+    session_obj: dict,
+    background_tasks: BackgroundTasks,
+    *,
+    raise_on_refund_error: bool,
+) -> str:
+    """Fulfill a paid gift checkout — the single funnel for the webhook and
+    the redirect-confirm. The CAS in mark_paid guarantees exactly one caller
+    creates the shipment and schedules the Printful submission; a losing
+    family-claim payment is refunded (webhook path re-raises refund errors
+    so Stripe redelivery retries; confirm path swallows) and recorded as
+    refunded only after the refund succeeds."""
+    metadata = session_obj.get("metadata") or {}
+    order_id = uuid.UUID(metadata["order_id"])
+
+    outcome, order = gift_orders_repo.mark_paid(
+        db, order_id=order_id, session_obj=session_obj
+    )
+    if outcome == "paid":
+        birth = db.get(Birth, order.birth_id)
+        if order.recipient_kind == "family" and birth.shipping_address:
+            address = dict(birth.shipping_address)
+        else:
+            address = payments.extract_shipping(session_obj)
+        shipment = gift_orders_repo.create_shipment(db, order=order, address=address)
+        if shipment.fulfillment_status != "failed":
+            background_tasks.add_task(gift_orders_repo.submit_shipment, shipment.id)
+        return "fulfilled"
+    if outcome == "claim_lost":
+        pi = session_obj.get("payment_intent")
+        if pi:
+            try:
+                stripe.create_refund(payment_intent_id=pi, kind="gift")
+            except payments.StripeError:
+                if raise_on_refund_error:
+                    raise
+                print(
+                    f"gift refund failed for {pi}; webhook redelivery will retry",
+                    flush=True,
+                )
+                return "refunded"
+        gift_orders_repo.mark_refunded(db, order_id=order_id)
+        return "refunded"
+    if outcome == "already_refunded":
+        return "refunded"
+    return "already_processed"
+
+
+@app.post(
+    "/birth/{birth_id}/gifts/{rendering_id}/checkout",
+    response_model=GiftCheckoutOut,
+)
+def create_gift_checkout(
+    rendering_id: uuid.UUID,
+    payload: GiftCheckoutIn,
+    access: BirthAccess = Depends(require_birth_access),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> GiftCheckoutOut:
+    """Start a gift purchase. Any family member can buy (viewers are the
+    intended buyers); one family-bound purchase per item per birth, "one for
+    me" copies unlimited."""
+    stripe = payments.get_stripe()
+    if stripe is None:
+        raise HTTPException(status_code=503, detail="Payments aren't configured")
+
+    rendering = _load_rendering_for_products(db, access, rendering_id)
+    if rendering.status != GiftRenderingStatus.ready:
+        raise HTTPException(status_code=409, detail="Design is not ready yet")
+    item = db.get(GiftCatalogItem, rendering.gift_catalog_item_id)
+    if (
+        item is None
+        or item.kind != GiftKind.physical
+        or fulfillment_products.default_for_product_kind(item.product_kind) is None
+    ):
+        raise HTTPException(
+            status_code=409, detail={"code": "not_purchasable"}
+        )
+    if payload.recipient_kind == "family" and item.id in gift_orders_repo.claimed_item_ids(
+        db, birth_id=access.birth.id
+    ):
+        # UX guard — the partial unique index is the real enforcement
+        raise HTTPException(status_code=409, detail={"code": "already_claimed"})
+
+    order = gift_orders_repo.create_pending_order(
+        db,
+        birth=access.birth,
+        item=item,
+        rendering=rendering,
+        user=current_user,
+        recipient_kind=payload.recipient_kind,
+        gift_message=(payload.gift_message or "").strip() or None,
+    )
+    collect_shipping = payload.recipient_kind == "self" or (
+        payload.recipient_kind == "family" and access.birth.shipping_address is None
+    )
+    try:
+        session = stripe.create_gift_checkout_session(
+            order_id=str(order.id),
+            birth_id=str(access.birth.id),
+            user_id=str(current_user.id),
+            slug=access.birth.slug,
+            product_name=item.display_name,
+            amount_cents=item.base_price_cents,
+            collect_shipping=collect_shipping,
+            allowed_countries=payments.gift_shipping_countries(),
+        )
+    except payments.StripeError:
+        # the pending row is inert; leave it
+        raise HTTPException(
+            status_code=502, detail="Couldn't start checkout — try again"
+        )
+    gift_orders_repo.attach_session(db, order, session["id"])
+    return GiftCheckoutOut(url=session["url"])
+
+
+@app.post("/b/{slug}/gifts/confirm", response_model=GiftConfirmOut)
+async def confirm_gift(
+    payload: GiftConfirmIn,
+    background_tasks: BackgroundTasks,
+    slug: str = PathParam(...),
+    db: Session = Depends(get_db),
+) -> GiftConfirmOut:
+    """Redirect-return fulfillment for gifts (the dev path — no webhook
+    needed). Unauthenticated like the unlock confirm: all trust comes from
+    retrieving the session server-side."""
+    stripe = payments.get_stripe()
+    if stripe is None:
+        raise HTTPException(status_code=503, detail="Payments aren't configured")
+    birth = _resolve_public_birth(db, slug)
+    session = stripe.retrieve_checkout_session(payload.session_id)
+    if session is None:
+        raise HTTPException(status_code=404, detail="Unknown checkout session")
+    metadata = session.get("metadata") or {}
+    if (
+        metadata.get("kind") != "gift_order"
+        or metadata.get("birth_id") != str(birth.id)
+    ):
+        raise HTTPException(status_code=400, detail="Session doesn't match this page")
+    if session.get("payment_status") != "paid":
+        return GiftConfirmOut(status="pending")
+    status = await _fulfill_gift_from_session(
+        db, stripe, session, background_tasks, raise_on_refund_error=False
+    )
+    return GiftConfirmOut(status=status)
+
+
+@app.get(
+    "/birth/{birth_id}/shipping-address", response_model=ShippingAddressOut
+)
+def get_shipping_address(
+    access: BirthAccess = Depends(require_parent_access),
+) -> ShippingAddressOut:
+    """Parent-only on purpose — the family's home address never rides on the
+    public birth payload."""
+    return ShippingAddressOut(address=access.birth.shipping_address)
+
+
+@app.put(
+    "/birth/{birth_id}/shipping-address", response_model=ShippingAddressOut
+)
+def put_shipping_address(
+    payload: ShippingAddressIn,
+    access: BirthAccess = Depends(require_parent_access),
+    db: Session = Depends(get_db),
+) -> ShippingAddressOut:
+    allowed = set(payments.gift_shipping_countries())
+    if payload.country.upper() not in allowed:
+        raise HTTPException(
+            status_code=422,
+            detail=f"Shipping is currently available to: {', '.join(sorted(allowed))}",
+        )
+    access.birth.shipping_address = {
+        "name": payload.name,
+        "line1": payload.line1,
+        "line2": payload.line2,
+        "city": payload.city,
+        "state": payload.state,
+        "postal_code": payload.postal_code,
+        "country": payload.country.upper(),
+    }
+    db.commit()
+    return ShippingAddressOut(address=access.birth.shipping_address)
+
+
+@app.get(
+    "/birth/{birth_id}/gifts/orders", response_model=list[GiftOrderAdminOut]
+)
+def list_gift_orders(
+    access: BirthAccess = Depends(require_parent_access),
+    db: Session = Depends(get_db),
+) -> list[GiftOrderAdminOut]:
+    """Gifts received — buyer, item, their note, fulfillment state."""
+    rows = gift_orders_repo.list_orders_for_birth(db, birth_id=access.birth.id)
+    return [GiftOrderAdminOut(**row) for row in rows]
+
+
+@app.post("/birth/{birth_id}/gifts/orders/{order_id}/retry-fulfillment")
+def retry_gift_fulfillment(
+    order_id: uuid.UUID,
+    background_tasks: BackgroundTasks,
+    access: BirthAccess = Depends(require_parent_access),
+    db: Session = Depends(get_db),
+) -> dict:
+    """Re-run a failed shipment submission (the submitting CAS makes this
+    double-POST-safe)."""
+    order = db.get(GiftOrder, order_id)
+    if order is None or order.birth_id != access.birth.id:
+        raise HTTPException(status_code=404, detail="Order not found")
+    shipment = gift_orders_repo.retryable_shipment(db, order_id=order_id)
+    if shipment is None:
+        raise HTTPException(status_code=409, detail="Nothing to retry")
+    background_tasks.add_task(gift_orders_repo.submit_shipment, shipment.id)
+    return {"scheduled": True}
 
 
 # ============ Media ============
@@ -1703,6 +1947,7 @@ def _serialize_rendering(rendering) -> GiftRenderingOut:
 def _serialize_gift_items(db, birth_id, *, is_parent: bool) -> list[GiftItemOut]:
     items = gifts_repo.list_active_catalog(db)
     renderings = gifts_repo.list_renderings_for_birth(db, birth_id=birth_id)
+    claimed = gift_orders_repo.claimed_item_ids(db, birth_id=birth_id)
     by_item: dict = {}
     for r in renderings:
         if not is_parent and not r.is_visible_to_viewers:
@@ -1716,10 +1961,25 @@ def _serialize_gift_items(db, birth_id, *, is_parent: bool) -> list[GiftItemOut]
             display_name=item.display_name,
             base_price_cents=item.base_price_cents,
             storage_years_granted=item.storage_years_granted,
+            # purchasable = physical AND a fulfillment product is mapped
+            # (cards stay "coming soon" until a registry entry exists)
+            is_purchasable=(
+                item.kind == GiftKind.physical
+                and fulfillment_products.default_for_product_kind(item.product_kind)
+                is not None
+            ),
+            is_claimed_for_family=item.id in claimed,
             renderings=[_serialize_rendering(r) for r in by_item.get(item.id, [])],
         )
         for item in items
     ]
+
+
+def _gift_gallery_out(db, birth, *, is_parent: bool) -> GiftGalleryOut:
+    return GiftGalleryOut(
+        items=_serialize_gift_items(db, birth.id, is_parent=is_parent),
+        family_has_shipping_address=birth.shipping_address is not None,
+    )
 
 
 @app.get("/gifts/catalog", response_model=list[GiftItemOut])
@@ -1741,29 +2001,29 @@ def gift_catalog(
     ]
 
 
-@app.get("/birth/{birth_id}/gifts", response_model=list[GiftItemOut])
+@app.get("/birth/{birth_id}/gifts", response_model=GiftGalleryOut)
 def list_gifts(
     background_tasks: BackgroundTasks,
     access: BirthAccess = Depends(require_birth_access),
     db: Session = Depends(get_db),
-) -> list[GiftItemOut]:
+) -> GiftGalleryOut:
     """The gift gallery. Lazily ensures a rendering exists per (physical item
     × template) and schedules a background render for newly-created ones."""
     _, new_ids = gifts_repo.ensure_renderings(db, birth=access.birth)
     for rendering_id in new_ids:
         background_tasks.add_task(gifts_repo.render_rendering, rendering_id)
-    return _serialize_gift_items(
-        db, access.birth.id, is_parent=births_repo.is_parent(access.role)
+    return _gift_gallery_out(
+        db, access.birth, is_parent=births_repo.is_parent(access.role)
     )
 
 
-@app.post("/birth/{birth_id}/gifts/generate", response_model=list[GiftItemOut])
+@app.post("/birth/{birth_id}/gifts/generate", response_model=GiftGalleryOut)
 def generate_gifts(
     background_tasks: BackgroundTasks,
     rendering_id: uuid.UUID | None = None,
     access: BirthAccess = Depends(require_parent_access),
     db: Session = Depends(get_db),
-) -> list[GiftItemOut]:
+) -> GiftGalleryOut:
     """Force a (re)render — all of the birth's gift artwork, or a single
     rendering when `rendering_id` is given. Parents only."""
     gifts_repo.ensure_renderings(db, birth=access.birth)
@@ -1772,7 +2032,7 @@ def generate_gifts(
     )
     for rid in ids:
         background_tasks.add_task(gifts_repo.render_rendering, rid)
-    return _serialize_gift_items(db, access.birth.id, is_parent=True)
+    return _gift_gallery_out(db, access.birth, is_parent=True)
 
 
 @app.get(

@@ -172,6 +172,56 @@ class GuessBoardOut(BaseModel):
     settled: bool = False
 
 
+class GiftCheckoutIn(BaseModel):
+    recipient_kind: str = Field(..., pattern="^(family|self)$")
+    gift_message: Optional[str] = Field(default=None, max_length=500)
+
+
+class GiftCheckoutOut(BaseModel):
+    url: str
+
+
+class GiftConfirmIn(BaseModel):
+    session_id: str = Field(..., min_length=1, max_length=255)
+
+
+class GiftConfirmOut(BaseModel):
+    """`status`: 'fulfilled' | 'already_processed' | 'refunded' (this buyer
+    lost the family-claim race and their payment was returned) | 'pending'."""
+
+    status: str
+
+
+class ShippingAddressIn(BaseModel):
+    name: str = Field(..., min_length=1, max_length=120)
+    line1: str = Field(..., min_length=1, max_length=200)
+    line2: Optional[str] = Field(default=None, max_length=200)
+    city: str = Field(..., min_length=1, max_length=100)
+    state: str = Field(..., min_length=1, max_length=50)
+    postal_code: str = Field(..., min_length=1, max_length=20)
+    country: str = Field(default="US", min_length=2, max_length=2)
+
+
+class ShippingAddressOut(BaseModel):
+    address: Optional[dict] = None
+
+
+class GiftOrderAdminOut(BaseModel):
+    """A received gift, for the parents: who sent what, their note, and
+    where fulfillment stands."""
+
+    id: uuid.UUID
+    status: str
+    recipient_kind: str
+    gift_message: Optional[str] = None
+    amount_cents: int
+    purchased_by: Optional[str] = None
+    item_display_name: str
+    fulfillment_status: str = "none"
+    fulfillment_failure: Optional[str] = None
+    created_at: datetime
+
+
 class UnlockCheckoutOut(BaseModel):
     url: str
 
@@ -489,7 +539,18 @@ class GiftItemOut(BaseModel):
     display_name: str
     base_price_cents: int
     storage_years_granted: Optional[int] = None
+    is_purchasable: bool = False
+    is_claimed_for_family: bool = False
     renderings: list[GiftRenderingOut] = []
+
+
+class GiftGalleryOut(BaseModel):
+    """The gift gallery plus birth-level purchase context (whether the
+    parents saved a shipping address — the address itself never leaves the
+    parent-only routes)."""
+
+    items: list["GiftItemOut"] = []
+    family_has_shipping_address: bool = False
 
 
 class GiftRenderingPatchIn(BaseModel):

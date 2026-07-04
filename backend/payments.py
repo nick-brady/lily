@@ -76,6 +76,50 @@ class StripeClient:
         except httpx.HTTPError as exc:
             raise StripeError(f"create checkout session: {exc}") from exc
 
+    def create_gift_checkout_session(
+        self,
+        *,
+        order_id: str,
+        birth_id: str,
+        user_id: str,
+        slug: str,
+        product_name: str,
+        amount_cents: int,
+        collect_shipping: bool,
+        allowed_countries: list[str],
+    ) -> dict:
+        """Hosted Checkout for a gift order. When `collect_shipping`, Stripe
+        gathers the shipping address (the buyer's own, or the family's when
+        the parents haven't saved one); otherwise the parent-saved address is
+        resolved at fulfillment time."""
+        data = {
+            "mode": "payment",
+            "client_reference_id": str(order_id),
+            "line_items[0][quantity]": "1",
+            "line_items[0][price_data][currency]": "usd",
+            "line_items[0][price_data][unit_amount]": str(amount_cents),
+            "line_items[0][price_data][product_data][name]": product_name,
+            "success_url": (
+                f"{FRONTEND_URL}/b/{slug}?gift_session={{CHECKOUT_SESSION_ID}}"
+            ),
+            "cancel_url": f"{FRONTEND_URL}/b/{slug}",
+            "metadata[kind]": "gift_order",
+            "metadata[order_id]": str(order_id),
+            "metadata[birth_id]": str(birth_id),
+            "metadata[user_id]": str(user_id),
+            "payment_intent_data[metadata][kind]": "gift_order",
+            "payment_intent_data[metadata][order_id]": str(order_id),
+        }
+        if collect_shipping:
+            for i, country in enumerate(allowed_countries):
+                data[f"shipping_address_collection[allowed_countries][{i}]"] = country
+        try:
+            resp = self._client.post("/v1/checkout/sessions", data=data)
+            resp.raise_for_status()
+            return resp.json()
+        except httpx.HTTPError as exc:
+            raise StripeError(f"create gift checkout session: {exc}") from exc
+
     def retrieve_checkout_session(self, session_id: str) -> dict | None:
         """The session object, or None for an unknown/forged id (Stripe
         answers 404/invalid for ids that aren't ours)."""
@@ -88,16 +132,16 @@ class StripeClient:
         except httpx.HTTPError as exc:
             raise StripeError(f"retrieve checkout session: {exc}") from exc
 
-    def create_refund(self, *, payment_intent_id: str) -> None:
-        """Refund the losing payment of an unlock race. Idempotent: the
+    def create_refund(self, *, payment_intent_id: str, kind: str = "unlock") -> None:
+        """Refund the losing payment of a claim race. Idempotent: the
         Idempotency-Key dedupes concurrent attempts (the loser's webhook and
         redirect-confirm can both try), and an already-refunded charge counts
-        as success."""
+        as success. `kind` namespaces the key per product (unlock, gift)."""
         try:
             resp = self._client.post(
                 "/v1/refunds",
                 data={"payment_intent": payment_intent_id},
-                headers={"Idempotency-Key": f"unlock-refund-{payment_intent_id}"},
+                headers={"Idempotency-Key": f"{kind}-refund-{payment_intent_id}"},
             )
             if resp.status_code >= 400:
                 body = resp.json() if resp.content else {}
@@ -143,6 +187,43 @@ def verify_stripe_signature(
     signed = f"{timestamp}.".encode() + payload
     expected = hmac.new(secret.encode(), signed, hashlib.sha256).hexdigest()
     return any(hmac.compare_digest(expected, c) for c in candidates)
+
+
+def extract_shipping(session_obj: dict) -> dict | None:
+    """The shipping address a completed Checkout session collected, as our
+    canonical shape {name, line1, line2, city, state, postal_code, country}.
+
+    Stripe moved the field across API versions: newer versions put it under
+    collected_information.shipping_details, older ones top-level as
+    shipping_details; customer_details (billing) is the last resort. We pin
+    no Stripe-Version header, so the shape follows the account default —
+    handle all three."""
+    candidates = [
+        (session_obj.get("collected_information") or {}).get("shipping_details"),
+        session_obj.get("shipping_details"),
+        session_obj.get("customer_details"),
+    ]
+    for c in candidates:
+        if not c:
+            continue
+        address = c.get("address") or {}
+        if not address.get("line1"):
+            continue
+        return {
+            "name": c.get("name"),
+            "line1": address.get("line1"),
+            "line2": address.get("line2"),
+            "city": address.get("city"),
+            "state": address.get("state"),
+            "postal_code": address.get("postal_code"),
+            "country": address.get("country"),
+        }
+    return None
+
+
+def gift_shipping_countries() -> list[str]:
+    raw = os.getenv("GIFT_SHIPPING_COUNTRIES", "US")
+    return [c.strip().upper() for c in raw.split(",") if c.strip()]
 
 
 def get_stripe() -> StripeClient | None:
