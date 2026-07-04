@@ -37,6 +37,19 @@ export default function SetupPage() {
 
   const [selectedTheme, setSelectedTheme] = useState('blossom');
 
+  // Second child, twins, etc. — offer joining an existing family (where
+  // the user is already a parent) instead of always starting a new one.
+  const parentFamilies = (me?.families || []).filter(
+    (f) => f.role === 'owner' || f.role === 'co_parent',
+  );
+  const [selectedFamilyId, setSelectedFamilyId] = useState('new');
+  useEffect(() => {
+    if (parentFamilies.length === 0) return;
+    setSelectedFamilyId((prev) => (prev === 'new' ? parentFamilies[0].id : prev));
+    // Only re-run when `me` (re)loads — not on every render.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [me]);
+
   const [authStep, setAuthStep] = useState('identifier');
   const [identifier, setIdentifier] = useState('');
   const [identifierKind, setIdentifierKind] = useState(null);
@@ -75,6 +88,7 @@ export default function SetupPage() {
   const displayName = babyName ? toDisplayName(babyName) : '';
 
   const adoptSuggestion = () => setBabyName(slugSuggestion.replace(/-/g, ' '));
+  const familyIdToJoin = selectedFamilyId === 'new' ? null : selectedFamilyId;
 
   const goToAuth = async (e) => {
     e.preventDefault();
@@ -83,7 +97,9 @@ export default function SetupPage() {
       setAuthLoading(true);
       setError('');
       try {
-        const birth = await api.createBirth({ babyName, slug, theme: selectedTheme });
+        const birth = await api.createBirth({
+          babyName, slug, theme: selectedTheme, familyId: familyIdToJoin,
+        });
         // The manage page resolves the birth from `me`; refresh it so the
         // new birth is present before we land there.
         await refreshMe();
@@ -118,7 +134,9 @@ export default function SetupPage() {
     try {
       const authResult = await api.verifyChallenge({ identifier, code });
       await acceptToken(authResult.access_token);
-      const birth = await api.createBirth({ babyName, slug, theme: selectedTheme });
+      const birth = await api.createBirth({
+        babyName, slug, theme: selectedTheme, familyId: familyIdToJoin,
+      });
       // acceptToken fetched /me before the birth existed; refresh so the
       // manage page can resolve the new birth from `me`.
       await refreshMe();
@@ -151,6 +169,49 @@ export default function SetupPage() {
         {/* ── Step 1: Name + Theme ── */}
         {step === 'name' && (
           <form onSubmit={goToAuth} className="space-y-8">
+
+            {/* Family chooser — only when the user already parents a family */}
+            {parentFamilies.length > 0 && (
+              <div className="space-y-2">
+                <p className="text-sm font-medium text-gray-700 dark:text-gray-300 text-center">
+                  Add this baby to
+                </p>
+                <div className="space-y-2">
+                  {parentFamilies.map((f) => (
+                    <label
+                      key={f.id}
+                      className="flex items-center gap-3 p-3 rounded-xl border border-gray-300 dark:border-gray-600
+                                 bg-white dark:bg-gray-800 cursor-pointer"
+                    >
+                      <input
+                        type="radio"
+                        name="family"
+                        checked={selectedFamilyId === f.id}
+                        onChange={() => setSelectedFamilyId(f.id)}
+                      />
+                      <span className="text-sm text-gray-800 dark:text-gray-100">
+                        {f.display_name}
+                        <span className="block text-xs text-gray-400 dark:text-gray-500">
+                          Co-parents and viewers from this family carry over
+                        </span>
+                      </span>
+                    </label>
+                  ))}
+                  <label
+                    className="flex items-center gap-3 p-3 rounded-xl border border-gray-300 dark:border-gray-600
+                               bg-white dark:bg-gray-800 cursor-pointer"
+                  >
+                    <input
+                      type="radio"
+                      name="family"
+                      checked={selectedFamilyId === 'new'}
+                      onChange={() => setSelectedFamilyId('new')}
+                    />
+                    <span className="text-sm text-gray-800 dark:text-gray-100">A new family</span>
+                  </label>
+                </div>
+              </div>
+            )}
 
             {/* Name input */}
             <div className="space-y-2">

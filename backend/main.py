@@ -340,6 +340,39 @@ def check_slug_available(slug: str, db: Session = Depends(get_db)) -> SlugAvaila
     return SlugAvailableOut(available=False)
 
 
+def _resolve_birth_family(
+    db: Session, *, payload: BirthCreateIn, current_user: User
+) -> Family:
+    """A fresh family for a first birth; an existing one (second child,
+    twins) when `family_id` is given — the caller must already be an
+    owner/co-parent there, so co-parents and viewers on the first birth
+    carry over automatically."""
+    if payload.family_id is None:
+        family = Family(
+            primary_owner_user_id=current_user.id,
+            display_name=f"{payload.baby_name} Family",
+        )
+        db.add(family)
+        db.flush()
+        db.add(FamilyMembership(
+            family_id=family.id,
+            user_id=current_user.id,
+            role=FamilyRole.owner,
+        ))
+        db.flush()
+        return family
+
+    family = db.get(Family, payload.family_id)
+    if family is None:
+        raise HTTPException(status_code=404, detail="Family not found")
+    membership = families_repo.get_membership(
+        db, family_id=family.id, user_id=current_user.id
+    )
+    if membership is None or not births_repo.is_parent(membership.role):
+        raise HTTPException(status_code=403, detail="Parents only")
+    return family
+
+
 @app.post("/births", response_model=BirthOut)
 def create_birth(
     payload: BirthCreateIn,
@@ -351,18 +384,9 @@ def create_birth(
         raise HTTPException(status_code=400, detail="Invalid slug")
     if births_repo.get_birth_by_slug(db, slug) is not None:
         raise HTTPException(status_code=409, detail="Slug already taken")
-    family = Family(
-        primary_owner_user_id=current_user.id,
-        display_name=f"{payload.baby_name} Family",
-    )
-    db.add(family)
-    db.flush()
-    db.add(FamilyMembership(
-        family_id=family.id,
-        user_id=current_user.id,
-        role=FamilyRole.owner,
-    ))
-    db.flush()
+
+    family = _resolve_birth_family(db, payload=payload, current_user=current_user)
+
     birth = births_repo.create_birth(
         db,
         family_id=family.id,

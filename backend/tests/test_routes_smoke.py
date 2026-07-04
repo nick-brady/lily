@@ -26,6 +26,13 @@ def test_me_requires_auth() -> None:
     assert response.status_code == 401
 
 
+def test_create_birth_requires_auth() -> None:
+    response = _client().post(
+        "/births", json={"baby_name": "Lily", "slug": "lily"}
+    )
+    assert response.status_code == 401
+
+
 def test_birth_routes_require_auth() -> None:
     fake_id = "00000000-0000-0000-0000-000000000000"
     client = _client()
