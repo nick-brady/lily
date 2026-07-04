@@ -506,6 +506,10 @@ class BirthCreateIn(BaseModel):
     baby_name: str = Field(..., min_length=1, max_length=100)
     slug: str = Field(..., min_length=1, max_length=100)
     theme: str = Field(default="lily", max_length=50)
+    # Attach to an existing family (second child, twins, etc.) instead of
+    # starting a new one. The caller must already be an owner/co-parent
+    # there — enforced in the route, not here.
+    family_id: Optional[uuid.UUID] = None
 
 
 class BirthUpdateIn(BaseModel):
