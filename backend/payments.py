@@ -19,6 +19,10 @@ from auth import FRONTEND_URL
 _BASE_URL = "https://api.stripe.com"
 _REQUEST_TIMEOUT = 20.0
 _SIGNATURE_TOLERANCE_SECONDS = 300
+# Pin the API version so response shapes are deterministic instead of
+# following the account default (e.g. where a Checkout session exposes its
+# collected shipping address). Overridable for a deliberate upgrade.
+_API_VERSION = os.getenv("STRIPE_API_VERSION", "2026-06-24.dahlia")
 
 
 class StripeError(Exception):
@@ -30,7 +34,12 @@ class StripeClient:
         self._client = client or httpx.Client(
             base_url=_BASE_URL, timeout=_REQUEST_TIMEOUT
         )
-        self._client.headers.update({"Authorization": f"Bearer {secret_key}"})
+        self._client.headers.update(
+            {
+                "Authorization": f"Bearer {secret_key}",
+                "Stripe-Version": _API_VERSION,
+            }
+        )
 
     def create_checkout_session(
         self,
@@ -196,8 +205,9 @@ def extract_shipping(session_obj: dict) -> dict | None:
     Stripe moved the field across API versions: newer versions put it under
     collected_information.shipping_details, older ones top-level as
     shipping_details; customer_details (billing) is the last resort. We pin
-    no Stripe-Version header, so the shape follows the account default —
-    handle all three."""
+    the API version (so the first shape is expected), but keep all three
+    fallbacks — webhook event payloads follow the webhook endpoint's own
+    pinned version, not our request header."""
     candidates = [
         (session_obj.get("collected_information") or {}).get("shipping_details"),
         session_obj.get("shipping_details"),

@@ -92,6 +92,7 @@ def test_create_checkout_session_form_fields():
     def handler(req: httpx.Request) -> httpx.Response:
         seen["path"] = req.url.path
         seen["auth"] = req.headers.get("authorization")
+        seen["version"] = req.headers.get("stripe-version")
         seen["form"] = parse_qs(req.read().decode())
         return httpx.Response(
             200, json={"id": "cs_test_1", "url": "https://checkout.stripe.com/x"}
@@ -108,6 +109,7 @@ def test_create_checkout_session_form_fields():
     assert session["url"].startswith("https://checkout.stripe.com")
     assert seen["path"] == "/v1/checkout/sessions"
     assert seen["auth"] == "Bearer sk_test_x"
+    assert seen["version"] == payments._API_VERSION
     form = seen["form"]
     assert form["mode"] == ["payment"]
     assert form["line_items[0][price_data][unit_amount]"] == ["1200"]
