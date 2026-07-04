@@ -1,17 +1,33 @@
 ---
 # Application settings
 app_name: lily
-app_domain: lily.realdevdata.com
+app_domain: lily.realdevdata.com   # ← change to the real domain before running
 app_user: lily
 app_group: lily
 app_dir: /opt/lily
 
-# Backend settings
+# Backend settings.
+# backend runs a SINGLE uvicorn process on purpose: the SSE broker
+# (backend/events.py) is in-process, and the Stripe webhook's live-unlock
+# broadcast assumes it lands on the same process as the subscribers.
+# Do not add --workers without first moving the broker to Redis/NATS.
 backend_port: 8000
-backend_workers: 2
 
 # Python settings
 python_version: "3.12"
 
 # Certbot settings
 certbot_email: nick@realdevdata.com
+
+# Database (Postgres installed ON this instance via apt — no RDS)
+db_name: lily
+db_user: lily
+
+# S3 (media + gift artwork + nightly pg_dump backups). The instance reaches
+# S3 via its IAM role — no AWS keys in the env file.
+s3_bucket: lily-media-prod          # ← change to the real bucket
+aws_region: us-east-1
+backup_s3_prefix: "s3://{{ s3_bucket }}/backups/pg"
+
+# Keepsake rendering timezone (family wall-clock time on the artwork)
+gift_render_tz: America/New_York

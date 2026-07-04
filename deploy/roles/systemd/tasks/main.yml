@@ -1,0 +1,16 @@
+---
+- name: Install lily systemd unit
+  template:
+    src: lily.service.j2
+    dest: /etc/systemd/system/lily.service
+    owner: root
+    group: root
+    mode: '0644'
+  notify: restart lily app
+
+- name: Enable and start lily
+  systemd:
+    name: lily
+    state: started
+    enabled: yes
+    daemon_reload: yes

@@ -1,0 +1,37 @@
+---
+# Postgres ON the instance (deliberately: no RDS, no container).
+# Listens on localhost only — nothing exposed off-box.
+- name: Install PostgreSQL
+  apt:
+    name: postgresql
+    state: present
+
+- name: Ensure PostgreSQL is running
+  service:
+    name: postgresql
+    state: started
+    enabled: yes
+
+# Idempotent role/db creation via psql guards (avoids requiring the
+# community.postgresql collection on the control machine).
+- name: Create database role
+  shell: |
+    psql -tAc "SELECT 1 FROM pg_roles WHERE rolname='{{ db_user }}'" | grep -q 1 || \
+    psql -c "CREATE ROLE {{ db_user }} LOGIN PASSWORD '{{ db_password }}'"
+  become_user: postgres
+  register: role_result
+  changed_when: "'CREATE ROLE' in role_result.stdout"
+
+- name: Keep role password in sync with secrets
+  shell: psql -c "ALTER ROLE {{ db_user }} PASSWORD '{{ db_password }}'"
+  become_user: postgres
+  changed_when: false
+  no_log: true
+
+- name: Create database
+  shell: |
+    psql -tAc "SELECT 1 FROM pg_database WHERE datname='{{ db_name }}'" | grep -q 1 || \
+    createdb -O {{ db_user }} {{ db_name }}
+  become_user: postgres
+  register: db_result
+  changed_when: "'CREATE DATABASE' in db_result.stdout"

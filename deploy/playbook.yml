@@ -1,11 +1,19 @@
 ---
-- name: Deploy Lily Contraction Tracker
+# Full provision + deploy of a single bare-metal instance:
+# nginx (TLS via certbot) → uvicorn (systemd, single process) + Postgres on
+# the box + real S3 via the instance's IAM role.
+- name: Deploy Lily
   hosts: lily
   become: yes
 
+  vars_files:
+    - group_vars/secrets.yml
+
   roles:
     - common
-    - nginx
-    - supervisor
+    - postgres
     - app
+    - systemd
+    - nginx
     - certbot
+    - backups

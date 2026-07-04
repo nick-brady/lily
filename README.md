@@ -218,3 +218,39 @@ PR; today every invited viewer sees every `group_targeted` post.
 - `/invite/:token` — viewer invitation redeem page (verifies email/phone, attaches as family_viewer)
 - `/b/:slug` — public keepsake view; renders family-only posts too when the signed-in user is an invited viewer. Reactions + comments inline on every milestone, post, and photo.
 - `/b/:slug/manage` — parent dashboard (contraction button, post composer, stats, invitation manager)
+
+## Production deployment (single instance, bare-metal)
+
+One EC2/droplet runs everything except object storage: nginx (TLS via
+certbot) serves the built SPA and proxies `/api/*` to a single-process
+uvicorn (systemd); Postgres is installed on the box via apt (deliberately no
+RDS, no containers in prod); media and gift artwork live in real S3 through
+the instance's IAM role; a nightly `pg_dump` ships to S3.
+
+```
+deploy/
+  playbook.yml          # full provision + deploy
+  deploy-code.yml       # code-only update (rsync, uv sync, migrate, build, restart)
+  group_vars/all.yml    # domain, ports, bucket — edit before first run
+  group_vars/secrets.yml.example   # copy to secrets.yml (gitignored) and fill in
+```
+
+First deploy:
+
+1. Provision AWS: t3.small (Ubuntu 24.04, 30GB), Elastic IP, security group
+   22/80/443, an IAM instance role with access to the S3 bucket, and the
+   bucket itself (private). Point the domain's A record at the Elastic IP.
+2. Edit `deploy/inventory.ini` (host/IP/key) and `group_vars/all.yml`
+   (domain, bucket, region); `cp group_vars/secrets.yml.example
+   group_vars/secrets.yml` and fill it in.
+3. `cd deploy && ansible-playbook playbook.yml`
+4. Post-deploy: create the Stripe webhook endpoint pointing at
+   `https://<domain>/api/webhooks/stripe` and put its `whsec_` in secrets;
+   verify the domain in Resend and set `resend_from`.
+
+Subsequent deploys: `cd deploy && ansible-playbook deploy-code.yml`.
+
+The backend intentionally runs ONE uvicorn worker: the SSE broker
+(`backend/events.py`) is in-process, and the Stripe webhook's live-unlock
+broadcast assumes it lands on the same process as the subscribers. Scale-out
+requires moving the broker to Redis/NATS first.
