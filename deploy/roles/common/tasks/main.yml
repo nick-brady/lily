@@ -8,14 +8,21 @@
   apt:
     name:
       - python3
-      - python3-pip
       - python3-venv
-      - git
-      - curl
-      - wget
-      - unzip
       - build-essential
       - python3-dev
+      - git
+      - curl
+      - unzip
+      - rsync
+      - acl              # lets become_user work for unprivileged users
+      # gift-artwork rendering (mirrors backend/Dockerfile.dev)
+      - libcairo2
+      - fontconfig
+      - fonts-montserrat
+      - fonts-dejavu-core
+      # nightly pg_dump → S3
+      - awscli
     state: present
 
 - name: Create application group
@@ -32,22 +39,28 @@
     home: "{{ app_dir }}"
     create_home: no
 
-- name: Create application directory
+- name: Create application directories
   file:
-    path: "{{ app_dir }}"
-    state: directory
-    owner: "{{ app_user }}"
-    group: "{{ app_group }}"
-    mode: '0755'
-
-- name: Create subdirectories
-  file:
-    path: "{{ app_dir }}/{{ item }}"
+    path: "{{ item }}"
     state: directory
     owner: "{{ app_user }}"
     group: "{{ app_group }}"
     mode: '0755'
   loop:
-    - backend
-    - frontend
-    - logs
+    - "{{ app_dir }}"
+    - "{{ app_dir }}/backend"
+    - "{{ app_dir }}/frontend"
+    - "{{ app_dir }}/logs"
+
+- name: Install vendored display fonts (Cormorant Garamond — the keepsake face)
+  copy:
+    src: "{{ playbook_dir }}/../backend/assets/fonts/"
+    dest: /usr/local/share/fonts/cormorant/
+    owner: root
+    group: root
+    mode: '0644'
+  register: fonts_copied
+
+- name: Refresh font cache
+  command: fc-cache -f
+  when: fonts_copied.changed

@@ -5,9 +5,14 @@
     dest: "{{ app_dir }}/backend/"
     rsync_opts:
       - "--exclude=.venv"
+      - "--exclude=venv"
       - "--exclude=__pycache__"
       - "--exclude=*.pyc"
-      - "--exclude=contractions.db"
+      - "--exclude=*.db"
+      - "--exclude=preview_out"
+      - "--exclude=uploads"
+      - "--exclude=.pytest_cache"
+      - "--exclude=.env"
   notify: restart lily app
 
 - name: Set backend ownership
@@ -18,19 +23,40 @@
     group: "{{ app_group }}"
     recurse: yes
 
-- name: Create Python virtual environment
-  command: python3 -m venv {{ app_dir }}/backend/venv
+- name: Install uv
+  shell: curl -LsSf https://astral.sh/uv/install.sh | env UV_INSTALL_DIR=/usr/local/bin sh
   args:
-    creates: "{{ app_dir }}/backend/venv/bin/python"
-  become_user: "{{ app_user }}"
+    creates: /usr/local/bin/uv
 
-- name: Install Python dependencies
-  pip:
-    requirements: "{{ app_dir }}/backend/requirements.txt"
-    virtualenv: "{{ app_dir }}/backend/venv"
-    state: present
+- name: Sync Python dependencies (uv, locked)
+  command: uv sync --frozen --no-dev
+  args:
+    chdir: "{{ app_dir }}/backend"
+  environment:
+    UV_PROJECT_ENVIRONMENT: "{{ app_dir }}/venv"
   become_user: "{{ app_user }}"
+  register: uv_sync
+  changed_when: "'Installed' in uv_sync.stderr or 'Installed' in uv_sync.stdout"
   notify: restart lily app
+
+- name: Render backend environment file
+  template:
+    src: env.j2
+    dest: "{{ app_dir }}/backend/.env"
+    owner: "{{ app_user }}"
+    group: "{{ app_group }}"
+    mode: '0600'
+  notify: restart lily app
+
+- name: Run database migrations
+  command: "{{ app_dir }}/venv/bin/alembic upgrade head"
+  args:
+    chdir: "{{ app_dir }}/backend"
+  environment:
+    DATABASE_URL: "postgresql://{{ db_user }}:{{ db_password }}@localhost:5432/{{ db_name }}"
+  become_user: "{{ app_user }}"
+  register: alembic_result
+  changed_when: "'Running upgrade' in alembic_result.stderr or 'Running upgrade' in alembic_result.stdout"
 
 - name: Build frontend locally
   local_action:
@@ -44,6 +70,7 @@
   synchronize:
     src: "{{ playbook_dir }}/../frontend/dist/"
     dest: "{{ app_dir }}/frontend/"
+    delete: yes
 
 - name: Set frontend ownership
   file:
@@ -52,14 +79,3 @@
     owner: "{{ app_user }}"
     group: "{{ app_group }}"
     recurse: yes
-
-- name: Ensure supervisor picks up the app
-  supervisorctl:
-    name: "{{ app_name }}"
-    state: present
-  ignore_errors: yes
-
-- name: Start the application
-  supervisorctl:
-    name: "{{ app_name }}"
-    state: started

@@ -34,3 +34,6 @@ backend/uploads/*
 
 # gift-artwork design previews (render_gift_previews.py output)
 backend/preview_out/
+
+# Ansible production secrets
+deploy/group_vars/secrets.yml

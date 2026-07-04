@@ -1,7 +1,8 @@
-// Same-origin in both modes: the vite dev server proxies '/api/*' to the
-// backend over the docker network (see vite.config.js), so the backend
-// never needs a published host port; prod serves the API same-origin.
-const API_URL = import.meta.env.DEV ? '/api' : '';
+// Same-origin '/api' prefix in BOTH modes: the vite dev server proxies it to
+// the backend over the docker network, and prod nginx does the identical
+// rewrite-strip. The prefix matters — /b/{slug} is both an SPA route and an
+// API route, so a bare same-origin path could never be proxied safely.
+const API_URL = '/api';
 const TOKEN_KEY = 'lily_auth_token';
 
 export function getToken() {

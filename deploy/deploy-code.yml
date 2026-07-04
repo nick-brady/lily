@@ -1,73 +1,14 @@
 ---
-# Quick deploy - just updates code and restarts services
-# Usage: ansible-playbook deploy-code.yml
-
-- name: Deploy Lily Code Update
+# Code-only update for an already-provisioned instance:
+# rsync backend → uv sync → render .env → alembic upgrade → build + rsync
+# frontend → restart. (Provisioning roles are skipped.)
+- name: Deploy Lily code update
   hosts: lily
   become: yes
 
-  vars:
-    app_name: lily
-    app_user: lily
-    app_group: lily
-    app_dir: /opt/lily
+  vars_files:
+    - group_vars/secrets.yml
 
-  tasks:
-    - name: Copy backend files
-      synchronize:
-        src: "{{ playbook_dir }}/../backend/"
-        dest: "{{ app_dir }}/backend/"
-        rsync_opts:
-          - "--exclude=.venv"
-          - "--exclude=__pycache__"
-          - "--exclude=*.pyc"
-          - "--exclude=contractions.db"
-      notify: restart lily
-
-    - name: Set backend ownership
-      file:
-        path: "{{ app_dir }}/backend"
-        state: directory
-        owner: "{{ app_user }}"
-        group: "{{ app_group }}"
-        recurse: yes
-
-    - name: Install Python dependencies
-      pip:
-        requirements: "{{ app_dir }}/backend/requirements.txt"
-        virtualenv: "{{ app_dir }}/backend/venv"
-        state: present
-      become_user: "{{ app_user }}"
-      notify: restart lily
-
-    - name: Build frontend locally
-      local_action:
-        module: command
-        cmd: npm run build
-        chdir: "{{ playbook_dir }}/../frontend"
-      become: no
-      run_once: true
-
-    - name: Copy frontend build
-      synchronize:
-        src: "{{ playbook_dir }}/../frontend/dist/"
-        dest: "{{ app_dir }}/frontend/"
-
-    - name: Set frontend ownership
-      file:
-        path: "{{ app_dir }}/frontend"
-        state: directory
-        owner: "{{ app_user }}"
-        group: "{{ app_group }}"
-        recurse: yes
-
-    - name: Restart lily backend
-      supervisorctl:
-        name: "{{ app_name }}"
-        state: restarted
-
-  handlers:
-    - name: restart lily
-      supervisorctl:
-        name: "{{ app_name }}"
-        state: restarted
+  roles:
+    - app
+    - systemd

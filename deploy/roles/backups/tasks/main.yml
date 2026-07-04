@@ -1,0 +1,23 @@
+---
+# Nightly pg_dump → S3 (via the instance IAM role). The keepsake promise is
+# 18 years — the database must survive the instance.
+- name: Install backup script
+  copy:
+    dest: /usr/local/bin/lily-pg-backup
+    owner: root
+    group: root
+    mode: '0755'
+    content: |
+      #!/bin/sh
+      set -eu
+      sudo -u postgres pg_dump {{ db_name }} | gzip | \
+        aws s3 cp - "{{ backup_s3_prefix }}/{{ db_name }}-$(date +%F).sql.gz" \
+        --region {{ aws_region }}
+
+- name: Schedule nightly database backup
+  cron:
+    name: "Lily nightly pg_dump to S3"
+    minute: "17"
+    hour: "8"          # 08:17 UTC ≈ overnight US-Eastern
+    job: "/usr/local/bin/lily-pg-backup"
+    user: root
