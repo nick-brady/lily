@@ -67,7 +67,7 @@ export default function AuthPage() {
           className="text-3xl text-center text-primary-600 dark:text-primary-400 mb-6"
           style={{ fontFamily: "'Great Vibes', cursive" }}
         >
-          Lily
+          Arrival Story
         </h1>
 
         {error && (

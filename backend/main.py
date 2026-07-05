@@ -167,7 +167,7 @@ async def lifespan(_app: FastAPI):
     yield
 
 
-app = FastAPI(title="Lily", lifespan=lifespan)
+app = FastAPI(title="Arrival Story", lifespan=lifespan)
 # Wildcard in dev; production sets CORS_ALLOW_ORIGINS to the site origin.
 # (In prod the API is same-origin behind nginx anyway — this is belt and
 # braces, not the primary boundary.)
@@ -187,7 +187,7 @@ app.add_middleware(
 
 @app.get("/")
 async def root() -> dict:
-    return {"name": "lily", "status": "running"}
+    return {"name": "arrival-story", "status": "running"}
 
 
 # ============ Auth ============

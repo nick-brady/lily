@@ -206,7 +206,7 @@ export default function PublicBirthPage() {
     if (birth?.child_name) {
       document.title = `Welcoming ${birth.child_name}`;
     }
-    return () => { document.title = 'lily'; };
+    return () => { document.title = 'Arrival Story'; };
   }, [birth?.child_name]);
 
   return (

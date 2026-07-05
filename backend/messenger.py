@@ -32,7 +32,7 @@ _REQUEST_TIMEOUT = 10.0
 _RESEND_URL = "https://api.resend.com/emails"
 # Resend's sandbox sender — works before a domain is verified, so a fresh
 # deploy can send real email with just an API key.
-_RESEND_DEFAULT_FROM = "Lily <onboarding@resend.dev>"
+_RESEND_DEFAULT_FROM = "Arrival Story <onboarding@resend.dev>"
 
 _TWILIO_URL = "https://api.twilio.com/2010-04-01/Accounts/{sid}/Messages.json"
 
@@ -128,7 +128,7 @@ def _email_html(code: str, magic_link_url: str) -> str:
 <div style="font-family: Georgia, 'Times New Roman', serif; max-width: 420px;
             margin: 0 auto; padding: 32px 24px; color: #44364a;">
   <p style="font-size: 14px; letter-spacing: 2px; color: #a21caf;
-            text-transform: uppercase; margin: 0 0 16px;">Lily</p>
+            text-transform: uppercase; margin: 0 0 16px;">Arrival Story</p>
   <p style="font-size: 16px; margin: 0 0 20px;">Here's your sign-in code:</p>
   <p style="font-size: 40px; letter-spacing: 8px; font-weight: bold;
             margin: 0 0 24px;">{code}</p>
@@ -151,7 +151,7 @@ def _invitation_email_html(inviter_name: str, birth_name: str, role_label: str, 
 <div style="font-family: Georgia, 'Times New Roman', serif; max-width: 420px;
             margin: 0 auto; padding: 32px 24px; color: #44364a;">
   <p style="font-size: 14px; letter-spacing: 2px; color: #a21caf;
-            text-transform: uppercase; margin: 0 0 16px;">Lily</p>
+            text-transform: uppercase; margin: 0 0 16px;">Arrival Story</p>
   <p style="font-size: 16px; margin: 0 0 24px;">
     {inviter_name} invited you as a {role_label} to {birth_name}'s page.
   </p>
@@ -193,10 +193,10 @@ class ResendMessenger(Messenger):
                 json={
                     "from": self._from,
                     "to": [identifier],
-                    "subject": f"Your Lily sign-in code: {code}",
+                    "subject": f"Your Arrival Story sign-in code: {code}",
                     "html": _email_html(code, magic_link_url),
                     "text": (
-                        f"Your Lily sign-in code: {code}\n\n"
+                        f"Your Arrival Story sign-in code: {code}\n\n"
                         f"Or sign in with this link: {magic_link_url}\n\n"
                         "The code and link expire in 15 minutes."
                     ),
@@ -267,7 +267,7 @@ class TwilioMessenger(Messenger):
                 data={
                     "To": identifier,
                     "From": self._from,
-                    "Body": f"Lily sign-in code: {code} — expires in 15 minutes.",
+                    "Body": f"Arrival Story sign-in code: {code} — expires in 15 minutes.",
                 },
             )
             resp.raise_for_status()
@@ -292,7 +292,7 @@ class TwilioMessenger(Messenger):
                     "From": self._from,
                     "Body": (
                         f"{inviter_name} invited you as a {role_label} to "
-                        f"{birth_name}'s page on Lily: {invite_url}"
+                        f"{birth_name}'s page on Arrival Story: {invite_url}"
                     ),
                 },
             )
