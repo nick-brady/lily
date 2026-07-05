@@ -290,9 +290,16 @@ class TwilioMessenger(Messenger):
                 data={
                     "To": identifier,
                     "From": self._from,
+                    # The opt-out line is required by carrier (A2P 10DLC)
+                    # rules: unlike the OTP, this is a first message to
+                    # someone who hasn't personally opted in. It must stay
+                    # in sync with the sample registered in the Twilio
+                    # campaign. STOP itself is handled by Twilio's
+                    # Advanced Opt-Out — no backend handling needed.
                     "Body": (
                         f"{inviter_name} invited you as a {role_label} to "
-                        f"{birth_name}'s page on Arrival Story: {invite_url}"
+                        f"{birth_name}'s page on Arrival Story: {invite_url} "
+                        "Reply STOP to opt out."
                     ),
                 },
             )

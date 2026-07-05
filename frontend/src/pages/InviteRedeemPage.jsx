@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { Link, useNavigate, useParams } from 'react-router-dom';
 import { api } from '../api/client';
 import { useAuth } from '../contexts/AuthContext';
 import IdentifierInput from '../components/IdentifierInput';
@@ -203,7 +203,10 @@ export default function InviteRedeemPage() {
               {loading ? 'Sending…' : 'Send code'}
             </button>
             <p className="text-xs text-gray-500 dark:text-gray-400 text-center">
-              We'll text or email you a 6-digit code to confirm you're you.
+              We'll text or email you a 6-digit code to confirm you're you. By continuing,
+              you agree to our <Link to="/terms" className="underline hover:text-primary-600 dark:hover:text-primary-400">Terms</Link> and{' '}
+              <Link to="/privacy" className="underline hover:text-primary-600 dark:hover:text-primary-400">Privacy Policy</Link>.
+              Msg &amp; data rates may apply.
             </p>
           </form>
         )}
