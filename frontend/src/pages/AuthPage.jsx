@@ -2,6 +2,8 @@ import { useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { api } from '../api/client';
+import IdentifierInput from '../components/IdentifierInput';
+import { formatIdentifierDisplay, normalizeIdentifier } from '../utils/identifier';
 
 export default function AuthPage() {
   const { acceptToken } = useAuth();
@@ -20,7 +22,7 @@ export default function AuthPage() {
     setError('');
     setLoading(true);
     try {
-      const result = await api.requestChallenge(identifier);
+      const result = await api.requestChallenge(normalizeIdentifier(identifier).value);
       setIdentifierKind(result.identifier_kind);
       setStep('code');
     } catch (err) {
@@ -35,7 +37,10 @@ export default function AuthPage() {
     setError('');
     setLoading(true);
     try {
-      const result = await api.verifyChallenge({ identifier, code });
+      const result = await api.verifyChallenge({
+        identifier: normalizeIdentifier(identifier).value,
+        code,
+      });
       const profile = await acceptToken(result.access_token);
       // After sign-in we land in this order:
       // 1. `?next=` if the user was redirected here from a guarded action
@@ -77,14 +82,11 @@ export default function AuthPage() {
               <span className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                 Email or phone
               </span>
-              <input
-                type="text"
+              <IdentifierInput
                 value={identifier}
-                onChange={(e) => setIdentifier(e.target.value)}
+                onChange={setIdentifier}
                 autoComplete="email"
-                autoCapitalize="none"
-                autoCorrect="off"
-                placeholder="you@example.com or 555-555-5555"
+                placeholder="you@example.com or (555) 555-5555"
                 className="w-full px-4 py-3 rounded-lg border border-gray-300 dark:border-gray-600
                            bg-white dark:bg-gray-700 text-gray-900 dark:text-white
                            focus:ring-2 focus:ring-primary-500 focus:border-transparent
@@ -111,7 +113,9 @@ export default function AuthPage() {
           <form onSubmit={submitCode} className="space-y-4">
             <p className="text-sm text-gray-600 dark:text-gray-300">
               We sent a code to{' '}
-              <span className="font-medium text-gray-900 dark:text-white">{identifier}</span>
+              <span className="font-medium text-gray-900 dark:text-white">
+                {formatIdentifierDisplay(identifier)}
+              </span>
               {identifierKind === 'email' && '. Check your email — or paste the 6-digit code below.'}
               {identifierKind === 'phone' && '. Check your texts — enter the 6-digit code below.'}
             </p>

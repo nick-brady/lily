@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { api } from '../api/client';
+import IdentifierInput from './IdentifierInput';
+import { normalizeIdentifier } from '../utils/identifier';
 
 function formatExpiry(timestamp) {
   const date = new Date(timestamp);
@@ -52,11 +54,11 @@ export default function CoParentManager({ familyId, familyName }) {
     try {
       // A single contact field — route it by shape. An email if it looks
       // like one, otherwise treat it as a phone number.
-      const isEmail = contact.includes('@');
+      const norm = contact.trim() ? normalizeIdentifier(contact) : null;
       const created = await api.inviteCoParent(familyId, {
         displayNameHint: name.trim() || undefined,
-        emailHint: isEmail ? contact.trim() : undefined,
-        phoneHint: !isEmail && contact.trim() ? contact.trim() : undefined,
+        emailHint: norm?.kind === 'email' ? norm.value : undefined,
+        phoneHint: norm && norm.kind !== 'email' ? norm.value : undefined,
       });
       setLastCreated(created);
       setName('');
@@ -195,12 +197,10 @@ export default function CoParentManager({ familyId, familyName }) {
             placeholder="Their name (e.g. Marco)"
             className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-sm focus:ring-2 focus:ring-primary-500 focus:border-transparent focus:outline-none"
           />
-          <input
-            type="text"
+          <IdentifierInput
             value={contact}
-            onChange={(e) => setContact(e.target.value)}
-            autoCapitalize="none"
-            autoCorrect="off"
+            onChange={setContact}
+            hintAction="the invite"
             placeholder="Their email or phone (optional)"
             className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-sm focus:ring-2 focus:ring-primary-500 focus:border-transparent focus:outline-none"
           />

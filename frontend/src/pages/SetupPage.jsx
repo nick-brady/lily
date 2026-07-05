@@ -4,6 +4,8 @@ import { useAuth } from '../contexts/AuthContext';
 import { api } from '../api/client';
 import { THEMES, getTheme, themeVars } from '../utils/themes';
 import ThemeCard from '../components/ThemeCard';
+import IdentifierInput from '../components/IdentifierInput';
+import { formatIdentifierDisplay, normalizeIdentifier } from '../utils/identifier';
 
 function toSlug(name) {
   return name
@@ -119,7 +121,7 @@ export default function SetupPage() {
     setError('');
     setAuthLoading(true);
     try {
-      const result = await api.requestChallenge(identifier);
+      const result = await api.requestChallenge(normalizeIdentifier(identifier).value);
       setIdentifierKind(result.identifier_kind);
       setAuthStep('code');
     } catch (err) {
@@ -132,7 +134,10 @@ export default function SetupPage() {
     setError('');
     setAuthLoading(true);
     try {
-      const authResult = await api.verifyChallenge({ identifier, code });
+      const authResult = await api.verifyChallenge({
+        identifier: normalizeIdentifier(identifier).value,
+        code,
+      });
       await acceptToken(authResult.access_token);
       const birth = await api.createBirth({
         babyName, slug, theme: selectedTheme, familyId: familyIdToJoin,
@@ -340,15 +345,12 @@ export default function SetupPage() {
                   <span className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                     Email or phone
                   </span>
-                  <input
-                    type="text"
+                  <IdentifierInput
                     value={identifier}
-                    onChange={(e) => setIdentifier(e.target.value)}
+                    onChange={setIdentifier}
                     autoFocus
                     autoComplete="email"
-                    autoCapitalize="none"
-                    autoCorrect="off"
-                    placeholder="you@example.com or 555-555-5555"
+                    placeholder="you@example.com or (555) 555-5555"
                     className="w-full px-4 py-3 rounded-xl border border-gray-300 dark:border-gray-600
                                bg-white dark:bg-gray-800 text-gray-900 dark:text-white
                                focus:ring-2 focus:ring-primary-500 focus:border-transparent
@@ -382,7 +384,9 @@ export default function SetupPage() {
               <form onSubmit={submitCode} className="space-y-4">
                 <p className="text-sm text-gray-600 dark:text-gray-300">
                   We sent a code to{' '}
-                  <span className="font-medium text-gray-900 dark:text-white">{identifier}</span>
+                  <span className="font-medium text-gray-900 dark:text-white">
+                    {formatIdentifierDisplay(identifier)}
+                  </span>
                   {identifierKind === 'email' && '. Check your email.'}
                   {identifierKind === 'phone' && '. Check your texts.'}
                 </p>

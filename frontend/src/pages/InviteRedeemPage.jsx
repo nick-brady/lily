@@ -2,6 +2,12 @@ import { useEffect, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { api } from '../api/client';
 import { useAuth } from '../contexts/AuthContext';
+import IdentifierInput from '../components/IdentifierInput';
+import {
+  formatIdentifierDisplay,
+  formatIdentifierInput,
+  normalizeIdentifier,
+} from '../utils/identifier';
 
 export default function InviteRedeemPage() {
   const { token } = useParams();
@@ -36,8 +42,11 @@ export default function InviteRedeemPage() {
       .then((ctx) => {
         if (cancelled) return;
         setContext(ctx);
+        // Stored hints are already normalized (+1…); format for display.
         if (ctx.email_hint && !identifier) setIdentifier(ctx.email_hint);
-        else if (ctx.phone_hint && !identifier) setIdentifier(ctx.phone_hint);
+        else if (ctx.phone_hint && !identifier) {
+          setIdentifier(formatIdentifierInput(ctx.phone_hint).value);
+        }
       })
       .catch((err) => {
         if (!cancelled) setContextError(err.message || 'This invitation is invalid or expired.');
@@ -72,7 +81,7 @@ export default function InviteRedeemPage() {
     setError('');
     setLoading(true);
     try {
-      await api.requestChallenge(identifier);
+      await api.requestChallenge(normalizeIdentifier(identifier).value);
       setStep('code');
     } catch (err) {
       setError(err.message || 'Could not send code');
@@ -86,7 +95,11 @@ export default function InviteRedeemPage() {
     setError('');
     setLoading(true);
     try {
-      const result = await api.verifyChallenge({ identifier, code, inviteToken: token });
+      const result = await api.verifyChallenge({
+        identifier: normalizeIdentifier(identifier).value,
+        code,
+        inviteToken: token,
+      });
       const profile = await acceptToken(result.access_token);
       finishOrAskName(profile);
     } catch (err) {
@@ -168,14 +181,11 @@ export default function InviteRedeemPage() {
               <span className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                 Verify your email or phone
               </span>
-              <input
-                type="text"
+              <IdentifierInput
                 value={identifier}
-                onChange={(e) => setIdentifier(e.target.value)}
+                onChange={setIdentifier}
                 autoComplete="email"
-                autoCapitalize="none"
-                autoCorrect="off"
-                placeholder="you@example.com or 555-555-5555"
+                placeholder="you@example.com or (555) 555-5555"
                 className="w-full px-4 py-3 rounded-lg border border-gray-300 dark:border-gray-600
                            bg-white dark:bg-gray-700 text-gray-900 dark:text-white
                            focus:ring-2 focus:ring-primary-500 focus:border-transparent
@@ -202,7 +212,9 @@ export default function InviteRedeemPage() {
           <form onSubmit={submitCode} className="space-y-4">
             <p className="text-sm text-gray-600 dark:text-gray-300">
               Enter the code sent to{' '}
-              <span className="font-medium text-gray-900 dark:text-white">{identifier}</span>.
+              <span className="font-medium text-gray-900 dark:text-white">
+                {formatIdentifierDisplay(identifier)}
+              </span>.
             </p>
             <input
               type="text"
