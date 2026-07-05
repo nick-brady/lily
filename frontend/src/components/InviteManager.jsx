@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { api } from '../api/client';
+import IdentifierInput from './IdentifierInput';
+import { normalizeIdentifier } from '../utils/identifier';
 
 function formatRelative(timestamp) {
   const date = new Date(timestamp);
@@ -51,11 +53,11 @@ export default function InviteManager({ birthId }) {
       // A single contact field — route it by shape, same as the
       // co-parent invite form. Both are optional: leave it blank for a
       // plain share-it-yourself link.
-      const isEmail = contact.includes('@');
+      const norm = contact.trim() ? normalizeIdentifier(contact) : null;
       const created = await api.createInvitation(birthId, {
         displayNameHint: name.trim() || undefined,
-        emailHint: isEmail ? contact.trim() : undefined,
-        phoneHint: !isEmail && contact.trim() ? contact.trim() : undefined,
+        emailHint: norm?.kind === 'email' ? norm.value : undefined,
+        phoneHint: norm && norm.kind !== 'email' ? norm.value : undefined,
       });
       setLastCreated(created);
       setName('');
@@ -142,12 +144,11 @@ export default function InviteManager({ birthId }) {
             className="w-full px-3 py-2 rounded-lg border text-sm t-ink"
             style={{ borderColor: 'var(--t-soft-ring)' }}
           />
-          <input
-            type="text"
+          <IdentifierInput
             value={contact}
-            onChange={(e) => setContact(e.target.value)}
-            autoCapitalize="none"
-            autoCorrect="off"
+            onChange={setContact}
+            hintAction="the invite"
+            hintClassName="mt-1 text-xs t-muted"
             placeholder="Their email or phone (optional)"
             className="w-full px-3 py-2 rounded-lg border text-sm t-ink"
             style={{ borderColor: 'var(--t-soft-ring)' }}
