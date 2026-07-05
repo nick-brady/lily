@@ -148,6 +148,10 @@ export default function LandingPage() {
           Arrival Story
         </span>
         <p className="mt-2 text-xs text-gray-400">Made with love</p>
+        <p className="mt-3 text-xs space-x-3">
+          <Link to="/privacy" className="hover:text-primary-600 dark:hover:text-primary-400">Privacy Policy</Link>
+          <Link to="/terms" className="hover:text-primary-600 dark:hover:text-primary-400">Terms of Service</Link>
+        </p>
       </footer>
     </div>
   );

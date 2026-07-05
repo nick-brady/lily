@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { api } from '../api/client';
 import IdentifierInput from '../components/IdentifierInput';
@@ -104,7 +104,10 @@ export default function AuthPage() {
               {loading ? 'Sending…' : 'Send code'}
             </button>
             <p className="text-xs text-gray-500 dark:text-gray-400 text-center">
-              We'll send you a 6-digit code and a magic link.
+              We'll send you a 6-digit code and a magic link. By continuing, you agree to
+              our <Link to="/terms" className="underline hover:text-primary-600 dark:hover:text-primary-400">Terms</Link> and{' '}
+              <Link to="/privacy" className="underline hover:text-primary-600 dark:hover:text-primary-400">Privacy Policy</Link>.
+              Msg &amp; data rates may apply.
             </p>
           </form>
         )}
