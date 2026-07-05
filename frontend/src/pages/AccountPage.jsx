@@ -188,7 +188,7 @@ export default function AccountPage() {
             className="text-3xl text-primary-600 dark:text-primary-400"
             style={{ fontFamily: "'Great Vibes', cursive" }}
           >
-            lily
+            Arrival Story
           </Link>
           <button
             type="button"

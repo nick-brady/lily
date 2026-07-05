@@ -1,7 +1,7 @@
 ---
 # Application settings
 app_name: lily
-app_domain: lily.realdevdata.com   # ← change to the real domain before running
+app_domain: arrivalstory.com
 app_user: lily
 app_group: lily
 app_dir: /opt/lily
@@ -17,7 +17,7 @@ backend_port: 8000
 python_version: "3.12"
 
 # Certbot settings
-certbot_email: nick@realdevdata.com
+certbot_email: nick@natrx.io
 
 # Database (Postgres installed ON this instance via apt — no RDS)
 db_name: lily
@@ -25,7 +25,7 @@ db_user: lily
 
 # S3 (media + gift artwork + nightly pg_dump backups). The instance reaches
 # S3 via its IAM role — no AWS keys in the env file.
-s3_bucket: lily-media-prod          # ← change to the real bucket
+s3_bucket: arrivalstory-media-prod  # ← create before first deploy
 aws_region: us-east-1
 backup_s3_prefix: "s3://{{ s3_bucket }}/backups/pg"
 

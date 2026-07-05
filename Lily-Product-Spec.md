@@ -121,7 +121,7 @@ After 30 days the tool becomes read-only unless the family subscribes to **First
 
 ## Architecture
 
-- **Frontend:** PWA for v1 (already partially built — see lily.realdevdata.com). Native iOS planned for v1.5.
+- **Frontend:** PWA for v1 (already partially built — see arrivalstory.com). Native iOS planned for v1.5.
 - **Backend:** FastAPI + PostgreSQL + S3 + Cloudflare.
 - **Live updates: SSE, not WebSockets.**
   - Messages are *notifications*, not data payloads. Client receives "event X changed for birth Y", then fetches via normal HTTP API.

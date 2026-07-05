@@ -23,7 +23,7 @@ export default function LandingPage() {
           className="text-3xl text-primary-600 dark:text-primary-400"
           style={{ fontFamily: "'Great Vibes', cursive" }}
         >
-          lily
+          Arrival Story
         </span>
         <Link
           to="/login"
@@ -36,10 +36,10 @@ export default function LandingPage() {
       {/* Hero */}
       <section className="flex flex-col items-center text-center px-6 pt-12 pb-24 bg-gradient-to-b from-primary-50 to-white dark:from-gray-900 dark:to-gray-950">
         <h1
-          className="text-8xl text-primary-600 dark:text-primary-400 mb-6"
+          className="text-6xl sm:text-8xl text-primary-600 dark:text-primary-400 mb-6"
           style={{ fontFamily: "'Great Vibes', cursive" }}
         >
-          lily
+          Arrival Story
         </h1>
         <p className="text-2xl font-light text-gray-800 dark:text-gray-100 mb-3 max-w-md leading-snug">
           The birth story your whole family lives together
@@ -145,7 +145,7 @@ export default function LandingPage() {
           className="text-primary-400 text-xl"
           style={{ fontFamily: "'Great Vibes', cursive" }}
         >
-          lily
+          Arrival Story
         </span>
         <p className="mt-2 text-xs text-gray-400">Made with love</p>
       </footer>

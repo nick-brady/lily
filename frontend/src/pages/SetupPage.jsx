@@ -160,7 +160,7 @@ export default function SetupPage() {
         className="text-4xl text-primary-600 dark:text-primary-400 mb-8"
         style={{ fontFamily: "'Great Vibes', cursive" }}
       >
-        lily
+        Arrival Story
       </div>
 
       {/* Progress dots */}
