@@ -3,10 +3,31 @@
 # stripping the prefix (identical to the vite dev proxy, so dev == prod).
 # The /api prefix is load-bearing: /b/{slug} is BOTH an SPA route and an
 # API route — bare same-origin paths could never be proxied safely.
-# certbot --nginx layers TLS + the 80→443 redirect onto this file.
+#
+# TLS is rendered by THIS template (tls_enabled), not layered on by
+# certbot — `certbot certonly` only issues the certificate. That keeps
+# playbook re-runs idempotent: a re-rendered config never loses :443.
 
+{% if tls_enabled | bool %}
 server {
     listen 80;
+    server_name {{ app_domain }};
+    return 301 https://$host$request_uri;
+}
+{% endif %}
+
+server {
+{% if tls_enabled | bool %}
+    listen 443 ssl http2;
+    ssl_certificate /etc/letsencrypt/live/{{ app_domain }}/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/{{ app_domain }}/privkey.pem;
+    ssl_protocols TLSv1.2 TLSv1.3;
+    ssl_prefer_server_ciphers off;
+    ssl_session_cache shared:SSL:10m;
+    ssl_session_timeout 1d;
+{% else %}
+    listen 80;
+{% endif %}
     server_name {{ app_domain }};
 
     root {{ app_dir }}/frontend;

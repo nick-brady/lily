@@ -10,6 +10,14 @@
     state: absent
   notify: reload nginx
 
+# The template renders the :443 server only when the cert already exists;
+# on first provision this renders plain :80, and the certbot role re-renders
+# with TLS right after issuing the certificate.
+- name: Check for existing TLS certificate
+  stat:
+    path: /etc/letsencrypt/live/{{ app_domain }}/fullchain.pem
+  register: tls_cert
+
 - name: Create nginx site config
   template:
     src: nginx.conf.j2
@@ -17,6 +25,8 @@
     owner: root
     group: root
     mode: '0644'
+  vars:
+    tls_enabled: "{{ tls_cert.stat.exists }}"
   notify: reload nginx
 
 - name: Enable nginx site

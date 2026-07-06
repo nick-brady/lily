@@ -21,9 +21,34 @@
       - fontconfig
       - fonts-montserrat
       - fonts-dejavu-core
-      # nightly pg_dump → S3
-      - awscli
     state: present
+
+# Nightly pg_dump → S3 needs the aws CLI, but Ubuntu 24.04 dropped the
+# `awscli` apt package — install v2 from Amazon's installer instead.
+- name: Check for AWS CLI
+  stat:
+    path: /usr/local/bin/aws
+  register: awscli_bin
+
+- name: Install AWS CLI v2
+  when: not awscli_bin.stat.exists
+  block:
+    - name: Download AWS CLI v2
+      get_url:
+        url: "https://awscli.amazonaws.com/awscli-exe-linux-{{ ansible_architecture }}.zip"
+        dest: /tmp/awscliv2.zip
+        mode: '0644'
+
+    - name: Unpack AWS CLI v2
+      unarchive:
+        src: /tmp/awscliv2.zip
+        dest: /tmp
+        remote_src: yes
+
+    - name: Run AWS CLI installer
+      command: /tmp/aws/install
+      args:
+        creates: /usr/local/bin/aws
 
 - name: Create application group
   group:
