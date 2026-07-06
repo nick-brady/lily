@@ -11,14 +11,28 @@
     path: /etc/letsencrypt/live/{{ app_domain }}/fullchain.pem
   register: cert_file
 
+# certonly: issue the certificate without letting certbot edit the nginx
+# config — the nginx role's template owns the TLS server block, so playbook
+# re-runs can't wipe :443 (they used to: template over certbot's edits).
 - name: Obtain SSL certificate
   command: >
-    certbot --nginx
+    certbot certonly --nginx
     -d {{ app_domain }}
     --non-interactive
     --agree-tos
     --email {{ certbot_email }}
-    --redirect
+  when: not cert_file.stat.exists
+  notify: reload nginx
+
+- name: Render TLS-enabled nginx config now the certificate exists
+  template:
+    src: ../../nginx/templates/nginx.conf.j2
+    dest: "/etc/nginx/sites-available/{{ app_name }}"
+    owner: root
+    group: root
+    mode: '0644'
+  vars:
+    tls_enabled: true
   when: not cert_file.stat.exists
   notify: reload nginx
 
