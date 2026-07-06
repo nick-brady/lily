@@ -17,7 +17,7 @@ backend_port: 8000
 python_version: "3.12"
 
 # Certbot settings
-certbot_email: nick@natrx.io
+certbot_email: nicholas.aaron.brady@gmail.com
 
 # Database (Postgres installed ON this instance via apt — no RDS)
 db_name: lily

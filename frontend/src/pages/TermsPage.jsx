@@ -1,6 +1,6 @@
 import LegalLayout, { LegalSection } from '../components/LegalLayout';
 
-const SUPPORT_EMAIL = 'nick@natrx.io';
+const SUPPORT_EMAIL = 'nicholas.aaron.brady@gmail.com';
 
 export default function TermsPage() {
   return (
