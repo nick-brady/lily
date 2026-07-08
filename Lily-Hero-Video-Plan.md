@@ -455,8 +455,57 @@ in the load sequence.
 2. **Prototype the mechanism now with a placeholder video** (ffmpeg-generated scene
    cards standing in for real footage) — proves the sync engine, the scrim, the loop
    reset, and lets us tune choreography timing before any Seedance spend.
-3. Lock characters + comment copy (§7.1–.3) → generate character sheets.
+3. Lock characters + comment copy (§7.1–.3) → generate character sheets (Appendix A).
 4. Test batch: one shot end-to-end (Scene 1) → judge quality → go/no-go on full board.
 5. Generate remaining shots, edit, grade, encode.
 6. Wire the real components (§2) into the hero, swap placeholder for final
    video, lock cue table.
+
+---
+
+## Appendix A — Character-sheet prompts
+
+One turnaround sheet per cast member, generated with a top-tier image model
+(Seedream 5.0 Pro / Nano Banana Pro). The sheet locks *identity*; in-scene stills
+(like Sarah's bump-progression mirror series) are generated afterward *from* the
+sheet. Iterate each sheet until the face feels right — then freeze it forever and
+attach it (or panel crops) as the reference for every shot the character appears in.
+
+Shared template (adapt per character below):
+
+> A professional character reference sheet of the exact same character in every
+> panel, plain white background. Two rows: top row four equally sized close-up head
+> shots side by side — front facing, left profile, right profile, back of head.
+> Bottom row three equally sized full-body shots — front, three-quarter profile,
+> back. Replicate every detail exactly across all panels: facial structure, skin
+> tone, natural blemishes, pore texture, hair color and styling, eye color with
+> realistic iris detail. Exact same outfit in every panel. Soft neutral studio
+> lighting, flat and even, no shadows, no color cast, no background elements.
+> Photorealistic, ultra sharp micro detail, RAW photograph quality, character design
+> sheet, turnaround sheet, orthographic reference.
+
+Per-character subject lines (prepend to the template):
+
+- **Sarah** — "A woman in her early 30s, shoulder-length dark brown hair loosely
+  tied back, warm skin undertone, kind tired-happy eyes, visibly ~38 weeks pregnant
+  with a full round belly. Outfit: ribbed sage-green tank top under an oversized
+  cream knit cardigan, leggings." *(Her body state in most scenes. The mirror-series
+  stills vary the outfit and bump size per stage — 20w/30w/35w/40w — using this
+  sheet as the face reference.)*
+- **Marco** — "A man in his mid 30s, short dark hair, light stubble, warm easy
+  smile. Outfit: olive henley, jeans, wedding band clearly visible. Add a third row:
+  two detail close-ups of his hands — one holding a phone mid-tap, one open — wedding
+  band visible in both." *(Hand closeups are most of his screen time; the hand
+  detail panels matter as much as his face.)*
+- **Janet** — "A woman in her mid 60s, silver chin-length bob, reading glasses on a
+  chain around her neck, warm expressive face with smile lines. Outfit: terracotta
+  cardigan over a cream blouse, small gold earrings."
+- **Emma** — "A woman in her late 20s, shoulder-length dark brown hair worn loose,
+  strong family resemblance to a sister with the same hair color and warm skin
+  undertone, softer rounder face. Outfit: rust-colored crewneck sweater." *(No hat
+  on the sheet — hair is identity. The rain jacket/beanie are scene wardrobe.)*
+- **Lisa** — "A woman in her early 30s, shoulder-length curly auburn hair, bright
+  expressive face, freckles. Outfit: charcoal blazer over a white tee, thin gold
+  necklace."
+
+No sheet for **Baby Lily** — she is never a rendered face (see §3).
