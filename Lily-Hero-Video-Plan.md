@@ -25,7 +25,7 @@ Three layers, bottom to top:
 │     dims/tints the video so UI + copy stay readable;   │
 │     fades per scene, fades heavy at the loop seam      │
 │  Layer 1 — Background video (<video>)                  │
-│     muted · playsinline · loop · ~41s · 3-5 MB         │
+│     muted · playsinline · loop · ~42s · 3-5 MB         │
 └────────────────────────────────────────────────────────┘
 ```
 
@@ -114,7 +114,10 @@ then attached as reference images to every shot they appear in.
   scrolling her own finished story.
 - **Look (consistency anchor):** early 30s, shoulder-length dark hair loosely tied
   back, warm undertone, oversized cream cardigan over a ribbed sage tank (pregnancy
-  scenes), hospital gown + the same cardigan over shoulders (labor scenes).
+  video scenes), hospital gown + the same cardigan over shoulders (labor scenes).
+  The bump-progression mirror stills deliberately vary the outfit per stage — the
+  changing clothes are what say "months are passing"; her face and the mirror stay
+  the constants.
 - **Persona truth to honor:** during labor, **Sarah never touches the phone.** The
   product is *around* her, not in her hands. Marco runs the page.
 
@@ -159,14 +162,17 @@ real (licensed stock or your own) photograph, not AI.
 
 ## 4. Storyboard — scenes + cue table
 
-Target: **~41.5s loop**, twelve scenes plus one phone-only interstitial. Most scenes =
-one Seedance generation (1-5s each); the decision triptych, the montage flicker, and
-the split-screen finale are separate short generations composited in the edit. Color
-grade shifts warm→cool→warm to mark place changes without any captions. The labor arc
-runs as a four-beat journey (home → decision → arrival → active labor) so the
-contraction timer gets a real introduction and "5 min apart" is *demonstrated*, not
-asserted. Birth payoff lands at ~0:31; the split-screen "one moment, everywhere"
-finale is the thesis shot.
+Target: **~42s loop**, twelve scenes plus two phone-only interstitials that rhyme:
+the bump-photo flood compresses the pregnancy, the contraction flood compresses early
+labor — the viewer learns the "fade + timeline flurry = time passing" grammar in the
+first seven seconds and reads it instantly the second time. Most scenes = one
+Seedance generation (1-5s each); the decision triptych, the montage flicker, "She's
+here", and the split-screen finale are separate short generations composited in the
+edit. Color grade shifts warm→cool→warm to mark place changes without any captions.
+The labor arc runs as a four-beat journey (home → decision → arrival → active labor)
+so the contraction timer gets a real introduction and "5 min apart" is
+*demonstrated*, not asserted. Birth payoff lands at ~0:31.5; the split-screen "one
+moment, everywhere" finale is the thesis shot.
 
 > Timings below are the working draft — they'll shift once real footage exists. The cue
 > table is the contract between the edit and the UI; it's the one artifact both sides
@@ -185,35 +191,47 @@ Two shots:
   beat on her afterglow while the viewer's eye jumps to the phone.
 - **Phone UI:** starts **empty** — what a brand-new timeline looks like, no entries
   yet. At her tap: **the first photo card pops in** with the caption
-  "36 weeks. Getting so close 🌸". The story literally begins on screen.
-- **Cues:** `0:03.6 timeline:addPhoto` — single cue; her tap in Shot B is the trigger.
+  "20 weeks! 🌸". The story literally begins on screen.
+- **Cues:** `0:03.6 timeline:addPhoto(bump20)` — single cue; her tap in Shot B is the
+  trigger.
 
-### Scene 2 — "Labor begins" (0:05–0:09) · living room, daytime — energetic
+### Interstitial A — the bump grows (0:05–0:07) · phone-only
+No new footage: Scene 1 slow-fades toward Scene 2 (scrim dips to carry the months).
+On the phone, **bump photos rapidly pop in** — same mirror, different outfits, the
+belly growing: "30 weeks" · "35 weeks!!!" · "get this baby out of me!". Twenty weeks
+compressed into two seconds, ending on a laugh — and the overdue-energy last post
+sets up *this is the day*. (These are generated stills, not video — and they double
+as Sarah's character-sheet references, see §5.)
+- **Cues:** `0:05.4 / 0:06.0 / 0:06.6 timeline:addPhoto` ×3
+
+### Scene 2 — "Labor begins" (0:07–0:11) · living room, daytime — energetic
 The mood is excited, almost giddy: *this is the day.* Sarah bounces gently on an
 exercise ball, laughing between breaths. A contraction starts — she holds her belly
 with one hand and puts her head down, steadying. Marco, grinning, taps a button on
 the phone. No fear anywhere in this scene; it's game-day energy.
 - **Phone UI:** the contraction timer gets its proper introduction — the timer card
-  **activates at Marco's tap** and starts counting (`0:01…0:02…`), pulsing dot alive.
-- **Cues:** `0:07.0 contraction:start`
+  **activates at Marco's tap** and starts counting, pulsing dot alive. *(Stylized:
+  the demo timer counts at ~10× speed so it reads 0:40-ish before it stops — a
+  real-time count would show "0:04" and break the illusion.)*
+- **Cues:** `0:09.0 contraction:start`
 
-### Scene 3 — "Janet's first look" (0:09–0:11.5) · Phoenix, quick cut
+### Scene 3 — "Janet's first look" (0:11–0:13.5) · Phoenix, quick cut
 Brief cutaway: Janet sees the live contraction on her phone — a delighted gasp, hand
 to chest, then a quick two-finger tap-tap-tap of a comment. Pure excitement, ~2.5s.
 - **Phone UI:** Janet's comment **pops in**: "It's happening!! We love you three so
   much ❤️❤️" — while the timer is still counting. The post→family-lights-up loop is
   now established grammar, ready to pay off later.
-- **Cues:** `0:10.0 comments:add(janet)`
+- **Cues:** `0:12.0 comments:add(janet)`
 
-### Interstitial — time passes (0:11.5–0:13.5) · phone-only
-No new footage: Scene 3 slow-fades toward Scene 4 (scrim dips to carry the gap in
-time). The storytelling happens entirely on the phone: the running contraction logs,
+### Interstitial B — the contractions close in (0:13.5–0:15.5) · phone-only
+Same grammar as Interstitial A, second use — the viewer already knows how to read it:
+Scene 3 slow-fades toward Scene 4, and on the phone the running contraction logs,
 then **entries flood in, in clusters** — a few measured close together, a gap, a few
 more — hours compressed into two seconds, and the gaps quietly say *not every
 contraction needs to be measured*.
-- **Cues:** `0:11.6 contraction:stop` → `0:11.9–0:13.3 timeline:contractionFlood`
+- **Cues:** `0:13.6 contraction:stop` → `0:13.9–0:15.3 timeline:contractionFlood`
 
-### Scene 4 — "The decision" (0:13.5–0:16.5) · home, dusk — three quick shots
+### Scene 4 — "The decision" (0:15.5–0:18.5) · home, dusk — three quick shots
 - **Shot A (~1s):** closeup — the hospital bag zips shut by the door.
 - **Shot B (~1.2s):** the look between Sarah and Marco — determined, but excited.
 - **Shot C (~0.8s):** Marco's hand slides across the table and grabs the keys.
@@ -221,107 +239,116 @@ Shots A and C are faceless closeups — cheap to generate, zero consistency risk
 C is the perfect last image of home: decision → resolve → action.
 - **Phone UI:** on the shared look, the stat line updates: **"5 min apart"**. The
   number is the *reason they're leaving*, and the viewer just watched it become true.
-- **Cues:** `0:14.5 stats:update('5 min apart')`
+- **Cues:** `0:16.5 stats:update('5 min apart')`
 
-### Scene 5 — "Arrival" (0:16.5–0:18.5) · hospital doors
+### Scene 5 — "Arrival" (0:18.5–0:20.5) · hospital doors
 Sliding doors, Marco wheeling Sarah in — the color grade shifts warm home → cool
 clinical-but-comforting hospital. The location change is told in light; the check-in
 is told by the phone, not the footage.
 - **Phone UI:** milestone pops: **"Arrived at the hospital 🏥"** — no need to show
   Marco entering it.
-- **Cues:** `0:17.5 timeline:addMilestone('Arrived at the hospital 🏥')`
+- **Cues:** `0:19.5 timeline:addMilestone('Arrived at the hospital 🏥')`
 
-### Scene 6 — "Lisa can't sit still" (0:18.5–0:19.5) · quick cut
+### Scene 6 — "Lisa can't sit still" (0:20.5–0:21.5) · quick cut
 One second: Lisa at her desk sees the arrival milestone — eyes wide, grabs a
 coworker's arm / bounces in her chair. Super excited.
 - **Phone UI:** **quiet — the rest beat.** The milestone just landed; let it breathe
   so the next hit lands harder.
 - **Cues:** *none*
 
-### Scene 7 — "Game time" (0:19.5–0:24.5) · hospital room, night
+### Scene 7 — "Game time" (0:21.5–0:25.5) · hospital room, night
 Handheld-feel closeup: Marco's thumb taps the phone; behind him, soft-focus, Sarah
 on a birthing ball, breathing. No distress, no medical detail — low warm light, calm
 intensity. This lands as the *culmination* of the journey, not the opener.
-- **Phone UI:** milestone entry appears: **"Water broke — game time 💪"**
-- **Cues:** `0:21.0 timeline:addMilestone`
+- **Phone UI:** milestone entry appears: **"Water broke — game time 💪"** — then a
+  few reaction hearts **trickle in** on it (true to life: that post draws hearts
+  immediately), keeping the phone alive through the film's quietest stretch.
+- **Cues:** `0:23.0 timeline:addMilestone` → `0:24.5–0:26.0 reactions:trickle`
 
-### Scene 8 — "We're with you" (0:24.5–0:29) · Seattle, gray drizzle
+### Scene 8 — "We're with you" (0:25.5–0:29.5) · Seattle, gray drizzle
 Emma in her kitchen, rain on the window, cool blue light — deliberate contrast with
 Janet's warm Phoenix. She types slowly, meaning it. A soft smile as she hits send.
 - **Phone UI:** no typing indicator (the app doesn't have one — the video carries the
   typing); her comment **pops in when she hits send**: "We're with you. We're so
   proud. 💕" — the line that makes Sarah cry in the personas doc.
-- **Cues:** `0:27.5 comments:add(emma)`
+- **Cues:** `0:28.0 comments:add(emma)`
 
-### Scene 9 — "Everyone, everywhere" (0:29–0:30.5) · montage flicker
-Compressed to a ~1.5s flicker — three beats of ~0.5s: Lisa hand-over-mouth · Janet's
-finger tapping a heart · Emma smiling down at her phone. It reads as texture, not a
-sequence; the *real* ensemble moment is saved for the split-screen finale.
+### Scene 9 — "Everyone, everywhere" (0:29.5–0:31) · montage flicker
+Two beats of ~0.75s: Lisa hand-over-mouth · Janet's finger tapping a heart. **Emma
+sits this one out** — she just had 4s of featured screen time, and an immediate
+re-appearance reads as a repeat. The flicker is texture; the *real* ensemble moment
+is saved for the split-screen finale.
 - **Phone UI:** **reactions pour in** — ❤️ 14→23, 🙏 8→15, 🤩 5→11, counters ticking
   with tiny pops, a couple of floating hearts.
-- **Cues:** `0:29.0 reactions:burst(start)` … eased random ticks … `0:30.5 reactions:burst(end)`
+- **Cues:** `0:29.5 reactions:burst(start)` … eased random ticks … `0:31.0 reactions:burst(end)`
 
-### Scene 10 — "She's here" (0:30.5–0:35.5) · the arrival
+### Scene 10 — "She's here" (0:31–0:36) · the arrival
 The most suggestion-driven scene: Marco's hand taps the phone once; light blooms;
 a tiny hand grips his finger (macro, shallow focus); Sarah's exhausted-happy profile,
-soft. **No rendered newborn face.**
+soft. **No rendered newborn face.** (Honest budget note: this is a micro-montage —
+3-4 separate generations, not one.)
 - **Phone UI:** the page transforms — celebration animation (the product's real
   `CelebrationOverlay` / floating hearts), header becomes the birth announcement:
   **"Lily Wren · 4:47 AM · 7 lb 2 oz"**, first photo entry appears (real photograph,
   see §3).
-- **Cues:** `0:31.0 birth:announce` → `0:31.5 celebration:play` → `0:33.5 timeline:addPhoto(lily)`
+- **Cues:** `0:31.5 birth:announce` → `0:32.0 celebration:play` → `0:34.0 timeline:addPhoto(lily)`
 
-### Scene 11 — "One moment, everywhere" (0:35.5–0:39.5) · split-screen finale
+### Scene 11 — "One moment, everywhere" (0:36–0:40) · split-screen finale
 The thesis shot. The announcement has just published — and the screen splits into
 three diagonal panels ( / / / ) that **slam in staggered**, ~0.2s apart, like the
-notification hitting phone after phone: Janet gasping hands-to-face → Emma
-laugh-crying → Lisa mid-cheer. Three ordinary shots, generated separately, composited
-into panels in the edit. One second, three living rooms: everyone sees it the moment
-it happens.
+notification hitting phone after phone. Three ordinary shots, generated separately,
+composited into panels in the edit. One second, three living rooms: everyone sees it
+the moment it happens.
+- **Panel assignment (spatial ≠ temporal):** **Emma left** — the phone-occluded
+  panel, so hers is the atmospheric silhouette-plus-phone-glow shot · **Janet
+  center** — the biggest expression (gasping, hands to face) gets the biggest real
+  estate · **Lisa right** — mid-cheer. Slam-in order stays Janet → Emma → Lisa,
+  matching the comment order; the center panel landing first looks great.
 - **Framing:** each shot tight, centered, portrait-ish with generous headroom —
-  diagonal slices crop hard. The **left panel is the most atmospheric** (silhouette +
-  phone glow) since the phone mockup partially covers it.
+  diagonal slices crop hard.
 - **Phone UI:** their comments pop in one after another as each panel reacts —
   Janet: "SHE'S HERE!! 😭❤️" · Emma: "Welcome to the world, Lily 🌎💕" · Lisa:
   "I can't stop crying!! CONGRATULATIONS 🎉" — with the reaction counters spiking
   underneath. Three comments in ~3s is the readability ceiling; the counters do the
   "everyone" work.
-- **Cues:** panels land 0:35.6/0:35.8/0:36.0 (video-side) →
-  `0:36.2 comments:add(janet)` → `0:37.2 comments:add(emma)` →
-  `0:38.2 comments:add(lisa)` + `reactions:spike`
+- **Cues:** panels land 0:36.1/0:36.3/0:36.5 (video-side) →
+  `0:36.7 comments:add(janet)` → `0:37.7 comments:add(emma)` →
+  `0:38.7 comments:add(lisa)` + `reactions:spike`
 
-### Scene 12 — "The keepsake" (0:39.5–0:41.5) · quiet close
+### Scene 12 — "The keepsake" (0:40–0:42) · quiet close
 **Sarah**, later — dim room, baby asleep on her chest (swaddle from behind, no face),
 phone glow soft on her face as she scrolls slowly back through her own finished
 story. The author reading the book. The scrim deepens to near-opaque…
 - **Phone UI:** slow auto-scroll up the *finished* timeline — the whole story at a
   glance — then, behind the darkened scrim, **reset to Scene 1 state**.
-- **Cues:** `0:39.5 timeline:scrollTour` → `0:41.0 ui:reset` → loop
+- **Cues:** `0:40.0 timeline:scrollTour` → `0:41.5 ui:reset` → loop
 
 ### Cue table (single source of truth)
 
 | t | Video moment | UI event |
 |------|---|---|
-| 3.6 | Sarah's tap (Shot B) | `timeline:addPhoto(bump)` |
-| 7.0 | Marco's tap as her head drops | `contraction:start` — timer card activates, counting |
-| 10.0 | Janet's quick tap-tap-tap | `comments:add(janet)` |
-| 11.6 | slow fade begins | `contraction:stop` — entry logs |
-| 11.9–13.3 | crossfade carries the time gap | `timeline:contractionFlood` — clustered entries: a few, a gap, a few more |
-| 14.5 | the shared look (Shot B) | `stats:update('5 min apart')` |
-| 17.5 | doors slide open | `timeline:addMilestone('Arrived at the hospital 🏥')` |
-| 18.5–19.5 | Lisa beams | *quiet — rest beat, no event* |
-| 21.0 | Marco's tap | `timeline:addMilestone('Water broke — game time 💪')` |
-| 27.5 | Emma hits send | `comments:add(emma)` |
-| 29.0–30.5 | montage flicker | `reactions:burst` |
-| 31.0 | Marco's single tap | `birth:announce` |
-| 31.5 | light bloom | `celebration:play` |
-| 33.5 | tiny hand grips finger | `timeline:addPhoto(lily)` |
-| 35.6/35.8/36.0 | split panels slam in (Janet→Emma→Lisa) | *video-side; UI holds a beat* |
-| 36.2 | Janet's panel reacts | `comments:add(janet)` — "SHE'S HERE!! 😭❤️" |
-| 37.2 | Emma's panel | `comments:add(emma)` — "Welcome to the world, Lily 🌎💕" |
-| 38.2 | Lisa's panel | `comments:add(lisa)` + `reactions:spike` |
-| 39.5 | Sarah scrolls, baby on chest | `timeline:scrollTour` |
-| 41.0 | scrim near-opaque | `ui:reset` → loop |
+| 3.6 | Sarah's tap (Shot B) | `timeline:addPhoto(bump20)` — "20 weeks! 🌸" |
+| 5.4/6.0/6.6 | crossfade carries the months | `timeline:addPhoto` ×3 — "30 weeks" · "35 weeks!!!" · "get this baby out of me!" |
+| 9.0 | Marco's tap as her head drops | `contraction:start` — timer card activates (counts ~10× speed) |
+| 12.0 | Janet's quick tap-tap-tap | `comments:add(janet)` |
+| 13.6 | slow fade begins | `contraction:stop` — entry logs |
+| 13.9–15.3 | crossfade carries the hours | `timeline:contractionFlood` — clustered entries: a few, a gap, a few more |
+| 16.5 | the shared look (Shot B) | `stats:update('5 min apart')` |
+| 19.5 | doors slide open | `timeline:addMilestone('Arrived at the hospital 🏥')` |
+| 20.5–21.5 | Lisa beams | *quiet — rest beat, no event* |
+| 23.0 | Marco's tap | `timeline:addMilestone('Water broke — game time 💪')` |
+| 24.5–26.0 | — | `reactions:trickle` — hearts land on the milestone |
+| 28.0 | Emma hits send | `comments:add(emma)` |
+| 29.5–31.0 | montage flicker (Lisa · Janet) | `reactions:burst` |
+| 31.5 | Marco's single tap | `birth:announce` |
+| 32.0 | light bloom | `celebration:play` |
+| 34.0 | tiny hand grips finger | `timeline:addPhoto(lily)` |
+| 36.1/36.3/36.5 | split panels slam in (Janet→Emma→Lisa) | *video-side; UI holds a beat* |
+| 36.7 | Janet's panel reacts | `comments:add(janet)` — "SHE'S HERE!! 😭❤️" |
+| 37.7 | Emma's panel | `comments:add(emma)` — "Welcome to the world, Lily 🌎💕" |
+| 38.7 | Lisa's panel | `comments:add(lisa)` + `reactions:spike` |
+| 40.0 | Sarah scrolls, baby on chest | `timeline:scrollTour` |
+| 41.5 | scrim near-opaque | `ui:reset` → loop |
 
 **Choreography rule:** the UI reacts 100–200ms *after* the on-screen gesture — that
 tiny lag is what makes it read as cause-and-effect ("boom") rather than coincidence.
@@ -334,14 +361,17 @@ tiny lag is what makes it read as cause-and-effect ("boom") rather than coincide
 1. **Character sheets first.** Generate stills of each character until the look locks
    (3-5 keepers each). These become reference images for every video shot. Do not
    generate a single second of video before the cast is locked — consistency is won or
-   lost here.
+   lost here. For Sarah, the bump-progression mirror stills (Interstitial A) *are*
+   character-sheet material: same bedroom mirror, different outfit per stage, belly
+   growing 20→40 weeks — lock her face once and the series pays for itself twice.
 2. **Location plates.** One still per location (nursery, hospital room, Phoenix living
    room, Seattle bus, office) — same idea, locks the set.
-3. **Shots.** Roughly 15 generations across twelve scenes, 1-5s each — the decision
-   triptych, montage flicker, and split-screen finale are separate short shots
-   composited in the edit; the quick cuts are mostly faceless and cheap; the
-   interstitial needs no footage at all. Use character + location references
-   throughout. Expect 5-10 takes per shot; pick for *motion quality* over frame beauty
+3. **Shots.** Budget on **~20 video generations** across twelve scenes, 1-5s each —
+   counting every distinct image: Scene 1 is two shots, the decision triptych three,
+   the flicker two, "She's here" is a 3-4 shot micro-montage, the finale three. The
+   quick cuts are mostly faceless and cheap; the interstitials need no video at all.
+   Plus **4-5 still images** (the bump-progression mirror photos and Lily's timeline
+   photo — see §3). Use character + location references throughout. Expect 5-10 takes per shot; pick for *motion quality* over frame beauty
    (a background video's individual frames are never studied, its motion always is).
 4. **Edit.** Assemble to the storyboard timings, grade for cohesion (single LUT,
    slightly lifted blacks — helps both mood and compression), export master.
@@ -393,12 +423,12 @@ in the load sequence.
    the announcement-only variant is the safe fallback.
 3. **Comment copy** — the lines above are drafts pulled from the personas. Worth one
    pass together; these words are the emotional payload of the whole hero.
-4. **Loop length** — ✅ resolved in review: ~41.5s, twelve scenes + a phone-only
-   interstitial, four-beat labor arc (home → decision → arrival → active labor) with
+4. **Loop length** — ✅ resolved in review: ~42s, twelve scenes + two phone-only
+   interstitials, four-beat labor arc (home → decision → arrival → active labor) with
    Janet's cutaway between beats 1-2, Lisa's after the arrival milestone, and the
    split-screen "one moment, everywhere" finale between the birth and the keepsake.
-   Birth payoff at ~0:31. Since the video starts at 0:00 on page load for every
-   visitor, loop length costs little; shot count (~15 generations) is the real spend.
+   Birth payoff at ~0:31.5. Since the video starts at 0:00 on page load for every
+   visitor, loop length costs little; shot count (~20 generations) is the real spend.
 5. **Whether Scene 6 exists** — ending on the birth (Scene 5) and looping straight
    from the celebration is punchier; Scene 6 is the "keepsake forever" brand message.
    Both defensible.
