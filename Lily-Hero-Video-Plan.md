@@ -78,25 +78,20 @@ cues up to the new position, which makes development and QA trivial.
 
 ---
 
-## 2. What's inside the phone — keeping it always up to date
+## 2. What's inside the phone — real components, demo-driven
 
-Key realization: **the landing page already lives inside the product's React app**
-(`frontend/src/pages/LandingPage.jsx`). So we don't need an iframe at all.
-
-| Option | What it is | Verdict |
-|---|---|---|
-| A. Hand-built replica | Static HTML/CSS copy of the timeline | Fast to demo, but drifts out of date — exactly what you don't want |
-| B. **Real components, demo-driven** | Mount the actual `Timeline`, `CommentThread`, `ReactionBar`, `ContractionButton` components in the hero with scripted fixture data; the cue engine dispatches events that mutate that fixture state | **Recommended** |
-| C. iframe of the live app | A real public birth page in an iframe | Truly live, but un-choreographable (real data, no cue control), auth/seed-data headaches, fragile |
-
-Option B gives you the "always up to date" property you want — when the timeline design
-changes, the hero changes with it — while staying fully scriptable. The cue engine just
-calls state setters (`addEntry(photoEntry)`, `addComment(janetComment)`,
-`incrementReaction('❤️')`) and the real components animate exactly as they do in
-production, because they *are* production.
+**Decision: the phone runs the real product components.** The landing page already
+lives inside the product's React app (`frontend/src/pages/LandingPage.jsx`), so the
+hero mounts the actual `Timeline`, `CommentThread`, `ReactionBar`, and
+`ContractionButton` components directly — no iframe, no replica — fed with scripted
+fixture data. The cue engine dispatches events that mutate that fixture state
+(`addEntry(photoEntry)`, `addComment(janetComment)`, `incrementReaction('❤️')`) and
+the components animate exactly as they do in production, because they *are*
+production. When the timeline design changes, the hero changes with it — zero drift
+by construction.
 
 If the marketing site ever moves off the app bundle (static Astro/Next site, etc.),
-Option B converts cleanly to an iframe: the app exposes a `/demo/hero` route rendering
+this converts cleanly to an iframe: the app exposes a `/demo/hero` route rendering
 the same demo-driven components, and the marketing page drives it via `postMessage`
 cues. Same cue table, one extra hop.
 
@@ -420,5 +415,5 @@ in the load sequence.
 3. Lock characters + comment copy (§7.1–.3) → generate character sheets.
 4. Test batch: one shot end-to-end (Scene 1) → judge quality → go/no-go on full board.
 5. Generate remaining shots, edit, grade, encode.
-6. Wire the real components (Option B) into the hero, swap placeholder for final
+6. Wire the real components (§2) into the hero, swap placeholder for final
    video, lock cue table.
