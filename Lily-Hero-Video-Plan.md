@@ -274,6 +274,14 @@ fallback, target **3-5 MB** for the loop; poster JPEG from Scene 1.
 
 ## 6. Page behavior details
 
+**Wordmark write-on (separate PR, ships first).** The "Arrival Story" wordmark gets a
+cursive write-on animation as a page-load overture — it plays once per visit, before
+anything else moves (scrim heavy → wordmark writes ~1.5s → tagline/CTA fade up → video
+brightens → phone choreography starts), never re-animates on loop, and falls back to
+the static wordmark under `prefers-reduced-motion`. It's being implemented in its own
+PR in parallel and will be live before the video; this hero simply slots in *after* it
+in the load sequence.
+
 - **Autoplay:** `muted playsinline loop` + poster. Start playback via
   IntersectionObserver when the hero is on screen.
 - **Mobile:** side-by-side doesn't fit. The phone mockup takes center stage over a
