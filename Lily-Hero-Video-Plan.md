@@ -45,6 +45,18 @@ left-of-center, overlapping the video. Inside it: the app UI (see §2). It is *n
 part of the video — that's what keeps it razor sharp at any compression level and
 always current with the real product.
 
+### Reference implementation: natrx.io
+
+The [natrx.io](https://natrx.io/) hero is Layers 1+2 of this exact pattern:
+`<video autoplay playsinline loop muted>` with `object-fit: cover` in a fixed-height
+section, and the "overlay" achieved by giving the section a near-black background
+(`#221f20`) and drawing the video at `opacity: 0.6` — a uniform dark scrim by
+subtraction. We do the same, with two upgrades: a gradient scrim that can shift per
+scene (and cover the loop-seam reset), plus the synced phone layer on top.
+
+One lesson *not* to copy: their background video is a 115 MB raw `.mov`. The 3-5 MB
+encode target in §5 buys the same visual for ~4% of the bandwidth.
+
 ### The sync engine
 
 A cue table maps video timestamps to UI events:
