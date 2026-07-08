@@ -168,13 +168,20 @@ mark place changes without any captions.
 > table is the contract between the edit and the UI; it's the one artifact both sides
 > maintain.
 
-### Scene 1 — "The bump selfie" (0:00–0:05) · golden hour nursery
-Sarah, 36 weeks, in front of a mirror in a half-finished nursery, warm evening light.
-She raises her phone, smiles, takes a mirror selfie. Soft flash.
-- **Phone UI:** timeline in pre-labor state ("Welcoming Lily Wren", a couple of old
-  entries). At the flash: shutter animation → **photo card drops into the timeline**
-  with a satisfying spring. Caption: "36 weeks. Getting so close 🌸"
-- **Cues:** `0:03.2 photo:snap` → `0:03.6 timeline:addPhoto`
+### Scene 1 — "The first entry" (0:00–0:05) · bedroom, golden hour
+Two shots:
+- **Shot A (~3s):** from behind Sarah, facing a full-body mirror — clearly a bedroom,
+  warm evening light. In the mirror: she's smiling, one hand holding her belly, phone
+  raised in the other. *(Production note: mirror reflections are a known weak spot for
+  video models — keep this shot short, favor the back-of-Sarah framing, and let the
+  reflection sit soft/slightly out of focus.)*
+- **Shot B (~2s):** cut to a direct view of Sarah looking at the photo on her phone,
+  its light putting a soft glow on her face. She smiles and taps out the message —
+  and on that tap, the photo pops into the timeline.
+- **Phone UI:** starts **empty** — what a brand-new timeline looks like, no entries
+  yet. At her tap: **the first photo card pops in** with the caption
+  "36 weeks. Getting so close 🌸". The story literally begins on screen.
+- **Cues:** `0:03.6 timeline:addPhoto` — single cue; her tap in Shot B is the trigger.
 
 ### Scene 2 — "Game time" (0:05–0:11) · hospital room, night
 Cut to night. Handheld-feel closeup: Marco's thumb taps the phone; behind him,
@@ -222,8 +229,7 @@ bassinet. The scrim deepens to near-opaque…
 
 | t | Video moment | UI event |
 |------|---|---|
-| 3.2 | flash in mirror | `photo:snap` |
-| 3.6 | — | `timeline:addPhoto(bump)` |
+| 3.6 | Sarah's tap (Shot B) | `timeline:addPhoto(bump)` |
 | 7.5 | Marco's tap | `contraction:stop` |
 | 8.0 | — | `stats:update('5 min apart')` |
 | 9.0 | — | `timeline:addMilestone('Water broke — game time 💪')` |
@@ -297,9 +303,8 @@ in the load sequence.
 
 ## 7. Open decisions (to work through together)
 
-1. **Scene 1 protagonist** — Sarah's mirror bump selfie (current plan) vs. Marco
-   photographing her. Mirror selfie is more iconic; Marco-as-photographer seeds his
-   operator role earlier.
+1. **Scene 1 protagonist** — ✅ resolved in PR review: Sarah, two-shot structure
+   (mirror wide → phone-glow closeup), empty timeline, single `addPhoto` cue on her tap.
 2. **The baby photo in the app** — real licensed photo, your own photo, or none
    (announcement card with name/weight/time only, no photo). Recommend a real photo;
    the announcement-only variant is the safe fallback.
