@@ -25,7 +25,7 @@ Three layers, bottom to top:
 │     dims/tints the video so UI + copy stay readable;   │
 │     fades per scene, fades heavy at the loop seam      │
 │  Layer 1 — Background video (<video>)                  │
-│     muted · playsinline · loop · ~38s · 3-5 MB         │
+│     muted · playsinline · loop · ~41s · 3-5 MB         │
 └────────────────────────────────────────────────────────┘
 ```
 
@@ -134,22 +134,24 @@ then attached as reference images to every shot they appear in.
 ### Janet — the grandmother in Phoenix
 - **Role:** the emotional receiver — and the *first* responder. Scene 3 is her quick
   cutaway: delighted gasp at the live contraction timer, hand to chest, a rapid
-  tap-tap-tap comment. She reappears tapping a heart in the montage.
+  tap-tap-tap comment. She reappears tapping a heart in the montage flicker, and
+  anchors the split-screen finale: gasping, hands to face.
 - **Look:** mid 60s, silver bob, reading glasses on a chain, terracotta cardigan,
   southwestern-warm living room (adobe tones, evening lamp light).
 
 ### Emma — Sarah's sister in Seattle
-- **Role:** the far-away sibling who's *there anyway*. Scene 7 is hers: gray-drizzle
+- **Role:** the far-away sibling who's *there anyway*. Scene 8 is hers: gray-drizzle
   Seattle kitchen, typing slowly and meaning it. Hers is the comment that makes Sarah
-  cry: *"We're with you. We're so proud."*
+  cry: *"We're with you. We're so proud."* Laugh-crying in her split-screen panel.
 - **Look:** late 20s, dark hair like Sarah's (family resemblance helps the story read
   without dialogue), rust beanie + rain jacket, transit/urban Seattle palette (cool
   blues — deliberate contrast with Janet's warm Phoenix).
 
 ### Lisa — the friend
-- **Role:** two quick beats — a 1s cutaway right after the hospital-arrival milestone
-  (eyes wide at her desk, can't sit still) and a 🤩 reaction, hand over mouth, in the
-  montage. (Her gift-buying arc is a different video.)
+- **Role:** three quick beats — a 1s cutaway right after the hospital-arrival
+  milestone (eyes wide at her desk, can't sit still), a 🤩 reaction in the montage
+  flicker, and mid-cheer in her split-screen panel. (Her gift-buying arc is a
+  different video.)
 - **Look:** early 30s, curly auburn hair, blazer over tee, bright workplace.
 
 **Baby Lily:** never shown as a rendered face. A swaddle from behind, a tiny hand
@@ -162,12 +164,14 @@ real (licensed stock or your own) photograph, not AI.
 
 ## 4. Storyboard — scenes + cue table
 
-Target: **~38.5s loop**, eleven scenes plus one phone-only interstitial. Every scene =
-one Seedance generation (1-5s each — several are deliberate quick cuts), assembled
-with 8-12 frame cross-dissolves. Color grade shifts warm→cool→warm to mark place
-changes without any captions. The labor arc runs as a four-beat journey (home →
-decision → arrival → active labor) so the contraction timer gets a real introduction
-and "5 min apart" is *demonstrated*, not asserted. Birth payoff lands at ~0:32.
+Target: **~41.5s loop**, twelve scenes plus one phone-only interstitial. Most scenes =
+one Seedance generation (1-5s each); the decision triptych, the montage flicker, and
+the split-screen finale are separate short generations composited in the edit. Color
+grade shifts warm→cool→warm to mark place changes without any captions. The labor arc
+runs as a four-beat journey (home → decision → arrival → active labor) so the
+contraction timer gets a real introduction and "5 min apart" is *demonstrated*, not
+asserted. Birth payoff lands at ~0:31; the split-screen "one moment, everywhere"
+finale is the thesis shot.
 
 > Timings below are the working draft — they'll shift once real footage exists. The cue
 > table is the contract between the edit and the UI; it's the one artifact both sides
@@ -254,30 +258,50 @@ Janet's warm Phoenix. She types slowly, meaning it. A soft smile as she hits sen
   proud. 💕" — the line that makes Sarah cry in the personas doc.
 - **Cues:** `0:27.5 comments:add(emma)`
 
-### Scene 9 — "Everyone, everywhere" (0:29–0:31.5) · rapid montage
-Three quick shots, ~0.8s each: Lisa at her desk, hand over mouth, grinning · Janet's
-finger tapping a heart · Emma smiling down at her phone.
+### Scene 9 — "Everyone, everywhere" (0:29–0:30.5) · montage flicker
+Compressed to a ~1.5s flicker — three beats of ~0.5s: Lisa hand-over-mouth · Janet's
+finger tapping a heart · Emma smiling down at her phone. It reads as texture, not a
+sequence; the *real* ensemble moment is saved for the split-screen finale.
 - **Phone UI:** **reactions pour in** — ❤️ 14→23, 🙏 8→15, 🤩 5→11, counters ticking
   with tiny pops, a couple of floating hearts.
-- **Cues:** `0:29.0 reactions:burst(start)` … eased random ticks … `0:31.5 reactions:burst(end)`
+- **Cues:** `0:29.0 reactions:burst(start)` … eased random ticks … `0:30.5 reactions:burst(end)`
 
-### Scene 10 — "She's here" (0:31.5–0:36.5) · the arrival
+### Scene 10 — "She's here" (0:30.5–0:35.5) · the arrival
 The most suggestion-driven scene: Marco's hand taps the phone once; light blooms;
 a tiny hand grips his finger (macro, shallow focus); Sarah's exhausted-happy profile,
 soft. **No rendered newborn face.**
 - **Phone UI:** the page transforms — celebration animation (the product's real
   `CelebrationOverlay` / floating hearts), header becomes the birth announcement:
   **"Lily Wren · 4:47 AM · 7 lb 2 oz"**, first photo entry appears (real photograph,
-  see §3), comments accelerate underneath.
-- **Cues:** `0:32.0 birth:announce` → `0:32.5 celebration:play` → `0:34.5 timeline:addPhoto(lily)`
+  see §3).
+- **Cues:** `0:31.0 birth:announce` → `0:31.5 celebration:play` → `0:33.5 timeline:addPhoto(lily)`
 
-### Scene 11 — "The keepsake" (0:36.5–0:38.5) · quiet close
+### Scene 11 — "One moment, everywhere" (0:35.5–0:39.5) · split-screen finale
+The thesis shot. The announcement has just published — and the screen splits into
+three diagonal panels ( / / / ) that **slam in staggered**, ~0.2s apart, like the
+notification hitting phone after phone: Janet gasping hands-to-face → Emma
+laugh-crying → Lisa mid-cheer. Three ordinary shots, generated separately, composited
+into panels in the edit. One second, three living rooms: everyone sees it the moment
+it happens.
+- **Framing:** each shot tight, centered, portrait-ish with generous headroom —
+  diagonal slices crop hard. The **left panel is the most atmospheric** (silhouette +
+  phone glow) since the phone mockup partially covers it.
+- **Phone UI:** their comments pop in one after another as each panel reacts —
+  Janet: "SHE'S HERE!! 😭❤️" · Emma: "Welcome to the world, Lily 🌎💕" · Lisa:
+  "I can't stop crying!! CONGRATULATIONS 🎉" — with the reaction counters spiking
+  underneath. Three comments in ~3s is the readability ceiling; the counters do the
+  "everyone" work.
+- **Cues:** panels land 0:35.6/0:35.8/0:36.0 (video-side) →
+  `0:36.2 comments:add(janet)` → `0:37.2 comments:add(emma)` →
+  `0:38.2 comments:add(lisa)` + `reactions:spike`
+
+### Scene 12 — "The keepsake" (0:39.5–0:41.5) · quiet close
 **Sarah**, later — dim room, baby asleep on her chest (swaddle from behind, no face),
 phone glow soft on her face as she scrolls slowly back through her own finished
 story. The author reading the book. The scrim deepens to near-opaque…
 - **Phone UI:** slow auto-scroll up the *finished* timeline — the whole story at a
   glance — then, behind the darkened scrim, **reset to Scene 1 state**.
-- **Cues:** `0:36.5 timeline:scrollTour` → `0:38.0 ui:reset` → loop
+- **Cues:** `0:39.5 timeline:scrollTour` → `0:41.0 ui:reset` → loop
 
 ### Cue table (single source of truth)
 
@@ -293,12 +317,16 @@ story. The author reading the book. The scrim deepens to near-opaque…
 | 18.5–19.5 | Lisa beams | *quiet — rest beat, no event* |
 | 21.0 | Marco's tap | `timeline:addMilestone('Water broke — game time 💪')` |
 | 27.5 | Emma hits send | `comments:add(emma)` |
-| 29.0–31.5 | montage | `reactions:burst` |
-| 32.0 | Marco's single tap | `birth:announce` |
-| 32.5 | light bloom | `celebration:play` |
-| 34.5 | tiny hand grips finger | `timeline:addPhoto(lily)` |
-| 36.5 | Sarah scrolls, baby on chest | `timeline:scrollTour` |
-| 38.0 | scrim near-opaque | `ui:reset` → loop |
+| 29.0–30.5 | montage flicker | `reactions:burst` |
+| 31.0 | Marco's single tap | `birth:announce` |
+| 31.5 | light bloom | `celebration:play` |
+| 33.5 | tiny hand grips finger | `timeline:addPhoto(lily)` |
+| 35.6/35.8/36.0 | split panels slam in (Janet→Emma→Lisa) | *video-side; UI holds a beat* |
+| 36.2 | Janet's panel reacts | `comments:add(janet)` — "SHE'S HERE!! 😭❤️" |
+| 37.2 | Emma's panel | `comments:add(emma)` — "Welcome to the world, Lily 🌎💕" |
+| 38.2 | Lisa's panel | `comments:add(lisa)` + `reactions:spike` |
+| 39.5 | Sarah scrolls, baby on chest | `timeline:scrollTour` |
+| 41.0 | scrim near-opaque | `ui:reset` → loop |
 
 **Choreography rule:** the UI reacts 100–200ms *after* the on-screen gesture — that
 tiny lag is what makes it read as cause-and-effect ("boom") rather than coincidence.
@@ -314,9 +342,11 @@ tiny lag is what makes it read as cause-and-effect ("boom") rather than coincide
    lost here.
 2. **Location plates.** One still per location (nursery, hospital room, Phoenix living
    room, Seattle bus, office) — same idea, locks the set.
-3. **Shots.** One generation per scene, 1-5s each (eleven scenes; the quick cuts —
-   bag/keys/doors/montage beats — are mostly faceless and cheap; the interstitial
-   needs no footage at all), using character + location references. Expect 5-10 takes per shot; pick for *motion quality* over frame beauty
+3. **Shots.** Roughly 15 generations across twelve scenes, 1-5s each — the decision
+   triptych, montage flicker, and split-screen finale are separate short shots
+   composited in the edit; the quick cuts are mostly faceless and cheap; the
+   interstitial needs no footage at all. Use character + location references
+   throughout. Expect 5-10 takes per shot; pick for *motion quality* over frame beauty
    (a background video's individual frames are never studied, its motion always is).
 4. **Edit.** Assemble to the storyboard timings, grade for cohesion (single LUT,
    slightly lifted blacks — helps both mood and compression), export master.
@@ -368,11 +398,12 @@ in the load sequence.
    the announcement-only variant is the safe fallback.
 3. **Comment copy** — the lines above are drafts pulled from the personas. Worth one
    pass together; these words are the emotional payload of the whole hero.
-4. **Loop length** — ✅ resolved in review: ~38.5s, eleven scenes + a phone-only
+4. **Loop length** — ✅ resolved in review: ~41.5s, twelve scenes + a phone-only
    interstitial, four-beat labor arc (home → decision → arrival → active labor) with
-   Janet's cutaway between beats 1-2 and Lisa's after the arrival milestone. Birth
-   payoff at ~0:32. Since the video starts at 0:00 on page load for every visitor,
-   loop length costs little; shot count (~11 generations) is the real spend.
+   Janet's cutaway between beats 1-2, Lisa's after the arrival milestone, and the
+   split-screen "one moment, everywhere" finale between the birth and the keepsake.
+   Birth payoff at ~0:31. Since the video starts at 0:00 on page load for every
+   visitor, loop length costs little; shot count (~15 generations) is the real spend.
 5. **Whether Scene 6 exists** — ending on the birth (Scene 5) and looping straight
    from the celebration is punchier; Scene 6 is the "keepsake forever" brand message.
    Both defensible.
