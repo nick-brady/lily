@@ -1,0 +1,238 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Arrival Story — Wordmark Tracer</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Great+Vibes&display=swap" rel="stylesheet">
+<style>
+  body { font-family: system-ui, sans-serif; margin: 0; background: #faf6fb; color: #333; }
+  header { padding: 12px 16px; display: flex; gap: 10px; align-items: center; flex-wrap: wrap; max-width: 1100px; margin: 0 auto; }
+  button { padding: 6px 14px; border: 1px solid #d3b8dc; background: #fff; border-radius: 6px; cursor: pointer; font-size: 13px; }
+  button:hover { background: #f3e8f6; }
+  label { font-size: 13px; display: flex; gap: 6px; align-items: center; }
+  #status { font-size: 13px; color: #777; margin-left: auto; }
+  #stage { display: block; width: 100%; max-width: 1100px; margin: 0 auto; touch-action: none; cursor: crosshair; background: #fff; border: 1px solid #eee; border-radius: 8px; }
+  .hint { max-width: 1100px; margin: 10px auto; font-size: 13px; color: #777; padding: 0 16px; line-height: 1.5; }
+</style>
+</head>
+<body>
+<header>
+  <button id="undoBtn">↩ Undo stroke</button>
+  <button id="clearBtn">Clear</button>
+  <button id="previewBtn">▶ Preview</button>
+  <button id="jsonBtn">Export JSON</button>
+  <label>Mask width <input type="range" id="widthSlider" min="8" max="48" value="24"> <span id="widthVal">24</span></label>
+  <label>Speed <input type="range" id="speedSlider" min="100" max="3000" step="50" value="1000"> <span id="speedVal">10.0×</span></label>
+  <span id="status">0 strokes</span>
+</header>
+
+<svg id="stage" viewBox="0 0 1000 320" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <mask id="ink">
+      <rect width="1000" height="320" fill="black"/>
+      <g id="maskGroup" fill="none" stroke="white" stroke-linecap="round" stroke-linejoin="round"></g>
+    </mask>
+  </defs>
+  <g id="textGroup" font-family="'Great Vibes', cursive" font-size="160" text-anchor="middle">
+    <text id="guideText" x="500" y="200" fill="#e9dcee">Arrival Story</text>
+    <text id="inkText" x="500" y="200" fill="#a832c9" mask="url(#ink)" visibility="hidden">Arrival Story</text>
+  </g>
+  <g id="traceLayer" fill="none" stroke="rgba(219,39,119,0.5)" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"></g>
+  <path id="livePath" fill="none" stroke="rgba(219,39,119,0.9)" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>
+
+<p class="hint">
+  <strong>How to trace:</strong> draw over the gray text in real writing order — press, draw, release = one pen stroke.
+  Lift where a real pen would lift (between letters that don't connect, on crossbars and dots, between the two words).
+  Wobble is completely fine: this path becomes an <em>invisible mask</em> — only its coverage, order, and timing show.
+  Your drawing speed is recorded and becomes the animation's rhythm, so trace at the pace you'd actually write.
+  Hit <strong>▶ Preview</strong> anytime to see the write-on effect; bump <strong>mask width</strong> if letters show gaps.
+  Work auto-saves in this browser. When happy, <strong>Export JSON</strong> and hand the file to Claude.
+</p>
+
+<script>
+(() => {
+  const svg = document.getElementById('stage');
+  const traceLayer = document.getElementById('traceLayer');
+  const maskGroup = document.getElementById('maskGroup');
+  const livePath = document.getElementById('livePath');
+  const guideText = document.getElementById('guideText');
+  const inkText = document.getElementById('inkText');
+  const textGroup = document.getElementById('textGroup');
+  const statusEl = document.getElementById('status');
+  const widthSlider = document.getElementById('widthSlider');
+  const speedSlider = document.getElementById('speedSlider');
+
+  const STORE_KEY = 'arrival-wordmark-trace-v1';
+  // stroke = { points: [[x, y, tMs], ...] }  — tMs is ms since the first point of the first stroke
+  let strokes = [];
+  try { strokes = JSON.parse(localStorage.getItem(STORE_KEY) || '[]'); } catch (e) {}
+  let current = null;      // in-progress stroke
+  let clock0 = null;       // performance.now() at very first recorded point
+  if (strokes.length) {
+    const last = strokes[strokes.length - 1].points;
+    clock0 = -last[last.length - 1][2]; // resume clock after saved strokes
+  }
+  let rafId = null;
+
+  // Fit the wordmark to the stage once the font is in
+  document.fonts.load("160px 'Great Vibes'").then(() => {
+    const b = guideText.getBBox();
+    const scale = Math.min(1, 940 / b.width);
+    textGroup.setAttribute('font-size', String(Math.floor(160 * scale)));
+    const b2 = guideText.getBBox();
+    const dy = 160 - (b2.y + b2.height / 2);
+    textGroup.setAttribute('transform', `translate(0 ${dy.toFixed(1)})`);
+  });
+
+  function toSVG(e) {
+    const pt = svg.createSVGPoint();
+    pt.x = e.clientX; pt.y = e.clientY;
+    return pt.matrixTransform(svg.getScreenCTM().inverse());
+  }
+
+  function pathD(points) {
+    return points.map((p, i) => (i ? 'L' : 'M') + p[0].toFixed(1) + ' ' + p[1].toFixed(1)).join('');
+  }
+
+  function render() {
+    traceLayer.innerHTML = '';
+    for (const s of strokes) {
+      const el = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+      el.setAttribute('d', pathD(s.points));
+      traceLayer.appendChild(el);
+    }
+    statusEl.textContent = strokes.length + ' stroke' + (strokes.length === 1 ? '' : 's');
+  }
+
+  function save() {
+    localStorage.setItem(STORE_KEY, JSON.stringify(strokes));
+  }
+
+  function stopPreview() {
+    if (rafId) cancelAnimationFrame(rafId);
+    rafId = null;
+    inkText.setAttribute('visibility', 'hidden');
+    guideText.setAttribute('fill', '#e9dcee');
+    traceLayer.setAttribute('visibility', 'visible');
+    maskGroup.innerHTML = '';
+  }
+
+  // --- drawing ---
+  svg.addEventListener('pointerdown', (e) => {
+    if (e.button !== 0 && e.pointerType === 'mouse') return;
+    stopPreview();
+    svg.setPointerCapture(e.pointerId);
+    const now = performance.now();
+    if (clock0 === null) clock0 = now;
+    const p = toSVG(e);
+    current = { points: [[p.x, p.y, now - clock0]] };
+    livePath.setAttribute('d', pathD(current.points));
+    e.preventDefault();
+  });
+
+  svg.addEventListener('pointermove', (e) => {
+    if (!current) return;
+    const p = toSVG(e);
+    const last = current.points[current.points.length - 1];
+    if (Math.hypot(p.x - last[0], p.y - last[1]) < 1.5) return;
+    current.points.push([p.x, p.y, performance.now() - clock0]);
+    livePath.setAttribute('d', pathD(current.points));
+  });
+
+  function endStroke() {
+    if (!current) return;
+    if (current.points.length >= 2) {
+      current.points = current.points.map(([x, y, t]) => [+x.toFixed(1), +y.toFixed(1), Math.round(t)]);
+      strokes.push(current);
+      save();
+    }
+    current = null;
+    livePath.removeAttribute('d');
+    render();
+  }
+  svg.addEventListener('pointerup', endStroke);
+  svg.addEventListener('pointercancel', endStroke);
+
+  // --- controls ---
+  document.getElementById('undoBtn').onclick = () => { stopPreview(); strokes.pop(); save(); render(); };
+  document.getElementById('clearBtn').onclick = () => {
+    if (strokes.length && !confirm('Clear all ' + strokes.length + ' strokes?')) return;
+    stopPreview(); strokes = []; clock0 = null; save(); render();
+  };
+  widthSlider.oninput = () => { document.getElementById('widthVal').textContent = widthSlider.value; };
+  speedSlider.oninput = () => { document.getElementById('speedVal').textContent = (speedSlider.value / 100).toFixed(2) + '×'; };
+
+  // --- preview: replay strokes as a mask reveal with recorded timing ---
+  document.getElementById('previewBtn').onclick = () => {
+    stopPreview();
+    if (!strokes.length) return alert('Trace something first!');
+    traceLayer.setAttribute('visibility', 'hidden');
+    guideText.setAttribute('fill', '#f6eef8');
+    inkText.setAttribute('visibility', 'visible');
+
+    const speed = speedSlider.value / 100;
+    const width = widthSlider.value;
+    const MAX_GAP = 600; // cap long pauses between strokes, ms
+
+    let t = 0, prevEnd = null;
+    const plan = strokes.map((s) => {
+      const t0 = s.points[0][2], t1 = s.points[s.points.length - 1][2];
+      const gap = prevEnd === null ? 0 : Math.min(Math.max(t0 - prevEnd, 60), MAX_GAP);
+      prevEnd = t1;
+      const el = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+      el.setAttribute('d', pathD(s.points));
+      el.setAttribute('stroke-width', width);
+      maskGroup.appendChild(el);
+      const len = el.getTotalLength();
+      el.setAttribute('stroke-dasharray', len);
+      el.setAttribute('stroke-dashoffset', len);
+      const start = t + gap / speed;
+      const dur = Math.max(t1 - t0, 80) / speed;
+      t = start + dur;
+      return { el, len, start, dur };
+    });
+
+    const begin = performance.now() + 250;
+    function tick(now) {
+      const elapsed = now - begin;
+      let done = true;
+      for (const p of plan) {
+        const k = Math.min(Math.max((elapsed - p.start) / p.dur, 0), 1);
+        p.el.setAttribute('stroke-dashoffset', p.len * (1 - k));
+        if (k < 1) done = false;
+      }
+      if (!done) rafId = requestAnimationFrame(tick);
+      else { rafId = null; statusEl.textContent = strokes.length + ' strokes · preview done (' + (t / 1000).toFixed(1) + 's)'; }
+    }
+    rafId = requestAnimationFrame(tick);
+  };
+
+  // --- export ---
+  document.getElementById('jsonBtn').onclick = () => {
+    if (!strokes.length) return alert('Nothing to export yet.');
+    const data = {
+      text: 'Arrival Story',
+      font: 'Great Vibes',
+      fontSize: +textGroup.getAttribute('font-size'),
+      transform: textGroup.getAttribute('transform') || null,
+      viewBox: [0, 0, 1000, 320],
+      maskWidth: +widthSlider.value,
+      strokes,
+    };
+    const blob = new Blob([JSON.stringify(data)], { type: 'application/json' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = 'wordmark-trace.json';
+    a.click();
+    URL.revokeObjectURL(a.href);
+  };
+
+  render();
+})();
+</script>
+</body>
+</html>

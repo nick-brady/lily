@@ -21,8 +21,15 @@ export default {
           900: '#701a75',
         }
       },
+      keyframes: {
+        'fade-up': {
+          from: { opacity: '0', transform: 'translateY(12px)' },
+          to: { opacity: '1', transform: 'translateY(0)' },
+        },
+      },
       animation: {
         'pulse-slow': 'pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite',
+        'fade-up': 'fade-up 1s ease-out both',
       }
     },
   },
