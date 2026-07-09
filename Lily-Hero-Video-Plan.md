@@ -180,13 +180,14 @@ moment, everywhere" finale is the thesis shot.
 
 ### Scene 1 — "The first entry" (0:00–0:03.5) · bedroom, golden hour
 Two shots:
-- **Shot A (~2s max):** from behind Sarah, facing a full-body mirror — clearly a
-  bedroom, warm evening light. In the mirror: she's smiling, one hand holding her
-  belly, phone raised in the other — **visibly ~20 weeks pregnant**: a clear but
-  early bump, fitted top so it reads unmistakably on camera. *(Production note:
-  mirror reflections are a known weak spot for video models — the short duration
-  helps; favor the back-of-Sarah framing and let the reflection sit soft/slightly
-  out of focus.)*
+- **Shot A (~2s max, camera-as-mirror):** the camera *is* the mirror — Sarah faces
+  the lens directly in a warm golden-hour bedroom, smiling, one hand holding her
+  belly, raising the phone toward us to take the picture. A hint of mirror-frame
+  edge in the foreground sells it; no reflection is ever rendered. **Visibly ~20
+  weeks pregnant**: a clear but early bump, fitted top so it reads unmistakably on
+  camera. *(Production note: Seedance breaks scene geography when rendering
+  reflections — this framing eliminates the problem entirely, and it's a more
+  intimate image anyway.)*
 - **Shot B (~1s, plus a short hold):** cut to a direct view of Sarah looking at the
   photo on her phone, its light putting a soft glow on her face. She smiles, taps —
   the photo pops into the timeline — brief hold on her afterglow while the viewer's
@@ -199,8 +200,10 @@ Two shots:
 
 ### Interstitial A — the bump grows (0:03.5–0:05.5) · phone-only
 No new footage: Scene 1 slow-fades toward Scene 2 (scrim dips to carry the months).
-On the phone, **bump photos rapidly pop in** — same mirror, different outfits, the
-belly growing: "30 weeks" · "35 weeks!!!" · "get this baby out of me!". Twenty weeks
+On the phone, **bump photos rapidly pop in** — same camera-as-mirror framing as
+Shot A (phone raised toward the lens, exactly how a real mirror selfie reads),
+different outfits, the belly growing: "30 weeks" · "35 weeks!!!" · "get this baby
+out of me!". Twenty weeks
 compressed into two seconds, ending on a laugh — and the overdue-energy last post
 sets up *this is the day*. Hearts and reactions **trickle onto the photos as they
 land** — the family has been here all along — capped by one quick comment on the
