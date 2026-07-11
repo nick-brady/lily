@@ -457,10 +457,8 @@ in the load sequence.
 6. **Seedance tier/version** — affects per-shot cost and how many takes are realistic.
    Worth a small test batch (one character sheet + one 5s shot) before committing to
    the full board.
-7. **Whose mother is Janet?** The plan never pins it. Recommendation: **Sarah's mom**
-   — Emma-the-sister already shares Sarah's coloring, so the family reads clean
-   without explanation. If she's Marco's mom instead, warm her look toward his
-   coloring before generating her sheet.
+7. **Whose mother is Janet?** — ✅ resolved: **Sarah's mom.** Emma-the-sister already
+   shares Sarah's coloring, so the family reads clean without explanation.
 
 ## 8. Suggested build order
 
