@@ -93,6 +93,7 @@ from repositories import reactions as reactions_repo
 from repositories import timeline as timeline_repo
 from repositories import unlocks as unlocks_repo
 from repositories import users as users_repo
+import export as export_mod
 import fulfillment
 import payments
 from fulfillment import products as fulfillment_products
@@ -270,10 +271,8 @@ class BirthAccess:
     role: FamilyRole
 
 
-def require_birth_access(
-    birth_id: uuid.UUID = PathParam(...),
-    current_user: User = Depends(get_current_user),
-    db: Session = Depends(get_db),
+def _resolve_birth_access(
+    db: Session, *, birth_id: uuid.UUID, current_user: User
 ) -> BirthAccess:
     birth = births_repo.get_birth(db, birth_id)
     if birth is None or birth.deleted_at is not None:
@@ -284,7 +283,29 @@ def require_birth_access(
     return BirthAccess(birth=birth, role=role)
 
 
+def require_birth_access(
+    birth_id: uuid.UUID = PathParam(...),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> BirthAccess:
+    return _resolve_birth_access(db, birth_id=birth_id, current_user=current_user)
+
+
 def require_parent_access(access: BirthAccess = Depends(require_birth_access)) -> BirthAccess:
+    if not births_repo.is_parent(access.role):
+        raise HTTPException(status_code=403, detail="Parents only")
+    return access
+
+
+def require_parent_access_stream(
+    birth_id: uuid.UUID = PathParam(...),
+    current_user: User = Depends(get_current_user_stream),
+    db: Session = Depends(get_db),
+) -> BirthAccess:
+    """Parent gate for browser-navigated downloads: `get_current_user_stream`
+    accepts the JWT via header *or* `?token=` (an <a download> can't set
+    headers, same constraint as EventSource)."""
+    access = _resolve_birth_access(db, birth_id=birth_id, current_user=current_user)
     if not births_repo.is_parent(access.role):
         raise HTTPException(status_code=403, detail="Parents only")
     return access
@@ -2446,6 +2467,40 @@ def get_media(
 
     url = presigned_get_url(asset.original_s3_key)
     return RedirectResponse(url, status_code=307)
+
+
+@app.get("/birth/{birth_id}/export")
+def export_birth_data(
+    access: BirthAccess = Depends(require_parent_access_stream),
+    db: Session = Depends(get_db),
+) -> StreamingResponse:
+    """Everything on the page, as one ZIP. Always free — never behind the
+    unlock or any other paywall; the data is the family's, full stop.
+
+    Sync `def` on purpose: boto3 and zip-writing block, so FastAPI runs
+    this in its threadpool off the event loop. The zip lands in an
+    anonymous temp file first (disk cost ≈ media set size), then streams
+    out in 1 MiB chunks with a real Content-Length.
+    """
+    tmp, filename = export_mod.build_export_zip(db, access.birth)
+    size = os.fstat(tmp.fileno()).st_size
+
+    def _iter():
+        try:
+            while chunk := tmp.read(export_mod.EXPORT_CHUNK):
+                yield chunk
+        finally:
+            tmp.close()
+
+    return StreamingResponse(
+        _iter(),
+        media_type="application/zip",
+        headers={
+            "Content-Disposition": f'attachment; filename="{filename}"',
+            "Content-Length": str(size),
+            "Cache-Control": "no-store",
+        },
+    )
 
 
 # ============ SSE ============

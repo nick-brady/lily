@@ -104,3 +104,9 @@ def presigned_get_url(key: str, *, expires_in: int | None = None) -> str:
 def get_object_bytes(key: str) -> bytes:
     response = _internal_client().get_object(Bucket=_bucket_name(), Key=key)
     return response["Body"].read()
+
+
+def get_object_stream(key: str):
+    """Boto3 StreamingBody for large objects — read incrementally, never
+    buffer whole videos into RAM (see export.py)."""
+    return _internal_client().get_object(Bucket=_bucket_name(), Key=key)["Body"]
