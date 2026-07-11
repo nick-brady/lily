@@ -179,6 +179,8 @@ export default function BirthSettingsPage() {
             </div>
           </dl>
         </section>
+
+        <DownloadDataCard birthId={birth.id} />
       </main>
 
       {showThemePicker && (
@@ -197,6 +199,45 @@ function CenteredMessage({ children }) {
     <div className="min-h-screen flex items-center justify-center bg-gray-100 dark:bg-gray-900">
       <div className="text-gray-500 dark:text-gray-400 text-center px-4">{children}</div>
     </div>
+  );
+}
+
+
+function DownloadDataCard({ birthId }) {
+  const [preparing, setPreparing] = useState(false);
+
+  function download() {
+    setPreparing(true);
+    // Anchor-click (not location.assign) so a failure can't navigate the
+    // SPA; the attachment disposition keeps the page alive either way.
+    const a = document.createElement('a');
+    a.href = api.birthExportUrl(birthId);
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    // The browser owns the download from here — there's no completion
+    // event to listen for, so just re-enable after a beat.
+    setTimeout(() => setPreparing(false), 8000);
+  }
+
+  return (
+    <section className="card">
+      <h3 className="text-lg font-semibold t-ink">Download everything</h3>
+      <p className="text-sm t-muted mt-1 mb-4">
+        One ZIP with every photo, video, and voice memo at full quality, plus
+        spreadsheets of contractions, guesses, comments, and the whole
+        timeline. Always free — your memories are yours.
+      </p>
+      <button
+        type="button"
+        onClick={download}
+        disabled={preparing}
+        className="px-4 py-2 rounded-lg text-sm font-medium text-white disabled:opacity-50"
+        style={{ backgroundColor: 'var(--t-accent)' }}
+      >
+        {preparing ? 'Preparing your download…' : 'Download all data (.zip)'}
+      </button>
+    </section>
   );
 }
 

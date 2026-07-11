@@ -44,6 +44,7 @@ def test_birth_routes_require_auth() -> None:
         (f"/birth/{fake_id}/event/{fake_id}", "DELETE"),
         (f"/birth/{fake_id}/event/{fake_id}/toggle-ignore", "POST"),
         (f"/birth/{fake_id}/stream", "GET"),
+        (f"/birth/{fake_id}/export", "GET"),
     ]:
         response = client.request(method, path)
         assert response.status_code == 401, f"{method} {path} should require auth"

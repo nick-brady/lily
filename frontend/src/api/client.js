@@ -522,4 +522,12 @@ export const api = {
   mediaUrl(mediaId) {
     return `${API_URL}/media/${mediaId}`;
   },
+
+  // Browser-navigated download, so the JWT rides the query string like the
+  // SSE streams do (<a download> can't set an Authorization header). The
+  // export is always free — it must never gain an unlock/paywall check.
+  birthExportUrl(birthId) {
+    const token = getToken();
+    return `${API_URL}/birth/${birthId}/export?token=${encodeURIComponent(token || '')}`;
+  },
 };
