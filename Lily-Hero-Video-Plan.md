@@ -112,12 +112,15 @@ then attached as reference images to every shot they appear in.
   (abstractly — breathing, gripping Marco's hand, never in distress-closeup) through
   the labor arc; and the closing beat — baby asleep on her chest (no face shown),
   scrolling her own finished story.
-- **Look (consistency anchor):** early 30s, shoulder-length dark hair loosely tied
-  back, warm undertone, oversized cream cardigan over a ribbed sage tank (pregnancy
-  video scenes), hospital gown + the same cardigan over shoulders (labor scenes).
-  The bump-progression mirror stills deliberately vary the outfit per stage — the
-  changing clothes are what say "months are passing"; her face and the mirror stay
-  the constants.
+- **Look (consistency anchor):** early 30s, shoulder-length dark brown hair, warm
+  olive undertone, faint freckles on the nose bridge; small gold stud earrings +
+  thin gold necklace (identity anchors — every shot). Oversized cream cardigan over
+  a ribbed sage tank (pregnancy video scenes), hospital gown + the same cardigan
+  over shoulders (labor scenes). **Hair-state rule:** tied back in a low knot for
+  labor-day and hospital scenes; worn loose for the mirror-selfie stills. The
+  bump-progression stills deliberately vary the outfit per stage — the changing
+  clothes are what say "months are passing"; her face and the room stay the
+  constants.
 - **Persona truth to honor:** during labor, **Sarah never touches the phone.** The
   product is *around* her, not in her hands. Marco runs the page.
 
@@ -125,9 +128,11 @@ then attached as reference images to every shot they appear in.
 - **Role:** the operator. His hands and phone are the bridge between the room and the
   family. Taps the contraction timer, posts "water broke — game time", takes the
   photos, hits the "Baby Born" milestone.
-- **Look:** mid 30s, short dark hair, stubble, olive henley (pre-labor), gray tee +
-  hospital wristband (labor). Wedding band — helps hand-closeup continuity, and hand
-  closeups are most of his screen time.
+- **Look:** Latino, mid 30s, short dark brown (nearly black) hair, light stubble,
+  warm light-brown skin, easy wide grin. Olive henley with sleeves pushed up
+  (pre-labor), heather-gray tee + paper hospital wristband (labor). Plain
+  brushed-gold wedding band, **no watch, bare wrists** — the band + wristband are
+  what identify his hand closeups, and hand closeups are most of his screen time.
 
 ### Janet — the grandmother in Phoenix
 - **Role:** the emotional receiver — and the *first* responder. Scene 3 is her quick
@@ -243,7 +248,8 @@ and the gaps quietly say *not every contraction needs to be measured*.
 - **Cues:** `0:12.1 contraction:stop` → `0:12.4–0:13.8 timeline:contractionFlood`
 
 ### Scene 4 — "The decision" (0:14–0:17) · home, dusk — three quick shots
-- **Shot A (~1s):** closeup — the hospital bag zips shut by the door.
+- **Shot A (~1s):** closeup — the hospital bag zips shut by the door (the same
+  charcoal weekender planted in the 40-week photo — Appendix B).
 - **Shot B (~1.2s):** the look between Sarah and Marco — determined, but excited.
 - **Shot C (~0.8s):** Marco's hand slides across the table and grabs the keys.
 Shots A and C are faceless closeups — cheap to generate, zero consistency risk — and
@@ -451,6 +457,10 @@ in the load sequence.
 6. **Seedance tier/version** — affects per-shot cost and how many takes are realistic.
    Worth a small test batch (one character sheet + one 5s shot) before committing to
    the full board.
+7. **Whose mother is Janet?** The plan never pins it. Recommendation: **Sarah's mom**
+   — Emma-the-sister already shares Sarah's coloring, so the family reads clean
+   without explanation. If she's Marco's mom instead, warm her look toward his
+   coloring before generating her sheet.
 
 ## 8. Suggested build order
 
@@ -490,16 +500,21 @@ Shared template (adapt per character below):
 Per-character subject lines (prepend to the template):
 
 - **Sarah** — "A woman in her early 30s, shoulder-length dark brown hair loosely
-  tied back, warm skin undertone, kind tired-happy eyes, visibly ~38 weeks pregnant
-  with a full round belly. Outfit: ribbed sage-green tank top under an oversized
-  cream knit cardigan, leggings." *(Her body state in most scenes. The mirror-series
-  stills vary the outfit and bump size per stage — 20w/30w/35w/40w — using this
-  sheet as the face reference.)*
-- **Marco** — "A man in his mid 30s, short dark hair, light stubble, warm easy
-  smile. Outfit: olive henley, jeans, wedding band clearly visible. Add a third row:
-  two detail close-ups of his hands — one holding a phone mid-tap, one open — wedding
-  band visible in both." *(Hand closeups are most of his screen time; the hand
-  detail panels matter as much as his face.)*
+  tied back, warm olive skin undertone, faint freckles on the nose bridge, kind
+  tired-happy eyes, small gold stud earrings and a thin gold necklace, visibly ~38
+  weeks pregnant with a full round belly. Outfit: ribbed sage-green tank top under
+  an oversized cream knit cardigan, black leggings." *(Her body state in most
+  scenes. **Do not generate additional sheets per pregnancy stage** — one identity
+  canon only. The mirror-series stills vary outfit and bump per stage —
+  20w/30w/35w/40w — using this sheet as the face reference; the 20-week keeper
+  still then serves as the body reference for Scene 1's video shots.)*
+- **Marco** — "A Latino man in his mid 30s, short dark brown nearly-black hair,
+  light stubble, warm light-brown skin, warm easy wide grin. Outfit: olive henley
+  with sleeves pushed up, dark jeans, plain brushed-gold wedding band clearly
+  visible, no watch, bare wrists. Add a third row: two detail close-ups of his
+  hands — one holding a phone mid-tap, one open — wedding band visible in both."
+  *(Hand closeups are most of his screen time; the hand detail panels matter as
+  much as his face.)*
 - **Janet** — "A woman in her mid 60s, silver chin-length bob, reading glasses on a
   chain around her neck, warm expressive face with smile lines. Outfit: terracotta
   cardigan over a cream blouse, small gold earrings."
@@ -512,3 +527,49 @@ Per-character subject lines (prepend to the template):
   necklace."
 
 No sheet for **Baby Lily** — she is never a rendered face (see §3).
+
+---
+
+## Appendix B — The bedroom (location plate + bump-series progression)
+
+The mirror-selfie series and Scene 1 share one room, shot camera-as-mirror — so
+everything below is what sits **behind Sarah**. The room is designed to be a second
+bump: its background quietly becomes a nursery across the four photos.
+
+**Base plate prompt:**
+
+> A warm, lived-in main bedroom in late-afternoon golden hour. Camera at standing
+> height where a full-length mirror would hang. Behind the subject: a queen bed
+> with an oatmeal linen duvet and slightly rumpled white pillows, low light-oak
+> headboard, against a warm cream wall. Left of the bed, a west-facing window with
+> sheer white curtains, low golden sunlight streaming through and catching dust
+> motes, a trailing pothos plant on the sill. Right side, a light-oak dresser with
+> a small ceramic lamp, a stack of two books, and a small framed botanical
+> line-art print above it — abstract, no readable text. Sage-green throw blanket
+> folded at the foot of the bed. Warm white walls, honey-toned wood floor, woven
+> jute rug. Cozy, natural, documentary-real. No mirrors visible anywhere in frame.
+> Golden-hour warmth, soft shadows, gentle lens bloom from the window.
+
+**Progression — one additive change-set per photo, everything else frozen:**
+
+| Photo | Bump | Background change |
+|---|---|---|
+| "20 weeks! 🌸" | subtle, fitted top | Base room exactly. Nothing baby yet — the *before*. |
+| "30 weeks" | clearly pregnant | Flat crib box leans on the wall by the dresser; folded baby blankets on the bed corner. |
+| "35 weeks!!!" | full | Crib assembled in the window corner; diaper boxes by the dresser; a onesie laid out on the bed. |
+| "get this baby out of me!" | very full, over-it pose (hand on lower back) | Crib made up, mobile above it; **the packed hospital bag by the door** — the same bag that zips shut in Scene 4. |
+
+**Fixed anchors (never change, including Scene 12):** window position + sheer
+curtains, bed + oatmeal duvet, dresser + lamp + print, pothos, jute rug, wall
+color, golden-hour light direction. Changes are additive objects only — that's
+what makes drift detectable and rerolls cheap.
+
+**The hospital bag (recurring prop):** charcoal canvas weekender with tan leather
+handles. Planted in the 40-week photo, pays off zipping shut in Scene 4 Shot A.
+
+**Scene 12 closes the loop:** the keepsake scene's room is this same plate, one
+final variation — bassinet where the story ends, where it began.
+
+**Workflow:** generate the base plate → lock a keeper → generate photos 2-4 *from
+that keeper* as location reference with the change-set added. One canon room,
+additive edits — same discipline as the character sheets.

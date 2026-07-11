@@ -37,3 +37,6 @@ backend/preview_out/
 
 # Ansible production secrets
 deploy/group_vars/secrets.yml
+
+# Generated placeholder video (rebuild with make-placeholder.sh)
+prototype/hero/placeholder.mp4
