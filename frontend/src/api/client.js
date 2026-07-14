@@ -79,6 +79,16 @@ export const api = {
     return jsonOrThrow(res);
   },
 
+  // Always available, never behind any paywall — the counterpart of the
+  // free data export.
+  async deleteAccount({ removeContributions = false } = {}) {
+    const res = await fetch(
+      `${API_URL}/me?remove_contributions=${removeContributions}`,
+      { method: 'DELETE', headers: authHeaders() }
+    );
+    return jsonOrThrow(res); // 204 → null
+  },
+
   async getBirth(birthId) {
     const res = await fetch(`${API_URL}/birth/${birthId}`, { headers: authHeaders() });
     return jsonOrThrow(res);

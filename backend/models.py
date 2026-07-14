@@ -125,6 +125,11 @@ class User(Base):
     phone: Mapped[str | None] = mapped_column(sa.Text, nullable=True)
     display_name: Mapped[str | None] = mapped_column(sa.Text, nullable=True)
     avatar_url: Mapped[str | None] = mapped_column(sa.Text, nullable=True)
+    # Set by account deletion: the row survives as a PII-free sentinel when
+    # authored content still references it, and auth fails closed on this.
+    deleted_at: Mapped[datetime | None] = mapped_column(
+        sa.DateTime(timezone=True), nullable=True
+    )
     created_at: Mapped[datetime] = _created_at()
     updated_at: Mapped[datetime] = _updated_at()
 

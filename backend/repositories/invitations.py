@@ -216,20 +216,26 @@ def list_redemptions(
     return [(r, u, role) for r, u, role in rows]
 
 
-def remove_viewer(
-    db: Session, *, family_id: uuid.UUID, user_id: uuid.UUID
+def remove_member(
+    db: Session,
+    *,
+    family_id: uuid.UUID,
+    user_id: uuid.UUID,
+    roles: frozenset[FamilyRole] | None = frozenset({FamilyRole.family_viewer}),
 ) -> bool:
-    """Remove a family viewer's access. Deletes their family membership
-    (access is re-derived from membership on every request, so this cuts
-    them off immediately) and drops their redemption rows across all of
-    this family's links — keeping each link's `redemption_count` honest
-    and making them vanish from every "who joined" list.
+    """Remove a member's access. Deletes their family membership (access is
+    re-derived from membership on every request, so this cuts them off
+    immediately) and drops their redemption rows across all of this
+    family's links — keeping each link's `redemption_count` honest and
+    making them vanish from every "who joined" list.
 
-    Only plain `family_viewer` memberships are removable here; a co-parent
-    or owner who followed a viewer link is left untouched. The invite link
+    `roles` restricts which membership roles are removable; the default
+    matches the moderation route (plain viewers only, so a co-parent or
+    owner who followed a viewer link is left untouched). Pass `roles=None`
+    to remove any membership — account deletion uses that. The invite link
     itself is *not* revoked — if they still have it they can rejoin, which
     re-inserts the redemption row and re-increments the count. Returns
-    True if a viewer was removed, False otherwise.
+    True if a membership was removed, False otherwise.
     """
     membership = db.scalars(
         select(FamilyMembership).where(
@@ -237,7 +243,7 @@ def remove_viewer(
             FamilyMembership.user_id == user_id,
         )
     ).first()
-    if membership is None or membership.role != FamilyRole.family_viewer:
+    if membership is None or (roles is not None and membership.role not in roles):
         return False
     db.delete(membership)
     redemptions = db.execute(
@@ -256,3 +262,10 @@ def remove_viewer(
         db.delete(redemption)
     db.flush()
     return True
+
+
+def remove_viewer(
+    db: Session, *, family_id: uuid.UUID, user_id: uuid.UUID
+) -> bool:
+    """Moderation-route wrapper: only plain family_viewer memberships."""
+    return remove_member(db, family_id=family_id, user_id=user_id)
