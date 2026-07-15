@@ -2,6 +2,7 @@ import { useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import WordmarkWriteOn from '../components/WordmarkWriteOn';
+import OnePlaceSection from '../components/landing/OnePlaceSection';
 
 export default function LandingPage() {
   const { isAuthenticated, loading, me } = useAuth();
@@ -89,6 +90,9 @@ export default function LandingPage() {
         </div>
         </div>
       </section>
+
+      {/* Silence the group chat */}
+      <OnePlaceSection />
 
       {/* How it works */}
       <section className="max-w-4xl mx-auto px-6 py-20">
