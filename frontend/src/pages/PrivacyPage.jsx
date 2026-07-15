@@ -80,7 +80,9 @@ export default function PrivacyPage() {
           <li>Reply STOP to any text message to opt out of SMS.</li>
           <li>You can export your family's page content as a download.</li>
           <li>
-            To delete your account or content, email{' '}
+            You can delete your account at any time from your account page — this
+            permanently erases your sign-in details and any birth pages only you
+            manage. Need a hand, or want something more specific removed? Email{' '}
             <a href={`mailto:${SUPPORT_EMAIL}`} className="text-primary-600 dark:text-primary-400 hover:underline">{SUPPORT_EMAIL}</a>{' '}
             and we'll take care of it.
           </li>

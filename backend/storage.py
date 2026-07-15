@@ -110,3 +110,24 @@ def get_object_stream(key: str):
     """Boto3 StreamingBody for large objects — read incrementally, never
     buffer whole videos into RAM (see export.py)."""
     return _internal_client().get_object(Bucket=_bucket_name(), Key=key)["Body"]
+
+
+def delete_objects(keys: list[str]) -> list[str]:
+    """Batch-delete objects; returns the keys that failed. DeleteObjects
+    caps at 1000 keys per call, so chunk. Missing keys are not errors
+    (S3 delete is idempotent)."""
+    if not keys:
+        return []
+    client = _internal_client()
+    bucket = _bucket_name()
+    failed: list[str] = []
+    for i in range(0, len(keys), 1000):
+        response = client.delete_objects(
+            Bucket=bucket,
+            Delete={
+                "Objects": [{"Key": key} for key in keys[i : i + 1000]],
+                "Quiet": True,
+            },
+        )
+        failed.extend(err["Key"] for err in response.get("Errors", []))
+    return failed

@@ -291,7 +291,10 @@ def _user_from_jwt(raw_token: str, db: Session) -> User:
             headers={"WWW-Authenticate": "Bearer"},
         )
     user = db.get(User, user_id)
-    if user is None:
+    # Deleted accounts fail closed with the same detail as a missing row —
+    # outstanding 30-day JWTs have no revocation list, and the response
+    # shouldn't reveal whether an account existed.
+    if user is None or user.deleted_at is not None:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Unknown user",

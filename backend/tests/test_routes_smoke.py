@@ -37,6 +37,7 @@ def test_birth_routes_require_auth() -> None:
     fake_id = "00000000-0000-0000-0000-000000000000"
     client = _client()
     for path, method in [
+        ("/me", "DELETE"),
         (f"/birth/{fake_id}", "GET"),
         (f"/birth/{fake_id}", "PATCH"),
         (f"/birth/{fake_id}/timeline", "GET"),

@@ -93,6 +93,7 @@ from repositories import reactions as reactions_repo
 from repositories import timeline as timeline_repo
 from repositories import unlocks as unlocks_repo
 from repositories import users as users_repo
+import account_deletion
 import export as export_mod
 import fulfillment
 import payments
@@ -260,6 +261,23 @@ def update_me(
     db.commit()
     db.refresh(current_user)
     return UserOut.model_validate(current_user)
+
+
+@app.delete("/me", status_code=204)
+def delete_me(
+    remove_contributions: bool = False,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> Response:
+    """Self-serve account deletion — always available, never behind any
+    paywall. See account_deletion.py for exactly what happens per family.
+    Sync def on purpose: row deletes + S3 batch deletes block, so FastAPI
+    runs this in its threadpool (same rationale as the export route).
+    """
+    account_deletion.delete_account(
+        db, current_user, remove_contributions=remove_contributions
+    )
+    return Response(status_code=204)
 
 
 # ============ Birth access dependency ============

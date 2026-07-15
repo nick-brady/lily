@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Link, Navigate, useNavigate } from 'react-router-dom';
 import { api } from '../api/client';
 import { useAuth } from '../contexts/AuthContext';
@@ -159,6 +159,7 @@ function NameField({ user, onSaved }) {
 export default function AccountPage() {
   const { isAuthenticated, loading, me, user, logout, refreshMe } = useAuth();
   const navigate = useNavigate();
+  const [showDelete, setShowDelete] = useState(false);
 
   if (loading) return null;
   if (!isAuthenticated) return <Navigate to="/login" replace />;
@@ -248,6 +249,199 @@ export default function AccountPage() {
               <span> · {user.email || user.phone}</span>
             )}
           </p>
+        </div>
+
+        {/* Danger zone */}
+        <div className="mt-8 pt-6 border-t border-red-200 dark:border-red-900/40">
+          <h2 className="text-sm font-semibold text-red-600 dark:text-red-400">
+            Delete account
+          </h2>
+          <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+            Permanently erases your sign-in details and any birth pages only you
+            manage. This cannot be undone.
+          </p>
+          <button
+            type="button"
+            onClick={() => setShowDelete(true)}
+            className="mt-3 px-4 py-2 text-sm rounded-lg bg-red-500 hover:bg-red-600 text-white font-medium"
+          >
+            Delete my account…
+          </button>
+        </div>
+      </div>
+
+      {showDelete && (
+        <DeleteAccountModal
+          me={me}
+          onClose={() => setShowDelete(false)}
+          onDeleted={signOut}
+        />
+      )}
+    </div>
+  );
+}
+
+function DeleteAccountModal({ me, onClose, onDeleted }) {
+  const [parentCounts, setParentCounts] = useState(null); // familyId -> # of parents
+  const [removeContributions, setRemoveContributions] = useState(false);
+  const [confirmText, setConfirmText] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+
+  const families = me?.families || [];
+  const parentFamilyIds = families
+    .filter((f) => PARENT_ROLES.includes(f.role))
+    .map((f) => f.id);
+
+  // Sole-parent vs shared decides whether a family's pages are erased or
+  // handed to the co-parent — fetch the parent rosters to tell them apart.
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const counts = {};
+      await Promise.all(
+        parentFamilyIds.map(async (familyId) => {
+          try {
+            const data = await api.listCoParents(familyId);
+            counts[familyId] = (data.members || []).length;
+          } catch {
+            counts[familyId] = null; // unknown — show cautious copy
+          }
+        })
+      );
+      if (!cancelled) setParentCounts(counts);
+    })();
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const consequence = (family) => {
+    const names = (family.births || [])
+      .map((b) => b.child_name || 'Baby')
+      .join(', ');
+    if (family.role === 'owner') {
+      const count = parentCounts?.[family.id];
+      if (count === undefined || parentCounts === null) return { names, text: 'Checking…' };
+      if (count !== null && count > 1) {
+        return {
+          names,
+          text: 'Ownership transfers to your co-parent. Everything you posted stays, with your name removed.',
+        };
+      }
+      return {
+        names,
+        erased: true,
+        text: 'Permanently erased for everyone — every photo, video, contraction, and comment.',
+        births: family.births || [],
+      };
+    }
+    if (family.role === 'co_parent') {
+      return {
+        names,
+        text: "You'll leave this family. Everything you posted stays, with your name removed.",
+      };
+    }
+    return { names, text: "You'll stop following this page." };
+  };
+
+  const confirm = async () => {
+    setBusy(true);
+    setError('');
+    try {
+      await api.deleteAccount({ removeContributions });
+      onDeleted();
+    } catch (err) {
+      setError(err.message || 'Could not delete your account. Nothing was changed.');
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div
+      className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4"
+      onClick={onClose}
+    >
+      <div
+        className="bg-white dark:bg-gray-800 rounded-2xl shadow-xl max-w-md w-full p-6 max-h-[85vh] overflow-y-auto"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
+          Delete your account?
+        </h3>
+
+        <ul className="mt-4 space-y-3">
+          {families.map((family) => {
+            const c = consequence(family);
+            return (
+              <li key={family.id} className="text-sm">
+                <span className="font-medium text-gray-800 dark:text-gray-100">
+                  {c.names}
+                </span>
+                <span className="block text-gray-500 dark:text-gray-400">
+                  {c.text}
+                </span>
+                {c.erased && (
+                  <span className="block mt-1 text-xs text-primary-700 dark:text-primary-300">
+                    Download everything first — it's free:{' '}
+                    {c.births.map((birth, i) => (
+                      <span key={birth.id}>
+                        {i > 0 && ' · '}
+                        <Link
+                          to={`/b/${birth.slug}/settings`}
+                          className="underline hover:opacity-80"
+                        >
+                          {birth.child_name || 'Baby'}'s settings
+                        </Link>
+                      </span>
+                    ))}
+                  </span>
+                )}
+              </li>
+            );
+          })}
+        </ul>
+
+        <label className="mt-4 flex items-start gap-2 text-sm text-gray-600 dark:text-gray-300">
+          <input
+            type="checkbox"
+            checked={removeContributions}
+            onChange={(e) => setRemoveContributions(e.target.checked)}
+            className="mt-0.5"
+          />
+          Also delete my comments, reactions, and guesses on other families' pages
+        </label>
+
+        <div className="mt-5">
+          <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">
+            Type <span className="font-mono font-semibold">DELETE</span> to confirm
+          </label>
+          <input
+            value={confirmText}
+            onChange={(e) => setConfirmText(e.target.value)}
+            className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-sm text-gray-900 dark:text-white"
+          />
+        </div>
+
+        {error && <p className="mt-3 text-sm text-red-500">{error}</p>}
+
+        <div className="mt-5 flex justify-end gap-2">
+          <button
+            type="button"
+            onClick={onClose}
+            className="px-4 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-700"
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            onClick={confirm}
+            disabled={busy || confirmText !== 'DELETE'}
+            className="px-4 py-2 text-sm rounded-lg bg-red-500 hover:bg-red-600 text-white font-medium disabled:opacity-50"
+          >
+            {busy ? 'Deleting…' : 'Delete my account'}
+          </button>
         </div>
       </div>
     </div>
