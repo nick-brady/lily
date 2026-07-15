@@ -5,6 +5,7 @@ venv/
 
 # Build output
 frontend/dist/
+frontend-admin/dist/
 
 # Python
 __pycache__/

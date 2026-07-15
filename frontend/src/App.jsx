@@ -1,5 +1,6 @@
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom';
 import { AuthProvider } from './contexts/AuthContext';
+import { PageTracking } from './hooks/usePageTracking';
 import AccountPage from './pages/AccountPage';
 import AuthPage from './pages/AuthPage';
 import AuthVerifyPage from './pages/AuthVerifyPage';
@@ -16,6 +17,7 @@ export default function App() {
   return (
     <AuthProvider>
       <BrowserRouter>
+        <PageTracking />
         <Routes>
           <Route path="/" element={<LandingPage />} />
           <Route path="/account" element={<AccountPage />} />

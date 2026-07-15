@@ -36,6 +36,36 @@
   when: not cert_file.stat.exists
   notify: reload nginx
 
+# Admin dashboard: a separate certificate rather than a SAN expansion —
+# --expand would re-issue the apex cert and break the stat-based
+# idempotency above. DNS for {{ admin_domain }} must exist before this runs.
+- name: Check if admin certificate already exists
+  stat:
+    path: /etc/letsencrypt/live/{{ admin_domain }}/fullchain.pem
+  register: admin_cert_file
+
+- name: Obtain admin SSL certificate
+  command: >
+    certbot certonly --nginx
+    -d {{ admin_domain }}
+    --non-interactive
+    --agree-tos
+    --email {{ certbot_email }}
+  when: not admin_cert_file.stat.exists
+  notify: reload nginx
+
+- name: Render TLS-enabled admin nginx config now the certificate exists
+  template:
+    src: ../../nginx/templates/nginx-admin.conf.j2
+    dest: "/etc/nginx/sites-available/{{ app_name }}-admin"
+    owner: root
+    group: root
+    mode: '0644'
+  vars:
+    tls_enabled: true
+  when: not admin_cert_file.stat.exists
+  notify: reload nginx
+
 - name: Set up automatic renewal cron job
   cron:
     name: "Certbot renewal"

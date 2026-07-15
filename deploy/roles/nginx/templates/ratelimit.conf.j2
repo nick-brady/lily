@@ -1,0 +1,6 @@
+# http-level rate-limit zones (limit_req_zone must live at http scope, so
+# this ships as a conf.d drop-in rather than inside a server block).
+#
+# /api/track is a public unauthenticated INSERT — the app stores no IPs by
+# design, so nginx (which does see the IP) is where flood control lives.
+limit_req_zone $binary_remote_addr zone=track:1m rate=10r/s;

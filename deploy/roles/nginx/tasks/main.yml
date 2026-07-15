@@ -10,6 +10,16 @@
     state: absent
   notify: reload nginx
 
+# http-scope rate-limit zones (used by the /api/track location)
+- name: Install rate-limit zones
+  template:
+    src: ratelimit.conf.j2
+    dest: /etc/nginx/conf.d/lily-ratelimit.conf
+    owner: root
+    group: root
+    mode: '0644'
+  notify: reload nginx
+
 # The template renders the :443 server only when the cert already exists;
 # on first provision this renders plain :80, and the certbot role re-renders
 # with TLS right after issuing the certificate.
@@ -33,6 +43,30 @@
   file:
     src: "/etc/nginx/sites-available/{{ app_name }}"
     dest: "/etc/nginx/sites-enabled/{{ app_name }}"
+    state: link
+  notify: reload nginx
+
+# Admin dashboard vhost — same pattern, its own certificate.
+- name: Check for existing admin TLS certificate
+  stat:
+    path: /etc/letsencrypt/live/{{ admin_domain }}/fullchain.pem
+  register: admin_tls_cert
+
+- name: Create admin nginx site config
+  template:
+    src: nginx-admin.conf.j2
+    dest: "/etc/nginx/sites-available/{{ app_name }}-admin"
+    owner: root
+    group: root
+    mode: '0644'
+  vars:
+    tls_enabled: "{{ admin_tls_cert.stat.exists }}"
+  notify: reload nginx
+
+- name: Enable admin nginx site
+  file:
+    src: "/etc/nginx/sites-available/{{ app_name }}-admin"
+    dest: "/etc/nginx/sites-enabled/{{ app_name }}-admin"
     state: link
   notify: reload nginx
 

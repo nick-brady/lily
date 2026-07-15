@@ -84,6 +84,7 @@ services:
       UNLOCK_PRICE_CENTS: ${UNLOCK_PRICE_CENTS:-1200}
       PRINTFUL_CONFIRM_ORDERS: ${PRINTFUL_CONFIRM_ORDERS:-}
       GIFT_SHIPPING_COUNTRIES: ${GIFT_SHIPPING_COUNTRIES:-US}
+      ADMIN_EMAILS: ${ADMIN_EMAILS:-}
     # No published host port: the browser reaches the API same-origin via
     # the frontend's /api proxy, and containers use the compose network.
     volumes:
@@ -110,7 +111,23 @@ services:
       - ./frontend:/app
       - frontend-node-modules:/app/node_modules
 
+  frontend-admin:
+    build:
+      context: ./frontend-admin
+      dockerfile: Dockerfile.dev
+    restart: unless-stopped
+    depends_on:
+      - backend
+    environment:
+      API_PROXY_TARGET: http://backend:8000
+    ports:
+      - "${ADMIN_FRONTEND_PORT:-3001}:3001"
+    volumes:
+      - ./frontend-admin:/app
+      - frontend-admin-node-modules:/app/node_modules
+
 volumes:
   pgdata:
   uploads:
   frontend-node-modules:
+  frontend-admin-node-modules:

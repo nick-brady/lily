@@ -15,7 +15,7 @@ import re
 import uuid
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from pathlib import Path
 from typing import Annotated, AsyncIterator, Literal, Union
 
@@ -91,18 +91,22 @@ from repositories import invitations as invitations_repo
 from repositories import media as media_repo
 from repositories import reactions as reactions_repo
 from repositories import timeline as timeline_repo
+from repositories import stats as stats_repo
 from repositories import unlocks as unlocks_repo
 from repositories import users as users_repo
 import account_deletion
+import admin as admin_mod
 import export as export_mod
 import fulfillment
 import payments
 from fulfillment import products as fulfillment_products
 from storage import ensure_bucket, presigned_get_url, put_object
 from schemas import (
+    AdminOverviewOut,
     AuthRequestIn,
     AuthRequestOut,
     AuthVerifyIn,
+    TrackIn,
     BabyBornIn,
     BirthCreateIn,
     BirthOut,
@@ -2751,6 +2755,46 @@ def _serialize_event_with_engagement(
     return _serialize_events_with_engagement(
         db, [event], requester_user_id=requester_user_id
     )[0]
+
+
+# ============ Analytics ============
+
+
+@app.post("/track", status_code=204)
+def track_visit(
+    payload: TrackIn,
+    request: Request,
+    current_user: User | None = Depends(get_optional_current_user),
+    db: Session = Depends(get_db),
+) -> Response:
+    """Anonymous page-view tracking (self-hosted; no cookies, no IPs).
+    nginx rate-limits this path in production."""
+    user_agent = request.headers.get("user-agent")
+    stats_repo.record_visit(
+        db,
+        path=payload.path,
+        referrer=payload.referrer,
+        ref=payload.ref,
+        utm_source=payload.utm_source,
+        utm_medium=payload.utm_medium,
+        utm_campaign=payload.utm_campaign,
+        user_id=current_user.id if current_user else None,
+        user_agent=user_agent[:256] if user_agent else None,
+    )
+    db.commit()
+    return Response(status_code=204)
+
+
+@app.get("/admin/stats/overview", response_model=AdminOverviewOut)
+def admin_stats_overview(
+    start_date: date | None = None,
+    end_date: date | None = None,
+    admin_user: User = Depends(admin_mod.get_admin_user),
+    db: Session = Depends(get_db),
+) -> AdminOverviewOut:
+    """Everything the admin dashboard shows. Dates are inclusive UTC
+    calendar days; defaults to the last 30 days."""
+    return admin_mod.overview_stats(db, start_date, end_date)
 
 
 if __name__ == "__main__":

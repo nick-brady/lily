@@ -130,6 +130,17 @@ class User(Base):
     deleted_at: Mapped[datetime | None] = mapped_column(
         sa.DateTime(timezone=True), nullable=True
     )
+    # Bumped (throttled) on authenticated requests; nullable because it only
+    # exists for users seen after this column shipped.
+    last_seen_at: Mapped[datetime | None] = mapped_column(
+        sa.DateTime(timezone=True), nullable=True
+    )
+    # First-touch acquisition attribution — the landing ?ref=/utm_* params
+    # this user arrived with. Set once at signup, never overwritten.
+    signup_ref: Mapped[str | None] = mapped_column(sa.Text, nullable=True)
+    signup_utm_source: Mapped[str | None] = mapped_column(sa.Text, nullable=True)
+    signup_utm_medium: Mapped[str | None] = mapped_column(sa.Text, nullable=True)
+    signup_utm_campaign: Mapped[str | None] = mapped_column(sa.Text, nullable=True)
     created_at: Mapped[datetime] = _created_at()
     updated_at: Mapped[datetime] = _updated_at()
 
@@ -869,3 +880,30 @@ class GiftShipment(Base):
     created_at: Mapped[datetime] = _created_at()
 
     __table_args__ = (sa.Index("ix_gift_shipments_order", "gift_order_id"),)
+
+
+class PageVisit(Base):
+    """One SPA page view, including anonymous pre-signup traffic — the only
+    audience the rest of the schema can't see. Deliberately stores no IP
+    address (cookieless/bannerless posture; nginx rate-limits the public
+    insert instead). `user_id` links the visit when a token was presented,
+    and SET NULL keeps rows as anonymous counts after account deletion."""
+
+    __tablename__ = "page_visits"
+
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    occurred_at: Mapped[datetime] = _created_at()
+    path: Mapped[str] = mapped_column(sa.Text, nullable=False)
+    referrer: Mapped[str | None] = mapped_column(sa.Text, nullable=True)
+    ref: Mapped[str | None] = mapped_column(sa.Text, nullable=True)
+    utm_source: Mapped[str | None] = mapped_column(sa.Text, nullable=True)
+    utm_medium: Mapped[str | None] = mapped_column(sa.Text, nullable=True)
+    utm_campaign: Mapped[str | None] = mapped_column(sa.Text, nullable=True)
+    user_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        sa.ForeignKey("users.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    user_agent: Mapped[str | None] = mapped_column(sa.Text, nullable=True)
+
+    __table_args__ = (sa.Index("ix_page_visits_occurred_at", "occurred_at"),)
