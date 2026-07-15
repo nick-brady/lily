@@ -259,7 +259,15 @@ function EngagementFooter({ event, scope, isUnlocked }) {
   return (
     <div className="mt-3">
       <ReactionBar event={event} scope={scope} />
-      <CommentThread event={event} scope={scope} isUnlocked={isUnlocked} />
+      <CommentThread
+        event={event}
+        scope={scope}
+        isUnlocked={isUnlocked}
+        // Scripted fixtures (landing demo, hero video) ride their comments
+        // on the event itself; real events never carry demo_comments.
+        initialComments={event.demo_comments ?? null}
+        defaultExpanded={Boolean(event.demo_comments?.length)}
+      />
     </div>
   );
 }

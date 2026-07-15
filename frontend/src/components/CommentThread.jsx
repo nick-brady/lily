@@ -16,18 +16,25 @@ import { relativeTime } from '../utils/relativeTime';
  * the comments for everyone — it's permanent for this baby" prompt.
  * Once Stripe lands in PR 5 the prompt becomes a real CTA; today it's
  * a stub that explains the model.
+ *
+ * Demo mode (`initialComments`): scripted threads on the landing page and
+ * hero video render fixture comments without touching the API and hide the
+ * composer — a scripted thread isn't interactive.
  */
 export default function CommentThread({
   event,
   scope,
   isUnlocked,
   countOverride = null,
+  initialComments = null,
+  defaultExpanded = false,
 }) {
+  const isDemo = initialComments !== null;
   const { isAuthenticated, user, refreshMe } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
-  const [expanded, setExpanded] = useState(false);
-  const [comments, setComments] = useState(null);
+  const [expanded, setExpanded] = useState(defaultExpanded);
+  const [comments, setComments] = useState(initialComments);
   const [loading, setLoading] = useState(false);
   const [body, setBody] = useState('');
   const [submitting, setSubmitting] = useState(false);
@@ -60,8 +67,16 @@ export default function CommentThread({
 
   const displayedCount = countOverride ?? event.comment_count ?? 0;
 
+  // Demo threads follow the script: when the cue delivers comments, show
+  // them and open the thread.
   useEffect(() => {
-    if (!expanded || comments !== null) return;
+    if (initialComments === null) return;
+    setComments(initialComments);
+    if (initialComments.length > 0) setExpanded(true);
+  }, [initialComments]);
+
+  useEffect(() => {
+    if (isDemo || !expanded || comments !== null) return;
     let cancelled = false;
     setLoading(true);
     api
@@ -226,19 +241,21 @@ export default function CommentThread({
             </div>
           )}
 
-          <Composer
-            body={body}
-            setBody={setBody}
-            onSubmit={submit}
-            onSignIn={promptSignIn}
-            submitting={submitting}
-            ref={textareaRef}
-            isAuthenticated={isAuthenticated}
-            isUnlocked={isUnlocked}
-            lockedPrompt={lockedPrompt}
-            onUnlock={scope.slug ? startUnlock : null}
-            unlockState={unlockState}
-          />
+          {!isDemo && (
+            <Composer
+              body={body}
+              setBody={setBody}
+              onSubmit={submit}
+              onSignIn={promptSignIn}
+              submitting={submitting}
+              ref={textareaRef}
+              isAuthenticated={isAuthenticated}
+              isUnlocked={isUnlocked}
+              lockedPrompt={lockedPrompt}
+              onUnlock={scope.slug ? startUnlock : null}
+              unlockState={unlockState}
+            />
+          )}
         </div>
       )}
     </div>
