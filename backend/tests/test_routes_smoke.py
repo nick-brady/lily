@@ -18,7 +18,7 @@ def _client() -> TestClient:
 def test_root_returns_running() -> None:
     response = _client().get("/")
     assert response.status_code == 200
-    assert response.json() == {"name": "lily", "status": "running"}
+    assert response.json() == {"name": "arrival-story", "status": "running"}
 
 
 def test_me_requires_auth() -> None:

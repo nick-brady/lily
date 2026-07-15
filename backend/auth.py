@@ -21,13 +21,14 @@ import secrets
 import uuid
 from datetime import datetime, timedelta, timezone
 
+import sqlalchemy as sa
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from jose import JWTError, jwt
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from db import get_db
+from db import engine, get_db
 from messenger import ChallengeDeliveryError, Messenger, get_messenger
 from models import AuthChallenge, AuthIdentifierKind, User
 from repositories import invitations as invitations_repo
@@ -41,6 +42,7 @@ JWT_SECRET_KEY = os.environ.get(
 JWT_ALGORITHM = "HS256"
 JWT_TTL = timedelta(days=30)
 CHALLENGE_TTL = timedelta(minutes=15)
+LAST_SEEN_STALENESS = timedelta(minutes=15)
 MAX_ATTEMPTS_PER_CHALLENGE = 5
 CHALLENGE_COOLDOWN_SECONDS = 30
 
@@ -189,7 +191,7 @@ def request_challenge(payload: AuthRequestIn, db: Session) -> AuthRequestOut:
 
 def verify_challenge(payload: AuthVerifyIn, db: Session) -> TokenOut:
     challenge = _resolve_challenge(payload, db)
-    user = _find_or_create_user(challenge, db)
+    user = _find_or_create_user(challenge, db, attribution=payload)
     challenge.consumed_at = datetime.now(timezone.utc)
 
     if payload.invite_token:
@@ -260,7 +262,9 @@ def _resolve_challenge(payload: AuthVerifyIn, db: Session) -> AuthChallenge:
     )
 
 
-def _find_or_create_user(challenge: AuthChallenge, db: Session) -> User:
+def _find_or_create_user(
+    challenge: AuthChallenge, db: Session, attribution: AuthVerifyIn | None = None
+) -> User:
     if challenge.identifier_kind is AuthIdentifierKind.email:
         existing = db.scalars(
             select(User).where(User.email == challenge.identifier)
@@ -271,12 +275,20 @@ def _find_or_create_user(challenge: AuthChallenge, db: Session) -> User:
         ).first()
 
     if existing:
+        # Attribution is first-touch and set only at creation — a returning
+        # user re-authenticating through a campaign link stays credited to
+        # whatever brought them here originally.
         return existing
 
     user = User(
         email=challenge.identifier if challenge.identifier_kind is AuthIdentifierKind.email else None,
         phone=challenge.identifier if challenge.identifier_kind is AuthIdentifierKind.phone else None,
     )
+    if attribution is not None:
+        user.signup_ref = attribution.ref
+        user.signup_utm_source = attribution.utm_source
+        user.signup_utm_medium = attribution.utm_medium
+        user.signup_utm_campaign = attribution.utm_campaign
     db.add(user)
     db.flush()
     return user
@@ -300,7 +312,37 @@ def _user_from_jwt(raw_token: str, db: Session) -> User:
             detail="Unknown user",
             headers={"WWW-Authenticate": "Bearer"},
         )
+    _touch_last_seen(user)
     return user
+
+
+def _touch_last_seen(user: User) -> None:
+    """Throttled `last_seen_at` bump, at most once per LAST_SEEN_STALENESS.
+
+    Runs on a separate connection: the request session's commit belongs to
+    the route handler, and committing it here would expire loaded ORM state
+    mid-request. The re-check in the WHERE clause makes concurrent stale
+    requests idempotent, and analytics must never fail auth — hence the
+    blanket except.
+    """
+    now = datetime.now(timezone.utc)
+    if user.last_seen_at is not None and now - user.last_seen_at < LAST_SEEN_STALENESS:
+        return
+    try:
+        with engine.begin() as conn:
+            conn.execute(
+                sa.update(User.__table__)
+                .where(
+                    User.id == user.id,
+                    sa.or_(
+                        User.last_seen_at.is_(None),
+                        User.last_seen_at < now - LAST_SEEN_STALENESS,
+                    ),
+                )
+                .values(last_seen_at=now)
+            )
+    except Exception:
+        pass
 
 
 def get_current_user(

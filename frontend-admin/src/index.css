@@ -1,0 +1,19 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html {
+    font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    color-scheme: light;
+  }
+}
+
+@layer components {
+  .card {
+    @apply bg-white rounded-2xl shadow p-6;
+  }
+  .tabular {
+    font-variant-numeric: tabular-nums;
+  }
+}

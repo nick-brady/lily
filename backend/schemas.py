@@ -7,7 +7,7 @@ code can trust the types without further checks (parse, don't validate).
 from __future__ import annotations
 
 import uuid
-from datetime import datetime
+from datetime import date, datetime
 from typing import Annotated, Literal, Optional, Union
 
 from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
@@ -329,6 +329,12 @@ class AuthVerifyIn(BaseModel):
     code: Optional[str] = None
     token: Optional[str] = None
     invite_token: Optional[str] = None
+    # First-touch acquisition attribution, forwarded from the landing-page
+    # capture. Recorded only when this verify creates a brand-new user.
+    ref: Optional[str] = Field(default=None, max_length=128)
+    utm_source: Optional[str] = Field(default=None, max_length=128)
+    utm_medium: Optional[str] = Field(default=None, max_length=128)
+    utm_campaign: Optional[str] = Field(default=None, max_length=128)
 
 
 class TokenOut(BaseModel):
@@ -587,6 +593,98 @@ class ProductMockupOut(BaseModel):
 class RenderingProductsOut(BaseModel):
     rendering_id: uuid.UUID
     products: list[ProductMockupOut] = []
+
+
+class TrackIn(BaseModel):
+    """One SPA page view. No IP, no cookie, no fingerprint — the length
+    caps are the abuse posture (alongside nginx rate limiting), since this
+    is a public unauthenticated insert."""
+
+    path: str = Field(max_length=512)
+    referrer: Optional[str] = Field(default=None, max_length=1024)
+    ref: Optional[str] = Field(default=None, max_length=128)
+    utm_source: Optional[str] = Field(default=None, max_length=128)
+    utm_medium: Optional[str] = Field(default=None, max_length=128)
+    utm_campaign: Optional[str] = Field(default=None, max_length=128)
+
+
+class DailyCount(BaseModel):
+    day: date
+    count: int
+
+
+class SourceCount(BaseModel):
+    source: str
+    count: int
+
+
+class DailySourceCount(BaseModel):
+    day: date
+    source: str
+    count: int
+
+
+class SignupStatsOut(BaseModel):
+    total: int
+    by_day: list[DailyCount]
+    by_source: list[SourceCount]
+
+
+class VisitStatsOut(BaseModel):
+    total: int
+    by_day_by_source: list[DailySourceCount]
+    by_source: list[SourceCount]
+
+
+class ActivationStatsOut(BaseModel):
+    """Signups in range who did the thing the product exists for."""
+
+    activated: int
+    signups: int
+    rate: Optional[float] = None  # None when signups == 0
+
+
+class InviteStatsOut(BaseModel):
+    created: int
+    # Authenticated redemptions incl. the same person re-following a link —
+    # NOT anonymous clicks; those are `link_visits` (page_visits /invite/%).
+    redemptions: int
+    distinct_redeemers: int
+    link_visits: int
+
+
+class ConversionStatsOut(BaseModel):
+    """The viral loop, all-time: share-link arrivals who later became
+    owners of their own birth story."""
+
+    became_owners: int
+    all_redeemers: int
+    rate: Optional[float] = None
+
+
+class ActiveUsersOut(BaseModel):
+    dau: int
+    wau: int
+
+
+class RevenueStatsOut(BaseModel):
+    unlock_count: int
+    unlock_cents: int
+    gift_count: int
+    gift_cents: int
+    total_cents: int
+
+
+class AdminOverviewOut(BaseModel):
+    start_date: date
+    end_date: date  # inclusive, matches the query param
+    signups: SignupStatsOut
+    visits: VisitStatsOut
+    activation: ActivationStatsOut
+    invites: InviteStatsOut
+    conversion: ConversionStatsOut
+    active_users: ActiveUsersOut
+    revenue: RevenueStatsOut
 
 
 # Convenience for tests / fixtures that need to validate an EmailStr-shaped

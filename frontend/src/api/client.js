@@ -1,3 +1,5 @@
+import { getAttribution } from '../utils/attribution';
+
 // Same-origin '/api' prefix in BOTH modes: the vite dev server proxies it to
 // the backend over the docker network, and prod nginx does the identical
 // rewrite-strip. The prefix matters — /b/{slug} is both an SPA route and an
@@ -60,9 +62,23 @@ export const api = {
         code,
         token,
         invite_token: inviteToken,
+        // First-touch attribution; the backend records it only when this
+        // verify creates a brand-new user.
+        ...getAttribution(),
       }),
     });
     return jsonOrThrow(res);
+  },
+
+  // Fire-and-forget page-view ping (self-hosted analytics). keepalive lets
+  // the request survive an immediate navigation away.
+  async track(payload) {
+    await fetch(`${API_URL}/track`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...authHeaders() },
+      body: JSON.stringify(payload),
+      keepalive: true,
+    });
   },
 
   async me() {

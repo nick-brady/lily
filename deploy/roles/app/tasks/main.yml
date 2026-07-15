@@ -79,3 +79,25 @@
     owner: "{{ app_user }}"
     group: "{{ app_group }}"
     recurse: yes
+
+- name: Build admin frontend locally
+  local_action:
+    module: command
+    cmd: npm run build
+    chdir: "{{ playbook_dir }}/../frontend-admin"
+  become: no
+  run_once: true
+
+- name: Copy admin frontend build
+  synchronize:
+    src: "{{ playbook_dir }}/../frontend-admin/dist/"
+    dest: "{{ app_dir }}/frontend-admin/"
+    delete: yes
+
+- name: Set admin frontend ownership
+  file:
+    path: "{{ app_dir }}/frontend-admin"
+    state: directory
+    owner: "{{ app_user }}"
+    group: "{{ app_group }}"
+    recurse: yes

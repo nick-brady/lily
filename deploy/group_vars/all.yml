@@ -2,6 +2,9 @@
 # Application settings
 app_name: lily
 app_domain: arrivalstory.com
+# The admin dashboard vhost (separate SPA, same backend). Needs its own DNS
+# A record and TLS certificate — see roles/nginx + roles/certbot.
+admin_domain: admin.arrivalstory.com
 app_user: lily
 app_group: lily
 app_dir: /opt/lily
