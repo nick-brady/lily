@@ -211,7 +211,7 @@ export const HERO_CUES = [
 
   // -- Scene 3: the family lights up (04 Janet, 05 Emma) --------------------
   {
-    t: 12.4,
+    t: 15.0,
     apply: (s, { base }) =>
       patchEvent(s, 'hero-laboring-home', {
         comment_count: 2,
