@@ -191,7 +191,7 @@ export function makeKeepsakeEvents() {
       event_type: 'photo',
       occurred_at: new Date(now - 30 * HOUR).toISOString(),
       payload: {
-        demo_media_url: BUMP_PHOTO_URL,
+        demo_url: BUMP_PHOTO_URL,
         caption: '40 weeks today. Any day now, little one.',
       },
       reactions: toReactions({ love: 11, wow: 2 }),
@@ -237,7 +237,7 @@ export function makeKeepsakeEvents() {
       event_type: 'voice_memo',
       occurred_at: new Date(now - 9 * HOUR).toISOString(),
       payload: {
-        demo_media_url: demoVoiceMemoUrl(),
+        demo_url: demoVoiceMemoUrl(),
         caption: 'Quick voice update from Dad between contractions.',
       },
       reactions: toReactions({ love: 9, pray: 2 }),
@@ -257,7 +257,7 @@ export function makeKeepsakeEvents() {
       event_type: 'photo',
       occurred_at: new Date(now - 3 * HOUR).toISOString(),
       payload: {
-        demo_media_url: BABY_PHOTO_URL,
+        demo_url: BABY_PHOTO_URL,
         caption: "7 lbs 2 oz. We're obsessed. 🤍",
       },
       reactions: toReactions({ love: 24, wow: 8, pray: 3 }),
