@@ -5,6 +5,7 @@ import WordmarkWriteOn from '../WordmarkWriteOn';
 import PhoneFrame from './PhoneFrame';
 import useHeroCueEngine from '../../hooks/useHeroCueEngine';
 import {
+  HERO_DURATION,
   HERO_POSTER_SRC,
   HERO_VIDEO_SRC,
   finalHeroState,
@@ -127,6 +128,77 @@ function HeroAppScreen({ state }) {
   );
 }
 
+// TEMP: dev-only scrubber for tuning cue timings against the footage.
+// Renders only in `npm run dev` (import.meta.env.DEV) — remove when the
+// cue table is locked.
+const SEGMENTS = [
+  { t: 0, label: '01' }, { t: 2.96, label: '02' }, { t: 4.66, label: 'blk' },
+  { t: 5.46, label: '03' }, { t: 10.5, label: '04' }, { t: 14.54, label: '05' },
+  { t: 18.58, label: 'blk' }, { t: 19.38, label: '06' }, { t: 24.84, label: '07' },
+  { t: 29.13, label: '08' }, { t: 32.67, label: '09' }, { t: 36.72, label: 'blk' },
+  { t: 37.52, label: '10' }, { t: 41.56, label: '11' }, { t: 45.6, label: 'blk' },
+  { t: 46.4, label: '12' }, { t: 51.44, label: '13' }, { t: 55.48, label: '14' },
+  { t: 59.52, label: 'blk' }, { t: 60.32, label: '15' },
+];
+
+function DevScrubber({ videoRef }) {
+  const [t, setT] = useState(0);
+  const [paused, setPaused] = useState(false);
+
+  useEffect(() => {
+    let raf;
+    const tick = () => {
+      raf = requestAnimationFrame(tick);
+      const v = videoRef.current;
+      if (v) {
+        setT(v.currentTime);
+        setPaused(v.paused);
+      }
+    };
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, [videoRef]);
+
+  const seg = SEGMENTS.filter((s) => s.t <= t + 0.001).at(-1);
+
+  return (
+    <div className="flex items-center gap-4 bg-gray-900 px-6 py-3 font-mono text-sm text-white">
+      <button
+        type="button"
+        className="w-8 rounded bg-gray-700 py-1"
+        onClick={() => {
+          const v = videoRef.current;
+          if (!v) return;
+          if (v.paused) v.play();
+          else v.pause();
+        }}
+      >
+        {paused ? '▶' : '⏸'}
+      </button>
+      <span className="w-20 text-right tabular-nums">{t.toFixed(2)}s</span>
+      <input
+        type="range"
+        min="0"
+        max={HERO_DURATION}
+        step="0.05"
+        value={t}
+        list="hero-segments"
+        className="flex-1 accent-fuchsia-500"
+        onChange={(e) => {
+          const v = videoRef.current;
+          if (v) v.currentTime = parseFloat(e.target.value);
+        }}
+      />
+      <datalist id="hero-segments">
+        {SEGMENTS.map((s) => (
+          <option key={s.t} value={s.t} label={s.label} />
+        ))}
+      </datalist>
+      <span className="w-16">clip {seg?.label}</span>
+    </div>
+  );
+}
+
 function HeroCopy() {
   return (
     <div className="flex flex-col items-center text-center max-w-md">
@@ -194,7 +266,7 @@ export default function HeroVideo() {
 
   const phoneState = reducedMotion ? finalHeroState(Date.now()) : state;
 
-  return (
+  const section = (
     <section
       ref={sectionRef}
       className="relative overflow-hidden bg-gray-950 min-h-[640px] lg:h-[85vh] lg:max-h-[860px]"
@@ -262,5 +334,13 @@ export default function HeroVideo() {
         </div>
       </div>
     </section>
+  );
+
+  return (
+    <>
+      {section}
+      {/* TEMP: dev-only timing scrubber — remove when the cue table is locked */}
+      {import.meta.env.DEV && useVideo && <DevScrubber videoRef={videoRef} />}
+    </>
   );
 }
