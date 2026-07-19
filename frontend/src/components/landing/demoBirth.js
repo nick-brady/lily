@@ -76,3 +76,20 @@ export function makeFinalEvents() {
     },
   ];
 }
+
+// ---- Section 2: the contraction timer ---------------------------------------
+// The parent-view fixture behind the timer slide (Lily-Landing-Sections.md §2):
+// two contractions already logged ~5 minutes apart, then the live one the
+// slide "presses" the real ContractionButton for.
+
+export function makeTimerBaseEvents() {
+  const now = Date.now();
+  return [
+    contraction('demo-t1', now - 11 * 60 * 1000, 49),
+    contraction('demo-t2', now - 5 * 60 * 1000, 55),
+  ];
+}
+
+export function makeLoggedContraction(occurredAtMs, durationSeconds) {
+  return contraction('demo-t-live', occurredAtMs, durationSeconds);
+}
