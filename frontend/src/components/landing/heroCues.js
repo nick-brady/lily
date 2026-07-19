@@ -104,12 +104,13 @@ function buildEvents(base) {
     voiceMemo: {
       id: 'hero-voice-memo',
       event_type: 'voice_memo',
-      // Sits mid-log, right beside the 61s contraction at -75min — a quiet
-      // moment captured between waves, like a real labor timeline.
-      occurred_at: at(-74 * MIN),
+      // Sits in the upper cluster of the log, between the 49s "gap before"
+      // contraction (-23min) and the 58s one (-20min) — a quiet moment
+      // captured between waves, visible without scrolling.
+      occurred_at: at(-21.5 * MIN),
       payload: {
         demo_url: '/api/assets/hero-section/memo.mp3',
-        caption: 'I asked Sarah what she wants to tell the baby',
+        caption: 'I asked her what she wants to tell our daughter',
       },
       reactions: {},
       comment_count: 0,
@@ -245,7 +246,7 @@ export const HERO_CUES = [
       t: 18.6 + i * 0.05,
       apply: (s, { ev }) => addEvent(s, ev.contractionFlood[i]),
     })),
-    { t: 18.98, apply: (s, { ev }) => addEvent(s, ev.voiceMemo) },
+    { t: 19.23, apply: (s, { ev }) => addEvent(s, ev.voiceMemo) },
   ].sort((a, b) => a.t - b.t),
 
   // -- Scene 4: leaving for the hospital (06) — the shared look --------------
