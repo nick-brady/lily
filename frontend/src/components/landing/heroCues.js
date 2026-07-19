@@ -30,6 +30,28 @@ function toReactions(counts) {
   );
 }
 
+// The contraction back-log, oldest first: minutes before "now", duration,
+// and whether a real gap precedes it (renders the "gap before" badge).
+// Modeled on a real early-mid-labor log — short irregular ones early,
+// longer/stronger later, with a few genuine lulls.
+const CONTRACTION_LOG = [
+  { min: 155, dur: 28 },
+  { min: 145, dur: 37 },
+  { min: 141, dur: 45 },
+  { min: 129, dur: 37 },
+  { min: 114, dur: 55 },
+  { min: 95, dur: 57, gap: true },
+  { min: 85, dur: 35 },
+  { min: 75, dur: 61 },
+  { min: 52, dur: 31, gap: true },
+  { min: 47, dur: 35 },
+  { min: 37, dur: 33 },
+  { min: 32, dur: 42 },
+  { min: 23, dur: 49, gap: true },
+  { min: 20, dur: 58 },
+  { min: 14, dur: 67 },
+];
+
 // occurred_at offsets are relative to "now" at reset: bump photos are
 // backdated weeks apart (the date groupings help say "months pass"), labor
 // events run minutes apart tonight.
@@ -69,44 +91,35 @@ function buildEvents(base) {
         ),
       ],
     },
+    voiceMemo: {
+      id: 'hero-voice-memo',
+      event_type: 'voice_memo',
+      occurred_at: at(-40 * MIN),
+      payload: {
+        demo_url: '/api/assets/hero-section/memo.mp3',
+        caption: 'I asked Sarah what she wants to tell the baby',
+      },
+      reactions: {},
+      comment_count: 0,
+    },
     contractionLogged: {
-      id: 'hero-contraction-1',
+      id: 'hero-contraction-live',
       event_type: 'contraction',
       occurred_at: at(-42 * MIN),
       payload: { duration_seconds: 62 },
     },
-    // Early-mid labor rhythm: irregular spacing — a cluster, a longer gap,
-    // a tight pair, another gap (see plan §4 "a few, a gap, a few more").
-    flood1: {
-      id: 'hero-contraction-2',
+    // The back-log that floods in during Interstitial B ("the hours
+    // compress"): ~2.5 hours of early-mid labor, irregular — short ones,
+    // longer ones, and real gaps (`gap: true` → the "gap before" badge).
+    contractionFlood: CONTRACTION_LOG.map((c, i) => ({
+      id: `hero-contraction-${i}`,
       event_type: 'contraction',
-      occurred_at: at(-37 * MIN),
-      payload: { duration_seconds: 48 },
-    },
-    flood2: {
-      id: 'hero-contraction-3',
-      event_type: 'contraction',
-      occurred_at: at(-32 * MIN),
-      payload: { duration_seconds: 55 },
-    },
-    flood3: {
-      id: 'hero-contraction-4',
-      event_type: 'contraction',
-      occurred_at: at(-23 * MIN),
-      payload: { duration_seconds: 61 },
-    },
-    flood4: {
-      id: 'hero-contraction-5',
-      event_type: 'contraction',
-      occurred_at: at(-20 * MIN),
-      payload: { duration_seconds: 58 },
-    },
-    flood5: {
-      id: 'hero-contraction-6',
-      event_type: 'contraction',
-      occurred_at: at(-14 * MIN),
-      payload: { duration_seconds: 67 },
-    },
+      occurred_at: at(-c.min * MIN),
+      payload: {
+        duration_seconds: c.dur,
+        ...(c.gap ? { ignore_interval_before: true } : {}),
+      },
+    })),
     arrived: {
       id: 'hero-arrived',
       event_type: 'milestone',
@@ -177,6 +190,7 @@ export const HERO_CUES = [
   //    posts the laboring-at-home photo from the couch ------------------------
   { t: 8.1, apply: (s) => ({ ...s, contractionActive: true, status: "Lily's family is timing contractions. Following along 🤍" }) },
   { t: 9.3, apply: (s, { ev }) => addEvent(s, ev.laboringPhoto) },
+  { t: 10.0, apply: (s, { ev }) => addEvent(s, ev.voiceMemo) },
 
   // -- Scene 3: the family lights up (04 Janet, 05 Emma) --------------------
   {
@@ -206,15 +220,16 @@ export const HERO_CUES = [
   // Contraction logs as the scene fades — the fade means "time passes".
   { t: 17.9, apply: (s, { ev }) => addEvent({ ...s, contractionActive: false }, ev.contractionLogged) },
 
-  // -- Interstitial B: the hours compress (black) ----------------------------
-  { t: 18.65, apply: (s, { ev }) => addEvent(s, ev.flood1) },
-  { t: 18.85, apply: (s, { ev }) => addEvent(s, ev.flood2) },
-  { t: 19.0, apply: (s, { ev }) => addEvent(s, ev.flood3) },
-  { t: 19.15, apply: (s, { ev }) => addEvent(s, ev.flood4) },
-  { t: 19.3, apply: (s, { ev }) => addEvent(s, ev.flood5) },
+  // -- Interstitial B: the hours compress (black) — the whole back-log
+  //    cascades in during the dip ---------------------------------------------
+  ...CONTRACTION_LOG.map((c, i) => ({
+    t: 18.6 + i * 0.05,
+    apply: (s, { ev }) => addEvent(s, ev.contractionFlood[i]),
+  })),
 
   // -- Scene 4: leaving for the hospital (06) — the shared look --------------
   { t: 22.0, apply: (s) => ({ ...s, status: 'Contractions 5 minutes apart. Heading in 🚗' }) },
+  { t: 23.5, apply: (s) => patchEvent(s, 'hero-voice-memo', { reactions: toReactions({ love: 5, pray: 2 }) }) },
 
   // -- Scene 5: hospital arrival (07) — milestone lands as the scene opens ---
   { t: 25.0, apply: (s, { ev }) => addEvent(s, ev.arrived) },
