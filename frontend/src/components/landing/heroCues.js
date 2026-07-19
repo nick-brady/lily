@@ -269,16 +269,14 @@ export const HERO_CUES = [
       }),
   },
 
-  // -- Scene 7: active labor (09) — milestone fires as pure UI ---------------
-  { t: 33.7, apply: (s, { ev }) => addEvent(s, ev.waterBroke) },
-  { t: 35.0, apply: (s) => patchEvent(s, 'hero-water-broke', { reactions: toReactions({ love: 8, muscle: 5 }) }) },
-
-  // -- Interlude before Scene 8 (black): hospital contractions flood in,
-  //    ~1 minute apart now — it's getting close --------------------------------
+  // -- Scene 7: active labor (09) — the hospital contractions flood in as
+  //    she breathes through them, THEN the water-broke milestone lands -------
   ...HOSPITAL_CONTRACTIONS.map((c, i) => ({
-    t: 36.8 + i * 0.2,
+    t: 33.0 + i * 0.2,
     apply: (s, { ev }) => addEvent(s, ev.hospitalFlood[i]),
   })),
+  { t: 34.2, apply: (s, { ev }) => addEvent(s, ev.waterBroke) },
+  { t: 35.2, apply: (s) => patchEvent(s, 'hero-water-broke', { reactions: toReactions({ love: 8, muscle: 5 }) }) },
 
   // -- Scene 8: Marco takes out his phone (10) --------------------------------
   {
