@@ -2,7 +2,7 @@ import { useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import WordmarkWriteOn from '../components/WordmarkWriteOn';
-import OnePlaceSection from '../components/landing/OnePlaceSection';
+import PhoneCarouselSection from '../components/landing/PhoneCarouselSection';
 
 export default function LandingPage() {
   const { isAuthenticated, loading, me } = useAuth();
@@ -91,8 +91,8 @@ export default function LandingPage() {
         </div>
       </section>
 
-      {/* Silence the group chat */}
-      <OnePlaceSection />
+      {/* Phone demo carousel: silence the group chat, then keep the keepsake */}
+      <PhoneCarouselSection />
 
       {/* How it works */}
       <section className="max-w-4xl mx-auto px-6 py-20">
