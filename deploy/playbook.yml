@@ -11,6 +11,8 @@
 
   roles:
     - common
+    - role: fail2ban
+      tags: fail2ban
     - postgres
     - app
     - systemd
