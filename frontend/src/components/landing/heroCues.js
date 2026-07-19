@@ -94,7 +94,9 @@ function buildEvents(base) {
     voiceMemo: {
       id: 'hero-voice-memo',
       event_type: 'voice_memo',
-      occurred_at: at(-40 * MIN),
+      // Sits mid-log, right beside the 61s contraction at -75min — a quiet
+      // moment captured between waves, like a real labor timeline.
+      occurred_at: at(-74 * MIN),
       payload: {
         demo_url: '/api/assets/hero-section/memo.mp3',
         caption: 'I asked Sarah what she wants to tell the baby',
@@ -190,7 +192,6 @@ export const HERO_CUES = [
   //    posts the laboring-at-home photo from the couch ------------------------
   { t: 8.1, apply: (s) => ({ ...s, contractionActive: true, status: "Lily's family is timing contractions. Following along 🤍" }) },
   { t: 9.3, apply: (s, { ev }) => addEvent(s, ev.laboringPhoto) },
-  { t: 10.0, apply: (s, { ev }) => addEvent(s, ev.voiceMemo) },
 
   // -- Scene 3: the family lights up (04 Janet, 05 Emma) --------------------
   {
@@ -221,11 +222,15 @@ export const HERO_CUES = [
   { t: 17.9, apply: (s, { ev }) => addEvent({ ...s, contractionActive: false }, ev.contractionLogged) },
 
   // -- Interstitial B: the hours compress (black) — the whole back-log
-  //    cascades in during the dip ---------------------------------------------
-  ...CONTRACTION_LOG.map((c, i) => ({
-    t: 18.6 + i * 0.05,
-    apply: (s, { ev }) => addEvent(s, ev.contractionFlood[i]),
-  })),
+  //    cascades in during the dip, the voice memo landing mid-cascade among
+  //    the contractions it sits between ---------------------------------------
+  ...[
+    ...CONTRACTION_LOG.map((c, i) => ({
+      t: 18.6 + i * 0.05,
+      apply: (s, { ev }) => addEvent(s, ev.contractionFlood[i]),
+    })),
+    { t: 18.98, apply: (s, { ev }) => addEvent(s, ev.voiceMemo) },
+  ].sort((a, b) => a.t - b.t),
 
   // -- Scene 4: leaving for the hospital (06) — the shared look --------------
   { t: 22.0, apply: (s) => ({ ...s, status: 'Contractions 5 minutes apart. Heading in 🚗' }) },
