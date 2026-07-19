@@ -1,14 +1,15 @@
 import { useEffect, useRef, useState } from 'react';
 import PhoneFrame from './PhoneFrame';
 import AppScreen from './AppScreen';
-import { makeKeepsakeEvents } from './demoBirth';
+import { finalHeroState } from './heroCues';
 
 // Carousel slide 3 — "a keepsake, forever" (see Lily-Landing-Sections.md §3).
 // The same Lily Wren page, after the big day: the phone slowly scrolls back
-// through the completed story — name announcement, first photo, the born
-// milestone, Dad's voice memo, the contractions, all the way to the 40-week
-// bump photo. Starts once when the slide first becomes active; the carousel
-// remounts it (key bump) to reset.
+// through the completed story. The events are the hero video's finished
+// timeline (finalHeroState) — same photos, voice memo, contractions, and
+// comments the visitor just watched happen live above, now kept forever.
+// Starts once when the slide first becomes active; the carousel remounts it
+// (key bump) to reset.
 
 const SCROLL_DELAY_MS = 1100;
 const SCROLL_DURATION_MS = 18000;
@@ -42,7 +43,7 @@ function Headline() {
 export default function KeepsakeSlide({ active, reducedMotion }) {
   const scrollRef = useRef(null);
   const startedRef = useRef(false);
-  const [events] = useState(makeKeepsakeEvents);
+  const [events] = useState(() => finalHeroState(Date.now()).events);
 
   useEffect(() => {
     if (!active || reducedMotion || startedRef.current) return undefined;
