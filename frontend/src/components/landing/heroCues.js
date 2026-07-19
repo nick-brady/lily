@@ -250,6 +250,16 @@ export const HERO_CUES = [
   ].sort((a, b) => a.t - b.t),
 
   // -- Scene 4: leaving for the hospital (06) — the shared look --------------
+  {
+    t: 21.5,
+    apply: (s, { base }) =>
+      patchEvent(s, 'hero-voice-memo', {
+        comment_count: 1,
+        demo_comments: [
+          comment('emma-memo', 'Emma', "Ah that's so beautiful 🥹", base, -19 * MIN),
+        ],
+      }),
+  },
   { t: 22.0, apply: (s) => ({ ...s, status: 'Contractions 5 minutes apart. Heading in 🚗' }) },
   { t: 23.5, apply: (s) => patchEvent(s, 'hero-voice-memo', { reactions: toReactions({ love: 5, pray: 2 }) }) },
 
