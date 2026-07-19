@@ -47,7 +47,7 @@ function buildEvents(base) {
     bump40: {
       id: 'hero-bump40',
       event_type: 'photo',
-      occurred_at: at(-1 * DAY),
+      occurred_at: at(-6 * DAY),
       payload: { demo_url: '/api/assets/hero-section/bump40.jpg', caption: 'get this baby out of me! 😅' },
       reactions: {},
       comment_count: 0,
@@ -136,7 +136,7 @@ export const HERO_CUES = [
       patchEvent(s, 'hero-bump40', {
         comment_count: 1,
         demo_comments: [
-          comment('lisa-bump', 'Lisa', "😂😂 you've got this, mama", base, -23 * 60 * 60 * 1000),
+          comment('lisa-bump', 'Lisa', "😂😂 you've got this, mama", base, -6 * DAY + 90 * MIN),
         ],
       }),
   },
@@ -152,7 +152,7 @@ export const HERO_CUES = [
       patchEvent(s, 'hero-bump40', {
         comment_count: 2,
         demo_comments: [
-          comment('lisa-bump', 'Lisa', "😂😂 you've got this, mama", base, -23 * 60 * 60 * 1000),
+          comment('lisa-bump', 'Lisa', "😂😂 you've got this, mama", base, -6 * DAY + 90 * MIN),
           comment('janet-1', 'Grandma Janet', "It's happening!! We love you three so much ❤️", base, -44 * MIN),
         ],
       }),
@@ -164,7 +164,7 @@ export const HERO_CUES = [
       patchEvent(s, 'hero-bump40', {
         comment_count: 3,
         demo_comments: [
-          comment('lisa-bump', 'Lisa', "😂😂 you've got this, mama", base, -23 * 60 * 60 * 1000),
+          comment('lisa-bump', 'Lisa', "😂😂 you've got this, mama", base, -6 * DAY + 90 * MIN),
           comment('janet-1', 'Grandma Janet', "It's happening!! We love you three so much ❤️", base, -44 * MIN),
           comment('marco-1', 'Marco', 'thank you!! Us too!! ❤️', base, -43 * MIN),
         ],
