@@ -145,6 +145,7 @@ export default function HeroVideo() {
   const sectionRef = useRef(null);
   const videoRef = useRef(null);
   const [visible, setVisible] = useState(false);
+  const [videoFailed, setVideoFailed] = useState(false);
 
   const [reducedMotion] = useState(
     () => window.matchMedia('(prefers-reduced-motion: reduce)').matches,
@@ -169,7 +170,7 @@ export default function HeroVideo() {
     return () => observer.disconnect();
   }, []);
 
-  const useVideo = isDesktop && !reducedMotion;
+  const useVideo = isDesktop && !reducedMotion && !videoFailed;
   const { state } = useHeroCueEngine({
     videoRef,
     clockMode: !useVideo,
@@ -201,6 +202,7 @@ export default function HeroVideo() {
           playsInline
           loop
           preload="metadata"
+          onError={() => setVideoFailed(true)}
         />
       ) : (
         <img
@@ -211,12 +213,14 @@ export default function HeroVideo() {
         />
       )}
 
-      {/* Layer 2 — scrim: keeps copy + phone legible over any footage */}
+      {/* Layer 2 — scrim: dark-to-transparent, tinted toward the brand
+          fuchsia (plan §1) — keeps copy + phone legible over any footage */}
       <div
-        className={`absolute inset-0 bg-gradient-to-r from-gray-950/80 via-gray-950/40 to-gray-950/60 ${
-          useVideo ? '' : 'bg-gray-950/60'
+        className={`absolute inset-0 bg-gradient-to-r from-[#2a0a3d]/75 via-gray-950/30 to-gray-950/50 ${
+          useVideo ? '' : 'bg-gray-950/55'
         }`}
       />
+      <div className="absolute inset-0 bg-primary-800/10" />
       {/* Loop-seam cover: goes near-opaque as the video wraps and the UI resets */}
       <div
         className={`absolute inset-0 bg-gray-950 transition-opacity duration-700 ${

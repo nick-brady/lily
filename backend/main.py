@@ -10,6 +10,7 @@ from __future__ import annotations
 import asyncio
 import json
 import os
+from time import monotonic
 import mimetypes
 import re
 import uuid
@@ -2488,6 +2489,30 @@ def get_media(
         return FileResponse(path, media_type=media_type)
 
     url = presigned_get_url(asset.original_s3_key)
+    return RedirectResponse(url, status_code=307)
+
+
+# Public marketing assets (landing-page hero video) live in S3 under
+# assets/hero-section/ — too heavy for the git repo, no auth required (they
+# render on the public landing page). Same presigned-redirect pattern as
+# /media. Presigned URLs are cached until shortly before expiry so repeat
+# visitors get the same URL and the browser cache can actually hold.
+_HERO_ASSET_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
+_hero_asset_url_cache: dict[str, tuple[str, float]] = {}
+
+
+@app.get("/assets/hero-section/{filename}", response_model=None)
+def get_hero_section_asset(filename: str) -> RedirectResponse:
+    if not _HERO_ASSET_RE.match(filename):
+        raise HTTPException(status_code=404, detail="Asset not found")
+    key = f"assets/hero-section/{filename}"
+    now = monotonic()
+    cached = _hero_asset_url_cache.get(key)
+    if cached and cached[1] > now:
+        return RedirectResponse(cached[0], status_code=307)
+    ttl = int(os.getenv("S3_PRESIGN_TTL_SECONDS", "3600"))
+    url = presigned_get_url(key, expires_in=ttl)
+    _hero_asset_url_cache[key] = (url, now + max(ttl - 600, 60))
     return RedirectResponse(url, status_code=307)
 
 

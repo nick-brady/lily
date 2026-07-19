@@ -8,7 +8,11 @@
 // Choreography rule (plan §4): UI reacts 100–200ms AFTER the on-screen
 // gesture, so it reads as cause-and-effect.
 
-export const HERO_VIDEO_SRC = '/hero/hero-1080.mp4';
+// The video is too heavy for the repo — it lives in S3 under
+// assets/hero-section/ and the backend 307-redirects to a presigned URL
+// (upload with tools/upload-hero-assets.sh). Poster + stills are small and
+// ship with the frontend bundle.
+export const HERO_VIDEO_SRC = '/api/assets/hero-section/hero-1080.mp4';
 export const HERO_POSTER_SRC = '/hero/hero-poster.jpg';
 export const HERO_DURATION = 64.54;
 
