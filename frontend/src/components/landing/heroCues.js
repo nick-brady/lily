@@ -275,8 +275,11 @@ export const HERO_CUES = [
     t: 33.0 + i * 0.2,
     apply: (s, { ev }) => addEvent(s, ev.hospitalFlood[i]),
   })),
-  { t: 34.2, apply: (s, { ev }) => addEvent(s, ev.waterBroke) },
-  { t: 35.2, apply: (s) => patchEvent(s, 'hero-water-broke', { reactions: toReactions({ love: 8, muscle: 5 }) }) },
+
+  // -- Interlude (black, ~36.7-37.5): the water breaks off-screen — the
+  //    milestone lands during the dip, reactions follow into Scene 8 ---------
+  { t: 37.0, apply: (s, { ev }) => addEvent(s, ev.waterBroke) },
+  { t: 38.2, apply: (s) => patchEvent(s, 'hero-water-broke', { reactions: toReactions({ love: 8, muscle: 5 }) }) },
 
   // -- Scene 8: Marco takes out his phone (10) --------------------------------
   {
