@@ -21,6 +21,14 @@ import {
 
 const CONFETTI = ['🤍', '💛', '🎉', '👶', '✨', '🩷', '🎈'];
 
+// The PhoneFrame screen is 280px wide — too narrow for the product's real
+// typography. Render the app at true phone width and scale it down, so text
+// wraps exactly like it does on an actual device.
+const SCREEN_W = 280;
+const SCREEN_H = 600;
+const DESIGN_W = 375;
+const PHONE_SCALE = SCREEN_W / DESIGN_W;
+
 function InPhoneCelebration() {
   return (
     <div aria-hidden="true" className="pointer-events-none absolute inset-0 z-10 overflow-hidden">
@@ -233,8 +241,17 @@ export default function HeroVideo() {
         {/* Phone — left on desktop (~150px inset), centered on mobile */}
         <div className="order-2 lg:order-1 lg:absolute lg:left-[150px] lg:top-1/2 lg:-translate-y-1/2">
           <PhoneFrame>
-            <div aria-hidden="true" className="pointer-events-none absolute inset-0 select-none">
-              <HeroAppScreen state={phoneState} />
+            <div aria-hidden="true" className="pointer-events-none absolute inset-0 select-none overflow-hidden">
+              <div
+                style={{
+                  width: `${DESIGN_W}px`,
+                  height: `${Math.round(SCREEN_H / PHONE_SCALE)}px`,
+                  transform: `scale(${PHONE_SCALE})`,
+                  transformOrigin: 'top left',
+                }}
+              >
+                <HeroAppScreen state={phoneState} />
+              </div>
             </div>
           </PhoneFrame>
         </div>
