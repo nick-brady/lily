@@ -28,8 +28,8 @@ export const CHAOS_TOTAL_MS = 5000;
 function LockClock() {
   return (
     <div className="pt-12 pb-4 text-center select-none">
-      <div className="text-5xl font-light text-white/90 tracking-tight">2:13</div>
-      <div className="mt-1 text-[13px] text-white/50">Tuesday — she's in labor</div>
+      <div className="text-5xl font-light text-white tracking-tight drop-shadow-sm">2:13</div>
+      <div className="mt-1 text-[13px] text-white/70 drop-shadow-sm">Tuesday — she's in labor</div>
     </div>
   );
 }
@@ -114,7 +114,7 @@ export default function NotificationChaos({ run = false, settled = false, static
   const badge = staticAll ? NOTIFICATIONS.length : visible;
 
   return (
-    <div className="h-full bg-gradient-to-b from-gray-700 via-gray-800 to-gray-950">
+    <div className="h-full bg-gradient-to-b from-indigo-300 via-purple-300 to-purple-400">
       {badge > 0 && !settled && (
         <div className="absolute right-3 top-3 z-10 flex h-6 min-w-6 items-center justify-center rounded-full bg-red-500 px-1.5 text-[11px] font-bold text-white shadow">
           {badge}
