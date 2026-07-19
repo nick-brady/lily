@@ -204,10 +204,10 @@ export const HERO_CUES = [
   },
   { t: 7.0, apply: (s) => patchEvent(s, 'hero-bump40', { reactions: toReactions({ love: 9, wow: 2 }) }) },
 
-  // -- Scene 2: labor begins (03) — Marco's tap starts the timer, then he
-  //    posts the laboring-at-home photo from the couch ------------------------
-  { t: 8.1, apply: (s) => ({ ...s, contractionActive: true, status: "Lily's family is timing contractions. Following along 🤍" }) },
-  { t: 9.3, apply: (s, { ev }) => addEvent(s, ev.laboringPhoto) },
+  // -- Scene 2: labor begins (03) — Marco posts the laboring-at-home photo
+  //    first, THEN his tap starts the contraction timer -----------------------
+  { t: 7.6, apply: (s, { ev }) => addEvent(s, ev.laboringPhoto) },
+  { t: 9.0, apply: (s) => ({ ...s, contractionActive: true, status: "Lily's family is timing contractions. Following along 🤍" }) },
 
   // -- Scene 3: the family lights up (04 Janet, 05 Emma) --------------------
   {
