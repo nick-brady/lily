@@ -52,6 +52,16 @@ const CONTRACTION_LOG = [
   { min: 14, dur: 67 },
 ];
 
+// Hospital-era contractions — active labor closing in: ~1 minute apart,
+// longer and stronger. These sit between "Arrived at the hospital" and the
+// water-broke/"game time" beat.
+const HOSPITAL_CONTRACTIONS = [
+  { min: 11.5, dur: 68 },
+  { min: 10.5, dur: 74 },
+  { min: 9.5, dur: 79 },
+  { min: 8.5, dur: 82 },
+];
+
 // occurred_at offsets are relative to "now" at reset: bump photos are
 // backdated weeks apart (the date groupings help say "months pass"), labor
 // events run minutes apart tonight.
@@ -121,6 +131,12 @@ function buildEvents(base) {
         duration_seconds: c.dur,
         ...(c.gap ? { ignore_interval_before: true } : {}),
       },
+    })),
+    hospitalFlood: HOSPITAL_CONTRACTIONS.map((c, i) => ({
+      id: `hero-contraction-h${i}`,
+      event_type: 'contraction',
+      occurred_at: at(-c.min * MIN),
+      payload: { duration_seconds: c.dur },
     })),
     arrived: {
       id: 'hero-arrived',
@@ -256,6 +272,13 @@ export const HERO_CUES = [
   // -- Scene 7: active labor (09) — milestone fires as pure UI ---------------
   { t: 33.7, apply: (s, { ev }) => addEvent(s, ev.waterBroke) },
   { t: 35.0, apply: (s) => patchEvent(s, 'hero-water-broke', { reactions: toReactions({ love: 8, muscle: 5 }) }) },
+
+  // -- Interlude before Scene 8 (black): hospital contractions flood in,
+  //    ~1 minute apart now — it's getting close --------------------------------
+  ...HOSPITAL_CONTRACTIONS.map((c, i) => ({
+    t: 36.8 + i * 0.2,
+    apply: (s, { ev }) => addEvent(s, ev.hospitalFlood[i]),
+  })),
 
   // -- Scene 8: Marco takes out his phone (10) --------------------------------
   {
