@@ -52,29 +52,60 @@ function buildEvents(base) {
       reactions: {},
       comment_count: 0,
     },
+    laboringPhoto: {
+      id: 'hero-laboring-home',
+      event_type: 'photo',
+      occurred_at: at(-45 * MIN),
+      payload: { demo_url: '/api/assets/hero-section/laboring-home.jpg' },
+      reactions: {},
+      comment_count: 1,
+      demo_comments: [
+        comment(
+          'marco-post',
+          'Marco',
+          "Sarah's laboring at home right now. We're excited but nervous!",
+          base,
+          -44 * MIN,
+        ),
+      ],
+    },
     contractionLogged: {
       id: 'hero-contraction-1',
       event_type: 'contraction',
       occurred_at: at(-42 * MIN),
       payload: { duration_seconds: 62 },
     },
+    // Early-mid labor rhythm: irregular spacing — a cluster, a longer gap,
+    // a tight pair, another gap (see plan §4 "a few, a gap, a few more").
     flood1: {
       id: 'hero-contraction-2',
       event_type: 'contraction',
-      occurred_at: at(-33 * MIN),
-      payload: { duration_seconds: 58 },
+      occurred_at: at(-37 * MIN),
+      payload: { duration_seconds: 48 },
     },
     flood2: {
       id: 'hero-contraction-3',
       event_type: 'contraction',
-      occurred_at: at(-21 * MIN),
-      payload: { duration_seconds: 66 },
+      occurred_at: at(-32 * MIN),
+      payload: { duration_seconds: 55 },
     },
     flood3: {
       id: 'hero-contraction-4',
       event_type: 'contraction',
-      occurred_at: at(-15 * MIN),
-      payload: { duration_seconds: 71 },
+      occurred_at: at(-23 * MIN),
+      payload: { duration_seconds: 61 },
+    },
+    flood4: {
+      id: 'hero-contraction-5',
+      event_type: 'contraction',
+      occurred_at: at(-20 * MIN),
+      payload: { duration_seconds: 58 },
+    },
+    flood5: {
+      id: 'hero-contraction-6',
+      event_type: 'contraction',
+      occurred_at: at(-14 * MIN),
+      payload: { duration_seconds: 67 },
     },
     arrived: {
       id: 'hero-arrived',
@@ -142,31 +173,33 @@ export const HERO_CUES = [
   },
   { t: 7.0, apply: (s) => patchEvent(s, 'hero-bump40', { reactions: toReactions({ love: 9, wow: 2 }) }) },
 
-  // -- Scene 2: labor begins (03) — Marco's tap starts the timer ------------
+  // -- Scene 2: labor begins (03) — Marco's tap starts the timer, then he
+  //    posts the laboring-at-home photo from the couch ------------------------
   { t: 8.1, apply: (s) => ({ ...s, contractionActive: true, status: "Lily's family is timing contractions. Following along 🤍" }) },
+  { t: 9.3, apply: (s, { ev }) => addEvent(s, ev.laboringPhoto) },
 
   // -- Scene 3: the family lights up (04 Janet, 05 Emma) --------------------
   {
     t: 12.4,
     apply: (s, { base }) =>
-      patchEvent(s, 'hero-bump40', {
+      patchEvent(s, 'hero-laboring-home', {
         comment_count: 2,
         demo_comments: [
-          comment('lisa-bump', 'Lisa', "😂😂 you've got this, mama", base, -6 * DAY + 90 * MIN),
-          comment('janet-1', 'Grandma Janet', "It's happening!! We love you three so much ❤️", base, -44 * MIN),
+          comment('marco-post', 'Marco', "Sarah's laboring at home right now. We're excited but nervous!", base, -44 * MIN),
+          comment('janet-1', 'Grandma Janet', "It's happening!! We love you three so much ❤️", base, -43 * MIN),
         ],
       }),
   },
-  { t: 15.8, apply: (s) => patchEvent(s, 'hero-bump40', { reactions: toReactions({ love: 14, wow: 3 }) }) },
+  { t: 15.8, apply: (s) => patchEvent(s, 'hero-laboring-home', { reactions: toReactions({ love: 14, wow: 3 }) }) },
   {
     t: 16.6,
     apply: (s, { base }) =>
-      patchEvent(s, 'hero-bump40', {
+      patchEvent(s, 'hero-laboring-home', {
         comment_count: 3,
         demo_comments: [
-          comment('lisa-bump', 'Lisa', "😂😂 you've got this, mama", base, -6 * DAY + 90 * MIN),
-          comment('janet-1', 'Grandma Janet', "It's happening!! We love you three so much ❤️", base, -44 * MIN),
-          comment('marco-1', 'Marco', 'thank you!! Us too!! ❤️', base, -43 * MIN),
+          comment('marco-post', 'Marco', "Sarah's laboring at home right now. We're excited but nervous!", base, -44 * MIN),
+          comment('janet-1', 'Grandma Janet', "It's happening!! We love you three so much ❤️", base, -43 * MIN),
+          comment('marco-1', 'Marco', 'thank you!! Us too!! ❤️', base, -42 * MIN),
         ],
       }),
   },
@@ -174,9 +207,11 @@ export const HERO_CUES = [
   { t: 17.9, apply: (s, { ev }) => addEvent({ ...s, contractionActive: false }, ev.contractionLogged) },
 
   // -- Interstitial B: the hours compress (black) ----------------------------
-  { t: 18.7, apply: (s, { ev }) => addEvent(s, ev.flood1) },
-  { t: 19.0, apply: (s, { ev }) => addEvent(s, ev.flood2) },
-  { t: 19.3, apply: (s, { ev }) => addEvent(s, ev.flood3) },
+  { t: 18.65, apply: (s, { ev }) => addEvent(s, ev.flood1) },
+  { t: 18.85, apply: (s, { ev }) => addEvent(s, ev.flood2) },
+  { t: 19.0, apply: (s, { ev }) => addEvent(s, ev.flood3) },
+  { t: 19.15, apply: (s, { ev }) => addEvent(s, ev.flood4) },
+  { t: 19.3, apply: (s, { ev }) => addEvent(s, ev.flood5) },
 
   // -- Scene 4: leaving for the hospital (06) — the shared look --------------
   { t: 22.0, apply: (s) => ({ ...s, status: 'Contractions 5 minutes apart. Heading in 🚗' }) },
