@@ -104,7 +104,7 @@ function buildEvents(base) {
       id: 'hero-lily',
       event_type: 'photo',
       occurred_at: at(0),
-      payload: { demo_url: '/hero/stills/lily.jpg', caption: "Lily Wren. We're so in love." },
+      payload: { demo_url: '/api/assets/hero-section/lily.jpg', caption: "Lily Wren. We're so in love." },
       reactions: {},
       comment_count: 0,
     },
