@@ -138,8 +138,10 @@ function MilestoneItem({ event, canManage, onDelete, onEdit, engagementScope, is
 }
 
 function MediaItem({ event, canManage, onDelete, onEdit, onPhotoClick, engagementScope, isUnlocked }) {
-  const { media_id, caption } = event.payload || {};
-  const url = api.mediaUrl(media_id);
+  // Scripted fixtures (landing demo, hero video) ride a demo_url on the
+  // payload; real events always carry a media_id.
+  const { media_id, caption, demo_url } = event.payload || {};
+  const url = demo_url || api.mediaUrl(media_id);
   if (event.event_type === 'photo') {
     return (
       <div className="flex gap-4 py-4 t-row">

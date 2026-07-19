@@ -1,7 +1,7 @@
 import { useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
-import WordmarkWriteOn from '../components/WordmarkWriteOn';
+import HeroVideo from '../components/landing/HeroVideo';
 import OnePlaceSection from '../components/landing/OnePlaceSection';
 
 export default function LandingPage() {
@@ -35,61 +35,8 @@ export default function LandingPage() {
         </Link>
       </nav>
 
-      {/* Hero */}
-      <section className="flex flex-col items-center text-center px-6 pt-12 pb-24 bg-gradient-to-b from-primary-50 to-white dark:from-gray-900 dark:to-gray-950">
-        <h1 className="mb-6">
-          <span className="sr-only">Arrival Story</span>
-          <WordmarkWriteOn className="w-[290px] sm:w-[470px] max-w-full text-primary-600 dark:text-primary-400" />
-        </h1>
-        <div className="flex flex-col items-center motion-safe:animate-fade-up">
-        <p className="text-2xl font-light text-gray-800 dark:text-gray-100 mb-3 max-w-md leading-snug">
-          The birth story your whole family lives together
-        </p>
-        <p className="text-base text-gray-500 dark:text-gray-400 mb-10 max-w-sm">
-          Set up in 2 minutes. Share a link. Everyone follows in real time.
-        </p>
-        <Link
-          to="/setup"
-          className="btn-primary text-base px-8 py-4"
-        >
-          Create your baby's page →
-        </Link>
-
-        {/* Mock preview card */}
-        <div className="mt-16 w-full max-w-xs bg-white dark:bg-gray-800 rounded-2xl shadow-xl p-5 border border-primary-100 dark:border-primary-900/40 text-left">
-          <h2
-            className="text-2xl text-primary-600 dark:text-primary-400 text-center mb-4"
-            style={{ fontFamily: "'Great Vibes', cursive" }}
-          >
-            Welcoming Lily Wren
-          </h2>
-          <div className="flex items-center gap-3 mb-4 p-3 bg-primary-50 dark:bg-primary-900/20 rounded-xl">
-            <div className="h-2.5 w-2.5 rounded-full bg-primary-500 animate-pulse-slow flex-shrink-0" />
-            <div>
-              <div className="text-xs text-gray-400 mb-0.5">Contraction in progress</div>
-              <div className="text-xl font-mono font-semibold text-gray-800 dark:text-white tracking-tight">
-                0:42
-              </div>
-            </div>
-          </div>
-          <div className="text-xs text-gray-400 mb-2 px-1">8 mins ago</div>
-          <div className="text-sm text-gray-700 dark:text-gray-300 mb-3 px-1">
-            Contractions are 5 minutes apart 💪
-          </div>
-          <div className="flex items-center gap-2">
-            <span className="bg-rose-50 dark:bg-rose-900/20 text-rose-600 dark:text-rose-300 rounded-full px-3 py-1 text-xs font-medium">
-              ❤️ 14
-            </span>
-            <span className="bg-amber-50 dark:bg-amber-900/20 text-amber-600 dark:text-amber-300 rounded-full px-3 py-1 text-xs font-medium">
-              🙏 8
-            </span>
-            <span className="bg-sky-50 dark:bg-sky-900/20 text-sky-600 dark:text-sky-300 rounded-full px-3 py-1 text-xs font-medium">
-              🤩 5
-            </span>
-          </div>
-        </div>
-        </div>
-      </section>
+      {/* Hero — full-bleed video + synced phone UI (Lily-Hero-Video-Plan.md) */}
+      <HeroVideo />
 
       {/* Silence the group chat */}
       <OnePlaceSection />
