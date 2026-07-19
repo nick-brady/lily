@@ -85,7 +85,6 @@ export default function BirthManagePage() {
           status: data.status,
           birth_started_at: data.birth_started_at,
           birth_completed_at: data.birth_completed_at,
-          is_unlocked: data.is_unlocked ?? prev.is_unlocked,
         };
       });
       return;
@@ -373,12 +372,7 @@ export default function BirthManagePage() {
         {activeTab === 'timeline' && (
           <>
             <UpdateForm birthId={birth.id} />
-            <Timeline
-              events={sortedEvents}
-              canManage
-              birthId={birth.id}
-              isUnlocked /* parents are exempt from the gate; page is parent-only */
-            />
+            <Timeline events={sortedEvents} canManage birthId={birth.id} />
           </>
         )}
 

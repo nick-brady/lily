@@ -134,7 +134,6 @@ class BirthOut(BaseModel):
     status: BirthStatus
     birth_started_at: Optional[datetime] = None
     birth_completed_at: Optional[datetime] = None
-    is_unlocked: bool
     is_locked_to_invited: bool
     theme: str = "lily"
     child_weight_lbs: Optional[float] = None
@@ -227,22 +226,6 @@ class GiftOrderAdminOut(BaseModel):
     fulfillment_status: str = "none"
     fulfillment_failure: Optional[str] = None
     created_at: datetime
-
-
-class UnlockCheckoutOut(BaseModel):
-    url: str
-
-
-class UnlockConfirmIn(BaseModel):
-    session_id: str = Field(..., min_length=1, max_length=255)
-
-
-class UnlockConfirmOut(BaseModel):
-    """`status`: 'unlocked' (this confirm won) | 'already_unlocked' |
-    'pending' (session exists but isn't paid — no unlock)."""
-
-    status: str
-    is_unlocked: bool
 
 
 class ReactionCountOut(BaseModel):
@@ -668,8 +651,6 @@ class ActiveUsersOut(BaseModel):
 
 
 class RevenueStatsOut(BaseModel):
-    unlock_count: int
-    unlock_cents: int
     gift_count: int
     gift_cents: int
     total_cents: int

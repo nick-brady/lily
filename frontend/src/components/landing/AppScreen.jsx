@@ -35,7 +35,7 @@ export default function AppScreen({ events, banner, bannerPulse = true, scrollRe
           </p>
         </div>
         <div className="px-3 py-3">
-          <Timeline events={events} slug="lily-demo" isUnlocked />
+          <Timeline events={events} slug="lily-demo" />
         </div>
       </div>
     </div>

@@ -508,23 +508,6 @@ export const api = {
     return jsonOrThrow(res);
   },
 
-  async createUnlockCheckout(slug) {
-    const res = await fetch(`${API_URL}/b/${slug}/unlock/checkout`, {
-      method: 'POST',
-      headers: authHeaders(),
-    });
-    return jsonOrThrow(res);
-  },
-
-  async confirmUnlock(slug, sessionId) {
-    const res = await fetch(`${API_URL}/b/${slug}/unlock/confirm`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ session_id: sessionId }),
-    });
-    return jsonOrThrow(res);
-  },
-
   async listGuesses({ birthId, slug }) {
     const url = birthId
       ? `${API_URL}/birth/${birthId}/guesses`
@@ -551,7 +534,7 @@ export const api = {
 
   // Browser-navigated download, so the JWT rides the query string like the
   // SSE streams do (<a download> can't set an Authorization header). The
-  // export is always free — it must never gain an unlock/paywall check.
+  // export is always free — it must never gain a paywall check.
   birthExportUrl(birthId) {
     const token = getToken();
     return `${API_URL}/birth/${birthId}/export?token=${encodeURIComponent(token || '')}`;

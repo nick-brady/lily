@@ -107,7 +107,7 @@ function ContractionItem({ event, canManage, onDelete, onToggleIgnore }) {
   );
 }
 
-function MilestoneItem({ event, canManage, onDelete, onEdit, engagementScope, isUnlocked }) {
+function MilestoneItem({ event, canManage, onDelete, onEdit, engagementScope }) {
   const { kind, title, body } = event.payload || {};
   const milestone = MILESTONES[kind] || MILESTONES.other;
   return (
@@ -131,13 +131,13 @@ function MilestoneItem({ event, canManage, onDelete, onEdit, engagementScope, is
         {canManage && (
           <ItemActions onEdit={() => onEdit(event)} onDelete={() => onDelete(event)} audienceScope={event.audience_scope} />
         )}
-        <EngagementFooter event={event} scope={engagementScope} isUnlocked={isUnlocked} />
+        <EngagementFooter event={event} scope={engagementScope} />
       </div>
     </div>
   );
 }
 
-function MediaItem({ event, canManage, onDelete, onEdit, onPhotoClick, engagementScope, isUnlocked }) {
+function MediaItem({ event, canManage, onDelete, onEdit, onPhotoClick, engagementScope }) {
   // Scripted fixtures (landing demo, hero video) ride a demo_url on the
   // payload; real events always carry a media_id.
   const { media_id, caption, demo_url } = event.payload || {};
@@ -160,7 +160,7 @@ function MediaItem({ event, canManage, onDelete, onEdit, onPhotoClick, engagemen
           {canManage && (
             <ItemActions onEdit={() => onEdit(event)} onDelete={() => onDelete(event)} audienceScope={event.audience_scope} />
           )}
-          <EngagementFooter event={event} scope={engagementScope} isUnlocked={isUnlocked} />
+          <EngagementFooter event={event} scope={engagementScope} />
         </div>
       </div>
     );
@@ -180,7 +180,7 @@ function MediaItem({ event, canManage, onDelete, onEdit, onPhotoClick, engagemen
           {canManage && (
             <ItemActions onEdit={() => onEdit(event)} onDelete={() => onDelete(event)} audienceScope={event.audience_scope} />
           )}
-          <EngagementFooter event={event} scope={engagementScope} isUnlocked={isUnlocked} />
+          <EngagementFooter event={event} scope={engagementScope} />
         </div>
       </div>
     );
@@ -210,13 +210,13 @@ function MediaItem({ event, canManage, onDelete, onEdit, onPhotoClick, engagemen
         {canManage && (
           <ItemActions onEdit={() => onEdit(event)} onDelete={() => onDelete(event)} audienceScope={event.audience_scope} />
         )}
-        <EngagementFooter event={event} scope={engagementScope} isUnlocked={isUnlocked} />
+        <EngagementFooter event={event} scope={engagementScope} />
       </div>
     </div>
   );
 }
 
-function TextNoteItem({ event, canManage, onDelete, onEdit, engagementScope, isUnlocked }) {
+function TextNoteItem({ event, canManage, onDelete, onEdit, engagementScope }) {
   const { body } = event.payload || {};
   return (
     <div className="flex gap-4 py-4 t-row">
@@ -230,7 +230,7 @@ function TextNoteItem({ event, canManage, onDelete, onEdit, engagementScope, isU
         {canManage && (
           <ItemActions onEdit={() => onEdit(event)} onDelete={() => onDelete(event)} audienceScope={event.audience_scope} />
         )}
-        <EngagementFooter event={event} scope={engagementScope} isUnlocked={isUnlocked} />
+        <EngagementFooter event={event} scope={engagementScope} />
       </div>
     </div>
   );
@@ -256,7 +256,7 @@ function ItemActions({ onEdit, onDelete, audienceScope }) {
  * weird. The persona doc explicitly describes "hearts on every
  * milestone" — engagement lives on the stories, not the metrics.
  */
-function EngagementFooter({ event, scope, isUnlocked }) {
+function EngagementFooter({ event, scope }) {
   if (!scope) return null;
   return (
     <div className="mt-3">
@@ -264,7 +264,6 @@ function EngagementFooter({ event, scope, isUnlocked }) {
       <CommentThread
         event={event}
         scope={scope}
-        isUnlocked={isUnlocked}
         // Scripted fixtures (landing demo, hero video) ride their comments
         // on the event itself; real events never carry demo_comments.
         initialComments={event.demo_comments ?? null}
@@ -312,7 +311,6 @@ export default function Timeline({
   canManage = false,
   birthId = null,
   slug = null,
-  isUnlocked = true,
 }) {
   const engagementScope = birthId
     ? { birthId }
@@ -486,7 +484,6 @@ export default function Timeline({
                   onPhotoClick={openLightbox}
                   onToggleIgnore={toggleIgnore}
                   engagementScope={engagementScope}
-                  isUnlocked={isUnlocked}
                 />
               ))}
             </div>

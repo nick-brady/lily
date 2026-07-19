@@ -178,7 +178,6 @@ def _birth(**overrides):
         birth_completed_at=T0,
         created_at=T0,
         shipping_address={"line1": "123 Secret Ln", "city": "Nowhere"},
-        is_unlocked=True,
     )
     base.update(overrides)
     return SimpleNamespace(**base)

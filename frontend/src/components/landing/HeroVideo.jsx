@@ -112,7 +112,7 @@ function HeroAppScreen({ state }) {
             transition: state.scrollTour ? 'transform 3.2s ease-in-out' : 'none',
           }}
         >
-          <Timeline events={state.events} slug="lily-demo" isUnlocked />
+          <Timeline events={state.events} slug="lily-demo" />
         </div>
       </div>
     </div>

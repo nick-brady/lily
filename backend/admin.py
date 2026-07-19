@@ -106,7 +106,5 @@ def overview_stats(
             rate=became_owners / all_redeemers if all_redeemers else None,
         ),
         active_users=ActiveUsersOut(dau=dau, wau=wau),
-        revenue=RevenueStatsOut(
-            **rev, total_cents=rev["unlock_cents"] + rev["gift_cents"]
-        ),
+        revenue=RevenueStatsOut(**rev, total_cents=rev["gift_cents"]),
     )

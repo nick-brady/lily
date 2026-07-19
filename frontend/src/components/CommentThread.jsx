@@ -11,11 +11,8 @@ import { relativeTime } from '../utils/relativeTime';
  * composer. The brand is dignified, slow, forgiving — Janet types
  * slowly, makes typos, wants to edit; this UI must not punish that.
  *
- * Comments require `birth.is_unlocked`. The 402 response shape from the
- * server is rendered as a gentle "$12, anyone in the family can unlock
- * the comments for everyone — it's permanent for this baby" prompt.
- * Once Stripe lands in PR 5 the prompt becomes a real CTA; today it's
- * a stub that explains the model.
+ * Free for every signed-in viewer — participation is the top of the gift
+ * funnel, never a paywall (pricing thesis, 2026-07-19).
  *
  * Demo mode (`initialComments`): scripted threads on the landing page and
  * hero video render fixture comments without touching the API and hide the
@@ -24,7 +21,6 @@ import { relativeTime } from '../utils/relativeTime';
 export default function CommentThread({
   event,
   scope,
-  isUnlocked,
   countOverride = null,
   initialComments = null,
   defaultExpanded = false,
@@ -38,32 +34,10 @@ export default function CommentThread({
   const [loading, setLoading] = useState(false);
   const [body, setBody] = useState('');
   const [submitting, setSubmitting] = useState(false);
-  const [lockedPrompt, setLockedPrompt] = useState(false);
   const [needName, setNeedName] = useState(false);
   const [nameValue, setNameValue] = useState('');
   const [savingName, setSavingName] = useState(false);
-  const [unlockState, setUnlockState] = useState(''); // '' | 'starting' | 'unavailable'
   const textareaRef = useRef(null);
-
-  // The $12 unlock: only offered on the public surface (scope has a slug);
-  // parents never see the prompt (their manage page passes isUnlocked).
-  async function startUnlock() {
-    if (!scope.slug) return;
-    setUnlockState('starting');
-    try {
-      const { url } = await api.createUnlockCheckout(scope.slug);
-      window.location.assign(url);
-    } catch (err) {
-      if (err.status === 409) {
-        // someone beat them to it — drop the prompt and let a refresh/SSE
-        // settle the composer state
-        setLockedPrompt(false);
-        setUnlockState('');
-      } else {
-        setUnlockState('unavailable');
-      }
-    }
-  }
 
   const displayedCount = countOverride ?? event.comment_count ?? 0;
 
@@ -97,7 +71,6 @@ export default function CommentThread({
 
   function handleToggle() {
     setExpanded((e) => !e);
-    setLockedPrompt(false);
   }
 
   function promptSignIn() {
@@ -115,14 +88,9 @@ export default function CommentThread({
       });
       setComments((prev) => [...(prev || []), created]);
       setBody('');
-      setLockedPrompt(false);
     } catch (err) {
-      if (err.status === 402) {
-        setLockedPrompt(true);
-      } else {
-        // eslint-disable-next-line no-console
-        console.error(err);
-      }
+      // eslint-disable-next-line no-console
+      console.error(err);
     } finally {
       setSubmitting(false);
     }
@@ -250,10 +218,6 @@ export default function CommentThread({
               submitting={submitting}
               ref={textareaRef}
               isAuthenticated={isAuthenticated}
-              isUnlocked={isUnlocked}
-              lockedPrompt={lockedPrompt}
-              onUnlock={scope.slug ? startUnlock : null}
-              unlockState={unlockState}
             />
           )}
         </div>
@@ -291,18 +255,7 @@ function Comment({ comment, canDelete, onDelete }) {
 }
 
 const Composer = forwardRef(function Composer(
-  {
-    body,
-    setBody,
-    onSubmit,
-    onSignIn,
-    submitting,
-    isAuthenticated,
-    isUnlocked,
-    lockedPrompt,
-    onUnlock,
-    unlockState,
-  },
+  { body, setBody, onSubmit, onSignIn, submitting, isAuthenticated },
   ref,
 ) {
   if (!isAuthenticated) {
@@ -318,10 +271,6 @@ const Composer = forwardRef(function Composer(
         </button>
       </div>
     );
-  }
-
-  if (lockedPrompt || isUnlocked === false) {
-    return <LockedPrompt onUnlock={onUnlock} unlockState={unlockState} />;
   }
 
   return (
@@ -350,35 +299,3 @@ const Composer = forwardRef(function Composer(
     </div>
   );
 });
-
-function LockedPrompt({ onUnlock, unlockState }) {
-  return (
-    <div className="rounded-lg border border-primary-100 dark:border-primary-900/30
-                    bg-primary-50/40 dark:bg-primary-900/10 p-4 text-sm">
-      <p className="text-gray-800 dark:text-gray-200 leading-relaxed">
-        Family conversations and personal messages happen here.
-      </p>
-      <p className="mt-2 text-gray-600 dark:text-gray-400 leading-relaxed">
-        Anyone in the family can unlock the comments for everyone — $12,
-        one time. It's permanent for this baby.
-      </p>
-      {onUnlock && unlockState !== 'unavailable' ? (
-        <button
-          type="button"
-          onClick={onUnlock}
-          disabled={unlockState === 'starting'}
-          className="mt-3 px-4 py-2 rounded-lg bg-primary-600 text-white text-sm
-                     font-medium hover:bg-primary-700 disabled:opacity-50"
-        >
-          {unlockState === 'starting' ? 'Opening checkout…' : 'Unlock for $12'}
-        </button>
-      ) : (
-        <p className="mt-3 text-xs text-gray-500 dark:text-gray-500 italic">
-          {unlockState === 'unavailable'
-            ? "Payments aren't available right now — try again soon, or ask the parents."
-            : 'Ask the parents to unlock from their dashboard.'}
-        </p>
-      )}
-    </div>
-  );
-}

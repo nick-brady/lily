@@ -14,7 +14,6 @@ import { getTheme, themeVars } from '../utils/themes';
 export default function PublicBirthPage() {
   const { slug } = useParams();
   const [searchParams, setSearchParams] = useSearchParams();
-  const [unlockBanner, setUnlockBanner] = useState(false);
   const [giftBanner, setGiftBanner] = useState('');
   const { isAuthenticated, me } = useAuth();
   const [birth, setBirth] = useState(null);
@@ -63,29 +62,6 @@ export default function PublicBirthPage() {
 
   const currentUserId = me?.user?.id;
 
-  // Returning from Stripe Checkout: confirm the session server-side (the
-  // dev-friendly fulfillment path; the webhook is the prod source of truth)
-  // and strip the param so refresh/share doesn't re-confirm.
-  useEffect(() => {
-    const sessionId = searchParams.get('unlock_session');
-    if (!sessionId) return;
-    const next = new URLSearchParams(searchParams);
-    next.delete('unlock_session');
-    setSearchParams(next, { replace: true });
-    api
-      .confirmUnlock(slug, sessionId)
-      .then((res) => {
-        if (res.is_unlocked) {
-          setBirth((prev) => (prev ? { ...prev, is_unlocked: true } : prev));
-          setUnlockBanner(true);
-        }
-      })
-      .catch(() => {
-        // pending or transient failure — the webhook is the safety net
-      });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [slug, searchParams]);
-
   // Returning from a gift checkout: confirm server-side (dev path; the
   // webhook is the prod source of truth) and strip the param.
   useEffect(() => {
@@ -121,8 +97,6 @@ export default function PublicBirthPage() {
           status: data.status,
           birth_started_at: data.birth_started_at,
           birth_completed_at: data.birth_completed_at,
-          // the live-unlock moment: someone pays, every open composer opens
-          is_unlocked: data.is_unlocked ?? prev.is_unlocked,
         };
       });
       return;
@@ -280,17 +254,6 @@ export default function PublicBirthPage() {
             </p>
           </div>
         )}
-        {unlockBanner && (
-          <div
-            className="card flex items-center gap-3 py-3"
-            style={{ backgroundColor: 'var(--t-soft-bg)' }}
-          >
-            <span className="text-lg">🤍</span>
-            <p className="text-sm" style={{ color: 'var(--t-soft-text)' }}>
-              Comments are unlocked for everyone — thank you.
-            </p>
-          </div>
-        )}
         {error && (
           <div className="p-3 rounded-lg bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-300 text-sm">
             {error}
@@ -342,11 +305,7 @@ export default function PublicBirthPage() {
             Loading timeline…
           </p>
         ) : (
-          <Timeline
-            events={sortedEvents}
-            slug={slug}
-            isUnlocked={birth?.is_unlocked ?? false}
-          />
+          <Timeline events={sortedEvents} slug={slug} />
         )}
       </main>
 

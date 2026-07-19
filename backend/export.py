@@ -1,13 +1,13 @@
 """Full-data export: everything a birth holds, as one ZIP — always free.
 
-The product charges for hosting and the comment unlock, never for the data
+The product charges for physical keepsakes and storage, never for the data
 itself. This module builds the archive: every media original (full size,
 including hidden and orphaned assets — the data is never hostage), plus
 CSVs of contractions, guesses, the timeline, comments, reactions, and
 family members, a birth.json metadata file, and a README.
 
-Deliberately excluded everywhere: shipping_address, invite tokens, unlock
-and gift/commerce records, emails and phone numbers, internal user ids.
+Deliberately excluded everywhere: shipping_address, invite tokens,
+gift/commerce records, emails and phone numbers, internal user ids.
 CSV builders extract named payload keys only — raw payload JSON is never
 dumped, so future payload additions can't leak by default.
 
@@ -351,7 +351,7 @@ def family_csv(members: list[tuple[str | None, str, datetime]]) -> str:
 
 
 def birth_json(birth: Birth) -> str:
-    """Allowlist only. Excluded on purpose: shipping_address, unlock and
+    """Allowlist only. Excluded on purpose: shipping_address,
     storage-tier/billing fields, every internal id."""
     return json.dumps(
         {

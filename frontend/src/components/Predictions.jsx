@@ -6,8 +6,8 @@ import { useAuth } from '../contexts/AuthContext';
 /**
  * The family pool: everyone guesses the baby's weight and length before
  * the birth; the board settles once the parents record the actual
- * measurements. Guessing is free-tier engagement (like reactions — no
- * unlock), one guess per signed-in user, editable until the baby arrives.
+ * measurements. Guessing is free engagement (like reactions and
+ * comments), one guess per signed-in user, editable until the baby arrives.
  *
  * Works on both surfaces: pass `birthId` (manage page) or `slug`
  * (public page), plus the birth `status` and whether the viewer

@@ -71,11 +71,11 @@ export default function LandingPage() {
         </div>
       </section>
 
-      {/* Gentle unlock mention */}
+      {/* Free participation */}
       <section className="bg-primary-50 dark:bg-gray-900 py-16 px-6">
         <div className="max-w-xl mx-auto text-center">
           <p className="text-lg text-gray-700 dark:text-gray-300 font-light leading-relaxed">
-            Family members can unlock the full experience — leaving comments to be there in every way that matters.
+            Family and friends can leave comments and reactions, free — to be there in every way that matters.
           </p>
         </div>
       </section>
