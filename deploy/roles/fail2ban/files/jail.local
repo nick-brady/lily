@@ -1,0 +1,13 @@
+# Managed by Ansible (roles/fail2ban) — do not edit on the box.
+[DEFAULT]
+# journald survives log rotation and doesn't depend on rsyslog being installed
+backend  = systemd
+bantime  = 1h
+findtime = 10m
+maxretry = 5
+# never ban ourselves out via the instance's own addresses
+ignoreip = 127.0.0.1/8 ::1
+
+[sshd]
+enabled = true
+mode    = aggressive
