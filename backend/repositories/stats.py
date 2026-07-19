@@ -20,7 +20,6 @@ from models import (
     GiftOrder,
     PageVisit,
     TimelineEvent,
-    UnlockPurchase,
     User,
     ViewerInvitation,
     ViewerInvitationRedemption,
@@ -223,11 +222,6 @@ def active_users(db: Session, now: datetime) -> tuple[int, int]:
 
 
 def revenue(db: Session, start: datetime, end: datetime) -> dict:
-    unlock_count, unlock_cents = db.execute(
-        select(func.count(), func.coalesce(func.sum(UnlockPurchase.amount_cents), 0)).where(
-            UnlockPurchase.purchased_at >= start, UnlockPurchase.purchased_at < end
-        )
-    ).one()
     gift_count, gift_cents = db.execute(
         select(func.count(), func.coalesce(func.sum(GiftOrder.amount_cents), 0)).where(
             GiftOrder.status == "paid",
@@ -236,8 +230,6 @@ def revenue(db: Session, start: datetime, end: datetime) -> dict:
         )
     ).one()
     return {
-        "unlock_count": int(unlock_count),
-        "unlock_cents": int(unlock_cents),
         "gift_count": int(gift_count),
         "gift_cents": int(gift_cents),
     }

@@ -7,7 +7,7 @@ import { useAuth } from '../contexts/AuthContext';
  * The reaction palette. Three is intentional — see the personas doc.
  * Janet leaves "a heart on every milestone"; the curated set keeps the
  * vocabulary small and the keepsake dignified. If we ever feel the urge
- * to add fire / clap / cry, resist it: the comment unlock is for words.
+ * to add fire / clap / cry, resist it: comments are for words.
  */
 const REACTIONS = [
   { kind: 'love', emoji: '💖', label: 'Love' },

@@ -11,8 +11,8 @@ app_dir: /opt/lily
 
 # Backend settings.
 # backend runs a SINGLE uvicorn process on purpose: the SSE broker
-# (backend/events.py) is in-process, and the Stripe webhook's live-unlock
-# broadcast assumes it lands on the same process as the subscribers.
+# (backend/events.py) is in-process, and the Stripe webhook's live
+# broadcasts assume they land on the same process as the subscribers.
 # Do not add --workers without first moving the broker to Redis/NATS.
 backend_port: 8000
 

@@ -151,7 +151,7 @@ serve the shareable keepsake page.
 - `POST /birth/{birth_id}/event/{event_id}/reactions` — body `{kind: "love"|"wow"|"pray"}`. Idempotent: re-POSTing the same kind is a no-op.
 - `DELETE /birth/{birth_id}/event/{event_id}/reactions/{kind}` — remove your own reaction of that kind. Idempotent.
 - `GET /birth/{birth_id}/event/{event_id}/comments` — list comments for an event.
-- `POST /birth/{birth_id}/event/{event_id}/comments` — `{body}`. Returns `402` with a `comments_locked` payload if the birth isn't unlocked yet (see "Comment unlock" below).
+- `POST /birth/{birth_id}/event/{event_id}/comments` — `{body}`. Free for any authenticated viewer.
 - `PATCH /birth/{birth_id}/event/{event_id}/comments/{comment_id}` — author-only edit.
 - `DELETE /birth/{birth_id}/event/{event_id}/comments/{comment_id}` — author or parent.
 
@@ -160,14 +160,6 @@ The same routes are mirrored under `/b/{slug}/event/{event_id}/...` for the publ
 `GET /birth/{birth_id}/timeline` and `GET /b/{slug}/timeline` include per-event `reactions: { kind: { count, mine } }` and `comment_count` inline — two extra bulk queries, no N+1.
 
 SSE adds these event kinds: `reaction_added`, `reaction_removed`, `comment_added`, `comment_updated`, `comment_deleted`.
-
-### Comment unlock
-
-Per the spec, comments are gated behind a one-time $12 unlock per birth (`birth.is_unlocked`). Anyone in the family pays once; everyone gets to comment forever. PR 4 wires the gate (HTTP 402 with a `comments_locked` body); PR 5 will plug Stripe in to actually flip the flag. To manually unlock a birth in dev:
-
-```bash
-docker compose exec backend python scripts/unlock_birth.py lily-wren
-```
 
 ### Invitations (parents)
 
@@ -251,6 +243,6 @@ First deploy:
 Subsequent deploys: `cd deploy && ansible-playbook deploy-code.yml`.
 
 The backend intentionally runs ONE uvicorn worker: the SSE broker
-(`backend/events.py`) is in-process, and the Stripe webhook's live-unlock
-broadcast assumes it lands on the same process as the subscribers. Scale-out
+(`backend/events.py`) is in-process, and the Stripe webhook's live
+broadcasts assume they land on the same process as the subscribers. Scale-out
 requires moving the broker to Redis/NATS first.

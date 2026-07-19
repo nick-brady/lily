@@ -82,8 +82,8 @@ def test_refund_kind_namespaces_idempotency_key():
     c = StripeClient(secret_key="sk", client=_client(handler))
     c.create_refund(payment_intent_id="pi_x", kind="gift")
     assert seen["idem"] == "gift-refund-pi_x"
-    c.create_refund(payment_intent_id="pi_x")  # default stays unlock
-    assert seen["idem"] == "unlock-refund-pi_x"
+    c.create_refund(payment_intent_id="pi_x")  # gift is the default
+    assert seen["idem"] == "gift-refund-pi_x"
 
 
 # ── shipping extraction across Stripe API versions ────────────────────────
@@ -512,18 +512,13 @@ def test_webhook_dispatches_gift_kind(monkeypatch):
     monkeypatch.setenv("STRIPE_WEBHOOK_SECRET", secret)
     monkeypatch.setenv("STRIPE_SECRET_KEY", "sk_test_x")
 
-    called = {"gift": 0, "unlock": 0}
+    called = {"gift": 0}
 
     async def fake_gift(db, stripe, obj, tasks, *, raise_on_refund_error):
         called["gift"] += 1
         return "fulfilled"
 
-    async def fake_unlock(db, stripe, obj, *, raise_on_refund_error):
-        called["unlock"] += 1
-        return "unlocked"
-
     monkeypatch.setattr(main, "_fulfill_gift_from_session", fake_gift)
-    monkeypatch.setattr(main, "_fulfill_unlock_from_session", fake_unlock)
 
     client = TestClient(main.app)
 
@@ -545,4 +540,4 @@ def test_webhook_dispatches_gift_kind(monkeypatch):
     ).encode()
     r = client.post("/webhooks/stripe", content=body, headers=signed(body))
     assert r.status_code == 200
-    assert called == {"gift": 1, "unlock": 0}
+    assert called == {"gift": 1}

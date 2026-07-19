@@ -4,9 +4,6 @@ Soft-deleted (not hard) — see `Lily-Personas.md` for the principle:
 Janet's comment from labor day will be on her granddaughter's page when
 she's 18. We never destroy what someone wrote during these hours; the
 soft-delete is for recovery and audit, not for hiding family memory.
-
-The unlock gate (`birth.is_unlocked`) is enforced one layer up at the
-route. Repositories don't reach across to other entities.
 """
 from __future__ import annotations
 

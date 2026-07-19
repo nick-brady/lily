@@ -11,9 +11,9 @@ Per family, the user's membership decides what happens:
   joined_at), their content stays with authorship anonymized, they leave.
 - **sole parent** → the family's births are fully erased: timeline,
   comments/reactions, guesses, invitations, media rows AND S3 objects.
-  Births that have commerce rows (unlock purchases / gift orders — both
-  CASCADE on birth delete, and Stripe payment records must survive for
-  refunds/disputes) are soft-deleted + scrubbed instead of hard-deleted;
+  Births that have commerce rows (gift orders — they CASCADE on birth
+  delete, and Stripe payment records must survive for refunds/disputes)
+  are soft-deleted + scrubbed instead of hard-deleted;
   their content is erased identically either way.
 - **co_parent / family_viewer** → they leave: membership + redemption
   rows removed, their unrevoked invite links revoked, shipping_address
@@ -59,7 +59,6 @@ from models import (
     TimelineEvent,
     TimelineEventComment,
     TimelineEventReaction,
-    UnlockPurchase,
     User,
     ViewerInvitation,
 )
@@ -227,10 +226,7 @@ def _erase_family(db: Session, family_id: uuid.UUID, now: datetime) -> list[str]
         )
 
         has_commerce = db.scalar(
-            select(
-                exists().where(UnlockPurchase.birth_id == birth.id)
-                | exists().where(GiftOrder.birth_id == birth.id)
-            )
+            select(exists().where(GiftOrder.birth_id == birth.id))
         )
         if has_commerce:
             # Hard delete would CASCADE away Stripe payment records; keep

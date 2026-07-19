@@ -123,8 +123,6 @@ def stubbed_stats(monkeypatch):
         stats_repo,
         "revenue",
         lambda db, s, e: {
-            "unlock_count": 2,
-            "unlock_cents": 2400,
             "gift_count": 1,
             "gift_cents": 3500,
         },
@@ -142,7 +140,7 @@ def test_overview_assembles_all_blocks(stubbed_stats) -> None:
     assert out.invites.redemptions == 9
     assert out.conversion.rate == pytest.approx(1 / 7)
     assert out.active_users.wau == 11
-    assert out.revenue.total_cents == 5900
+    assert out.revenue.total_cents == 3500
 
 
 def test_overview_defaults_to_last_30_days(stubbed_stats) -> None:

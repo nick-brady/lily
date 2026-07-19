@@ -1,9 +1,9 @@
-"""Stripe payments — the $12 family unlock via hosted Checkout.
+"""Stripe payments — gift orders via hosted Checkout.
 
 Same conventions as the other integrations (fulfillment/printful.py,
 messenger.py): direct REST via httpx, no SDK; injectable client for tests;
 env-gated factory so an unconfigured environment degrades gracefully
-(the unlock CTA 503s instead of erroring).
+(the gift CTA 503s instead of erroring).
 """
 from __future__ import annotations
 
@@ -40,50 +40,6 @@ class StripeClient:
                 "Stripe-Version": _API_VERSION,
             }
         )
-
-    def create_checkout_session(
-        self,
-        *,
-        birth_id: str,
-        user_id: str,
-        slug: str,
-        child_name: str | None,
-        amount_cents: int,
-    ) -> dict:
-        """One-time-payment hosted Checkout session. Returns the session
-        object (the caller redirects the browser to session["url"])."""
-        product_name = (
-            f"Family unlock — {child_name}'s page" if child_name else "Family unlock"
-        )
-        # {CHECKOUT_SESSION_ID} must reach Stripe literally — it's their
-        # template placeholder, not ours.
-        success_url = (
-            f"{FRONTEND_URL}/b/{slug}?unlock_session={{CHECKOUT_SESSION_ID}}"
-        )
-        data = {
-            "mode": "payment",
-            "client_reference_id": str(birth_id),
-            "line_items[0][quantity]": "1",
-            "line_items[0][price_data][currency]": "usd",
-            "line_items[0][price_data][unit_amount]": str(amount_cents),
-            "line_items[0][price_data][product_data][name]": product_name,
-            "success_url": success_url,
-            "cancel_url": f"{FRONTEND_URL}/b/{slug}",
-            # kind lets the shared webhook endpoint ignore future non-unlock
-            # products; mirrored onto the PaymentIntent so the dashboard
-            # (and refunds) are self-describing.
-            "metadata[kind]": "family_unlock",
-            "metadata[birth_id]": str(birth_id),
-            "metadata[user_id]": str(user_id),
-            "payment_intent_data[metadata][kind]": "family_unlock",
-            "payment_intent_data[metadata][birth_id]": str(birth_id),
-        }
-        try:
-            resp = self._client.post("/v1/checkout/sessions", data=data)
-            resp.raise_for_status()
-            return resp.json()
-        except httpx.HTTPError as exc:
-            raise StripeError(f"create checkout session: {exc}") from exc
 
     def create_gift_checkout_session(
         self,
@@ -141,11 +97,11 @@ class StripeClient:
         except httpx.HTTPError as exc:
             raise StripeError(f"retrieve checkout session: {exc}") from exc
 
-    def create_refund(self, *, payment_intent_id: str, kind: str = "unlock") -> None:
+    def create_refund(self, *, payment_intent_id: str, kind: str = "gift") -> None:
         """Refund the losing payment of a claim race. Idempotent: the
         Idempotency-Key dedupes concurrent attempts (the loser's webhook and
         redirect-confirm can both try), and an already-refunded charge counts
-        as success. `kind` namespaces the key per product (unlock, gift)."""
+        as success. `kind` namespaces the key per product."""
         try:
             resp = self._client.post(
                 "/v1/refunds",
@@ -243,7 +199,3 @@ def get_stripe() -> StripeClient | None:
     if not key:
         return None
     return StripeClient(secret_key=key)
-
-
-def unlock_price_cents() -> int:
-    return int(os.getenv("UNLOCK_PRICE_CENTS", "1200"))

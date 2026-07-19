@@ -82,7 +82,7 @@ class ReactionKind(str, enum.Enum):
     """The curated set of feelings we let people express on an event.
 
     Three is intentional. See `Lily-Personas.md` — Janet leaves "a heart on
-    the belly photo" and "hearts on every milestone"; the unlock exists
+    the belly photo" and "hearts on every milestone"; comments exist
     precisely because reactions alone can't carry what someone actually
     wants to say. A bigger palette would dilute that gap.
     """
@@ -247,17 +247,6 @@ class Birth(Base):
     # lifecycle state, not a billing concept.
     storage_paid_until: Mapped[datetime | None] = mapped_column(
         sa.DateTime(timezone=True), nullable=True
-    )
-    is_unlocked: Mapped[bool] = mapped_column(
-        sa.Boolean, nullable=False, server_default=sa.text("false")
-    )
-    unlocked_at: Mapped[datetime | None] = mapped_column(
-        sa.DateTime(timezone=True), nullable=True
-    )
-    unlocked_by_user_id: Mapped[uuid.UUID | None] = mapped_column(
-        UUID(as_uuid=True),
-        sa.ForeignKey("users.id", ondelete="SET NULL"),
-        nullable=True,
     )
     is_locked_to_invited: Mapped[bool] = mapped_column(
         sa.Boolean, nullable=False, server_default=sa.text("false")
@@ -474,8 +463,6 @@ class TimelineEventReaction(Base):
     user can toggle a reaction on/off, but can't accidentally double-count.
     Multi-kind is supported (Janet can leave both love and pray on the
     same milestone).
-
-    Reactions are free-tier; the unlock gate only applies to comments.
     """
 
     __tablename__ = "timeline_event_reactions"
@@ -515,9 +502,8 @@ class TimelineEventComment(Base):
     one that matters here — Janet's comment on labor day must still exist
     when Sarah's daughter logs in for the first time.
 
-    Comments are gated behind `birth.is_unlocked`. Parents can still post
-    while locked (they own the page); viewers can't post until the unlock
-    is paid for. The check lives at the route layer.
+    Free for every authenticated viewer — participation is the top of the
+    gift funnel, never a paywall (pricing thesis, 2026-07-19).
     """
 
     __tablename__ = "timeline_event_comments"
@@ -752,39 +738,6 @@ class BirthGuess(Base):
             postgresql_where=sa.text("user_id IS NOT NULL"),
         ),
     )
-
-
-class UnlockPurchase(Base):
-    """The $12 family unlock, recorded. UNIQUE(birth_id) is the spec's
-    one-successful-purchase-per-birth invariant — a racing second payment is
-    refunded and never recorded. The payment-intent unique is a cheap extra
-    invariant (one payment can't buy two births)."""
-
-    __tablename__ = "unlock_purchases"
-
-    id: Mapped[uuid.UUID] = _uuid_pk()
-    birth_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True),
-        sa.ForeignKey("births.id", ondelete="CASCADE"),
-        nullable=False,
-        unique=True,
-    )
-    purchased_by_user_id: Mapped[uuid.UUID | None] = mapped_column(
-        UUID(as_uuid=True),
-        sa.ForeignKey("users.id", ondelete="SET NULL"),
-        nullable=True,
-    )
-    amount_cents: Mapped[int] = mapped_column(sa.Integer, nullable=False)
-    currency: Mapped[str] = mapped_column(
-        sa.Text, nullable=False, server_default="usd"
-    )
-    stripe_payment_intent_id: Mapped[str] = mapped_column(
-        sa.Text, nullable=False, unique=True
-    )
-    stripe_checkout_session_id: Mapped[str | None] = mapped_column(
-        sa.Text, nullable=True
-    )
-    purchased_at: Mapped[datetime] = _created_at()
 
 
 class GiftOrder(Base):

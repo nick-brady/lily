@@ -117,10 +117,6 @@ async def publish_birth_update(birth_id: uuid.UUID, birth) -> None:
                 "birth_completed_at": birth.birth_completed_at.isoformat()
                 if birth.birth_completed_at
                 else None,
-                # the live-unlock moment: comment boxes open the instant
-                # payment lands (broker is single-process, which holds —
-                # the Stripe webhook lands on this same uvicorn)
-                "is_unlocked": birth.is_unlocked,
             },
         ),
     )

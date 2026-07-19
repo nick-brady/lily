@@ -8,8 +8,8 @@ the route-layer funnel, house style). Two invariants do all the race work:
   caller ever creates the shipment and schedules Printful.
 - the partial unique index uq_gift_orders_family_claim makes the loser of a
   cross-order family-bound race fail its CAS with IntegrityError (Postgres
-  enforces partial unique indexes on the UPDATE's new tuple), mirroring
-  unlocks.fulfill_purchase; the caller refunds and we record 'refunded'.
+  enforces partial unique indexes on the UPDATE's new tuple); the caller
+  refunds and we record 'refunded'.
 
 Storage-gift orders share this same table and the same claim index —
 `gift_rendering_id` is just null for them (no artwork behind a storage

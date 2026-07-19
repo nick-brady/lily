@@ -79,7 +79,7 @@ function ParentScreen({ startTime, events, pressed }) {
             />
           )}
         </div>
-        <Timeline events={events} slug="lily-demo" isUnlocked />
+        <Timeline events={events} slug="lily-demo" />
       </div>
     </div>
   );

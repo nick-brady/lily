@@ -9,7 +9,7 @@ Group={{ app_group }}
 WorkingDirectory={{ app_dir }}/backend
 EnvironmentFile={{ app_dir }}/backend/.env
 # SINGLE process on purpose: the in-process SSE broker and the Stripe
-# webhook's live-unlock broadcast require it. See backend/events.py.
+# webhook's live broadcasts require it. See backend/events.py.
 ExecStart={{ app_dir }}/venv/bin/uvicorn main:app --host 127.0.0.1 --port {{ backend_port }} --proxy-headers
 Restart=always
 RestartSec=3
