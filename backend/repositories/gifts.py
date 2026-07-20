@@ -26,6 +26,7 @@ from models import (
     GiftRenderingMockup,
     GiftRenderingStatus,
 )
+from artwork_links import signed_artwork_url
 from storage import object_key, presigned_get_url, put_object
 
 
@@ -275,8 +276,10 @@ def _try_generate_mockup(db: Session, rendering: GiftRendering) -> None:
     db.commit()
     try:
         # The partner fetches the artwork by URL, so it must be publicly
-        # reachable (real S3 in prod — a localhost dev MinIO URL won't work).
-        artwork = presigned_get_url(rendering.artwork_s3_key, expires_in=3600)
+        # reachable (the prod domain — a localhost dev URL won't work). The
+        # app serves it via a short signed link: presigned S3 URLs from the
+        # instance role exceed Printful's 1000-char URL cap.
+        artwork = signed_artwork_url(rendering.id, expires_in=3600)
         result = adapter.generate_mockup(
             artwork_url=artwork,
             product_id=product.product_id,
@@ -331,7 +334,7 @@ def render_product_mockup(mockup_id: uuid.UUID) -> None:
             db.commit()
             return
         try:
-            artwork = presigned_get_url(rendering.artwork_s3_key, expires_in=3600)
+            artwork = signed_artwork_url(rendering.id, expires_in=3600)
             template = gift_templates.get(rendering.template_id)
             result = adapter.generate_mockup(
                 artwork_url=artwork,
