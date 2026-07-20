@@ -73,6 +73,7 @@ from models import (
     GiftCatalogItem,
     GiftKind,
     GiftOrder,
+    GiftRendering,
     GiftRenderingStatus,
     MediaAsset,
     MediaKind,
