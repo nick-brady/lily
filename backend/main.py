@@ -96,11 +96,12 @@ from repositories import stats as stats_repo
 from repositories import users as users_repo
 import account_deletion
 import admin as admin_mod
+import artwork_links
 import export as export_mod
 import fulfillment
 import payments
 from fulfillment import products as fulfillment_products
-from storage import ensure_bucket, presigned_get_url, put_object
+from storage import ensure_bucket, get_object_bytes, presigned_get_url, put_object
 from schemas import (
     AdminOverviewOut,
     AuthRequestIn,
@@ -2118,6 +2119,31 @@ def _gift_gallery_out(db, birth, *, is_parent: bool) -> GiftGalleryOut:
         storage_paid_until=birth.storage_paid_until,
         storage_lifetime=birth.storage_lifetime,
     )
+
+
+@app.get("/gift-artwork/{rendering_id}.png")
+def gift_artwork_file(
+    rendering_id: uuid.UUID,
+    exp: int,
+    sig: str,
+    db: Session = Depends(get_db),
+) -> Response:
+    """Gift artwork for fulfillment partners (Printful fetches mockup and
+    print files by URL). Unauthenticated on purpose — the caller is a
+    partner server, not a user; a valid unexpired HMAC signature is the
+    credential, exactly like a presigned S3 URL but short enough for
+    Printful's 1000-character URL cap."""
+    if not artwork_links.verify_artwork_sig(rendering_id, exp, sig):
+        raise HTTPException(status_code=403, detail="Invalid or expired link")
+    rendering = db.get(GiftRendering, rendering_id)
+    if (
+        rendering is None
+        or rendering.deleted_at is not None
+        or not rendering.artwork_s3_key
+    ):
+        raise HTTPException(status_code=404, detail="Unknown artwork")
+    body = get_object_bytes(rendering.artwork_s3_key)
+    return Response(content=body, media_type="image/png")
 
 
 @app.get("/gifts/catalog", response_model=list[GiftItemOut])

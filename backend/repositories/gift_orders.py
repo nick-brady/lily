@@ -37,10 +37,10 @@ from models import (
     GiftShipment,
     User,
 )
-from storage import presigned_get_url
+from artwork_links import signed_artwork_url
 
 # Draft orders can sit in the Printful dashboard for days before a human
-# confirms them; the artwork file URL must outlive that window (SigV4 max).
+# confirms them; the artwork link must outlive that window (7 days).
 _ORDER_FILE_TTL_SECONDS = 604800
 
 # Alembic can't express "365 days per storage_years_granted" declaratively,
@@ -309,8 +309,8 @@ def submit_shipment(shipment_id: uuid.UUID) -> None:
             "zip": addr.get("postal_code"),
         }
         try:
-            artwork = presigned_get_url(
-                rendering.artwork_s3_key, expires_in=_ORDER_FILE_TTL_SECONDS
+            artwork = signed_artwork_url(
+                rendering.id, expires_in=_ORDER_FILE_TTL_SECONDS
             )
             result = adapter.create_order(
                 recipient=recipient,
