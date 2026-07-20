@@ -52,15 +52,21 @@ class StripeClient:
         amount_cents: int,
         collect_shipping: bool,
         allowed_countries: list[str],
+        quantity: int = 1,
+        extra_order_id: str | None = None,
     ) -> dict:
         """Hosted Checkout for a gift order. When `collect_shipping`, Stripe
         gathers the shipping address (the buyer's own, or the family's when
         the parents haven't saved one); otherwise the parent-saved address is
-        resolved at fulfillment time."""
+        resolved at fulfillment time.
+
+        A "both" purchase (family copy + self copy) passes quantity=2 and
+        the second order's id as `extra_order_id`; fulfillment fans out over
+        both orders from the one session."""
         data = {
             "mode": "payment",
             "client_reference_id": str(order_id),
-            "line_items[0][quantity]": "1",
+            "line_items[0][quantity]": str(quantity),
             "line_items[0][price_data][currency]": "usd",
             "line_items[0][price_data][unit_amount]": str(amount_cents),
             "line_items[0][price_data][product_data][name]": product_name,
@@ -75,6 +81,9 @@ class StripeClient:
             "payment_intent_data[metadata][kind]": "gift_order",
             "payment_intent_data[metadata][order_id]": str(order_id),
         }
+        if extra_order_id:
+            data["metadata[order_id_2]"] = str(extra_order_id)
+            data["payment_intent_data[metadata][order_id_2]"] = str(extra_order_id)
         if collect_shipping:
             for i, country in enumerate(allowed_countries):
                 data[f"shipping_address_collection[allowed_countries][{i}]"] = country
@@ -97,16 +106,33 @@ class StripeClient:
         except httpx.HTTPError as exc:
             raise StripeError(f"retrieve checkout session: {exc}") from exc
 
-    def create_refund(self, *, payment_intent_id: str, kind: str = "gift") -> None:
+    def create_refund(
+        self,
+        *,
+        payment_intent_id: str,
+        kind: str = "gift",
+        amount_cents: int | None = None,
+        key_suffix: str = "",
+    ) -> None:
         """Refund the losing payment of a claim race. Idempotent: the
         Idempotency-Key dedupes concurrent attempts (the loser's webhook and
         redirect-confirm can both try), and an already-refunded charge counts
-        as success. `kind` namespaces the key per product."""
+        as success. `kind` namespaces the key per product.
+
+        `amount_cents` makes it a partial refund (a lost family claim inside
+        a two-copy purchase refunds only that copy); `key_suffix` (e.g. the
+        order id) keeps the partial refund's idempotency key distinct from a
+        full refund of the same payment intent."""
         try:
+            data = {"payment_intent": payment_intent_id}
+            if amount_cents is not None:
+                data["amount"] = str(amount_cents)
             resp = self._client.post(
                 "/v1/refunds",
-                data={"payment_intent": payment_intent_id},
-                headers={"Idempotency-Key": f"{kind}-refund-{payment_intent_id}"},
+                data=data,
+                headers={
+                    "Idempotency-Key": f"{kind}-refund-{payment_intent_id}{key_suffix}"
+                },
             )
             if resp.status_code >= 400:
                 body = resp.json() if resp.content else {}

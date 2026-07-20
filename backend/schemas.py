@@ -172,7 +172,8 @@ class GuessBoardOut(BaseModel):
 
 
 class GiftCheckoutIn(BaseModel):
-    recipient_kind: str = Field(..., pattern="^(family|self)$")
+    # "both" = a family copy and a self copy in one checkout (quantity 2)
+    recipient_kind: str = Field(..., pattern="^(family|self|both)$")
     gift_message: Optional[str] = Field(default=None, max_length=500)
 
 
@@ -556,6 +557,7 @@ class GiftGalleryOut(BaseModel):
     items: list["GiftItemOut"] = []
     family_has_shipping_address: bool = False
     storage_paid_until: Optional[datetime] = None
+    storage_lifetime: bool = False
 
 
 class GiftRenderingPatchIn(BaseModel):

@@ -1416,44 +1416,72 @@ async def _fulfill_gift_from_session(
     Physical items ship; storage gifts have nothing to ship — they just
     extend the birth's paid-through date."""
     metadata = session_obj.get("metadata") or {}
-    order_id = uuid.UUID(metadata["order_id"])
+    order_ids = [uuid.UUID(metadata["order_id"])]
+    if metadata.get("order_id_2"):  # a "both" purchase — two copies, one session
+        order_ids.append(uuid.UUID(metadata["order_id_2"]))
+    # each order records its own share of the charge, not the session total
+    share = (session_obj.get("amount_total") or 0) // len(order_ids) or None
 
-    outcome, order = gift_orders_repo.mark_paid(
-        db, order_id=order_id, session_obj=session_obj
-    )
-    if outcome == "paid":
-        birth = db.get(Birth, order.birth_id)
-        item = db.get(GiftCatalogItem, order.gift_catalog_item_id)
-        if item.kind == GiftKind.storage_gift:
-            gift_orders_repo.grant_storage_gift(
-                db, birth=birth, storage_years_granted=item.storage_years_granted
-            )
-            return "fulfilled"
-        if order.recipient_kind == "family" and birth.shipping_address:
-            address = dict(birth.shipping_address)
-        else:
-            address = payments.extract_shipping(session_obj)
-        shipment = gift_orders_repo.create_shipment(db, order=order, address=address)
-        if shipment.fulfillment_status != "failed":
-            background_tasks.add_task(gift_orders_repo.submit_shipment, shipment.id)
-        return "fulfilled"
-    if outcome == "claim_lost":
-        pi = session_obj.get("payment_intent")
-        if pi:
-            try:
-                stripe.create_refund(payment_intent_id=pi, kind="gift")
-            except payments.StripeError:
-                if raise_on_refund_error:
-                    raise
-                print(
-                    f"gift refund failed for {pi}; webhook redelivery will retry",
-                    flush=True,
+    statuses = []
+    for order_id in order_ids:
+        outcome, order = gift_orders_repo.mark_paid(
+            db, order_id=order_id, session_obj=session_obj, charged_cents=share
+        )
+        if outcome == "paid":
+            birth = db.get(Birth, order.birth_id)
+            item = db.get(GiftCatalogItem, order.gift_catalog_item_id)
+            if item.kind == GiftKind.storage_gift:
+                gift_orders_repo.grant_storage_gift(
+                    db, birth=birth, storage_years_granted=item.storage_years_granted
                 )
-                return "refunded"
-        gift_orders_repo.mark_refunded(db, order_id=order_id)
-        return "refunded"
-    if outcome == "already_refunded":
-        return "refunded"
+                statuses.append("fulfilled")
+                continue
+            if order.recipient_kind == "family" and birth.shipping_address:
+                address = dict(birth.shipping_address)
+            else:
+                address = payments.extract_shipping(session_obj)
+            shipment = gift_orders_repo.create_shipment(db, order=order, address=address)
+            if shipment.fulfillment_status != "failed":
+                background_tasks.add_task(gift_orders_repo.submit_shipment, shipment.id)
+            statuses.append("fulfilled")
+            continue
+        if outcome == "claim_lost":
+            pi = session_obj.get("payment_intent")
+            if pi:
+                try:
+                    # single-order session: refund the whole payment (legacy
+                    # key shape). Multi-order: refund only this copy's share,
+                    # keyed per order so it can't collide with a full refund.
+                    if len(order_ids) == 1:
+                        stripe.create_refund(payment_intent_id=pi, kind="gift")
+                    else:
+                        stripe.create_refund(
+                            payment_intent_id=pi,
+                            kind="gift",
+                            amount_cents=order.amount_cents,
+                            key_suffix=f"-{order_id}",
+                        )
+                except payments.StripeError:
+                    if raise_on_refund_error:
+                        raise
+                    print(
+                        f"gift refund failed for {pi}; webhook redelivery will retry",
+                        flush=True,
+                    )
+                    statuses.append("refunded")
+                    continue
+            gift_orders_repo.mark_refunded(db, order_id=order_id)
+            statuses.append("refunded")
+            continue
+        if outcome == "already_refunded":
+            statuses.append("refunded")
+        else:
+            statuses.append("already_processed")
+
+    # the session-level status: any fulfillment wins, then any refund
+    for status in ("fulfilled", "refunded"):
+        if status in statuses:
+            return status
     return "already_processed"
 
 
@@ -1487,27 +1515,50 @@ def create_gift_checkout(
         raise HTTPException(
             status_code=409, detail={"code": "not_purchasable"}
         )
-    if payload.recipient_kind == "family" and item.id in gift_orders_repo.claimed_item_ids(
+    wants_family = payload.recipient_kind in ("family", "both")
+    wants_self = payload.recipient_kind in ("self", "both")
+    if wants_family and item.id in gift_orders_repo.claimed_item_ids(
         db, birth_id=access.birth.id
     ):
         # UX guard — the partial unique index is the real enforcement
         raise HTTPException(status_code=409, detail={"code": "already_claimed"})
+    if payload.recipient_kind == "both" and access.birth.shipping_address is None:
+        # Stripe collects exactly one address per session (the buyer's, for
+        # the self copy) — the family copy needs the parent-saved address.
+        raise HTTPException(
+            status_code=409, detail={"code": "family_address_required"}
+        )
 
-    order = gift_orders_repo.create_pending_order(
-        db,
-        birth=access.birth,
-        item=item,
-        rendering=rendering,
-        user=current_user,
-        recipient_kind=payload.recipient_kind,
-        gift_message=(payload.gift_message or "").strip() or None,
-    )
-    collect_shipping = payload.recipient_kind == "self" or (
-        payload.recipient_kind == "family" and access.birth.shipping_address is None
-    )
+    message = (payload.gift_message or "").strip() or None
+    orders = []
+    if wants_family:
+        orders.append(
+            gift_orders_repo.create_pending_order(
+                db,
+                birth=access.birth,
+                item=item,
+                rendering=rendering,
+                user=current_user,
+                recipient_kind="family",
+                gift_message=message,
+            )
+        )
+    if wants_self:
+        orders.append(
+            gift_orders_repo.create_pending_order(
+                db,
+                birth=access.birth,
+                item=item,
+                rendering=rendering,
+                user=current_user,
+                recipient_kind="self",
+                gift_message=None if wants_family else message,
+            )
+        )
+    collect_shipping = wants_self or access.birth.shipping_address is None
     try:
         session = stripe.create_gift_checkout_session(
-            order_id=str(order.id),
+            order_id=str(orders[0].id),
             birth_id=str(access.birth.id),
             user_id=str(current_user.id),
             slug=access.birth.slug,
@@ -1515,13 +1566,16 @@ def create_gift_checkout(
             amount_cents=item.base_price_cents,
             collect_shipping=collect_shipping,
             allowed_countries=payments.gift_shipping_countries(),
+            quantity=len(orders),
+            extra_order_id=str(orders[1].id) if len(orders) > 1 else None,
         )
     except payments.StripeError:
-        # the pending row is inert; leave it
+        # the pending rows are inert; leave them
         raise HTTPException(
             status_code=502, detail="Couldn't start checkout — try again"
         )
-    gift_orders_repo.attach_session(db, order, session["id"])
+    for order in orders:
+        gift_orders_repo.attach_session(db, order, session["id"])
     return GiftCheckoutOut(url=session["url"])
 
 
@@ -2062,6 +2116,7 @@ def _gift_gallery_out(db, birth, *, is_parent: bool) -> GiftGalleryOut:
         items=_serialize_gift_items(db, birth.id, is_parent=is_parent),
         family_has_shipping_address=birth.shipping_address is not None,
         storage_paid_until=birth.storage_paid_until,
+        storage_lifetime=birth.storage_lifetime,
     )
 
 

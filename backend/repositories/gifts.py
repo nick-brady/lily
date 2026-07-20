@@ -34,7 +34,7 @@ def list_active_catalog(db: Session) -> list[GiftCatalogItem]:
         db.scalars(
             select(GiftCatalogItem)
             .where(GiftCatalogItem.is_active.is_(True))
-            .order_by(GiftCatalogItem.created_at.asc())
+            .order_by(GiftCatalogItem.sort_order.asc(), GiftCatalogItem.created_at.asc())
         ).all()
     )
 
