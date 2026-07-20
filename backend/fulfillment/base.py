@@ -58,10 +58,14 @@ class FulfillmentAdapter(ABC):
         artwork_url: str,
         product_id: int,
         variant_id: int,
+        artwork_width: int,
+        artwork_height: int,
         placement: str = "default",
     ) -> MockupResult:
         """Render `artwork_url` onto the partner's product/variant and return
         the mockup image. Raises MockupError on failure. `artwork_url` must be
         reachable by the partner's servers (a public/presigned URL — not a
-        localhost dev URL). The caller picks the product/variant from the
-        curated shortlist (`fulfillment.products`)."""
+        localhost dev URL). `artwork_width`/`artwork_height` are the artwork's
+        pixel dimensions — our templates are drawn at the product's full print
+        area, so placement is always the full area. The caller picks the
+        product/variant from the curated shortlist (`fulfillment.products`)."""

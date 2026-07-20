@@ -63,6 +63,8 @@ class PrintfulAdapter(FulfillmentAdapter):
         artwork_url: str,
         product_id: int,
         variant_id: int,
+        artwork_width: int,
+        artwork_height: int,
         placement: str = "default",
     ) -> MockupResult:
         task_key = self._create_task(
@@ -70,6 +72,8 @@ class PrintfulAdapter(FulfillmentAdapter):
             variant_id=variant_id,
             placement=placement,
             artwork_url=artwork_url,
+            artwork_width=artwork_width,
+            artwork_height=artwork_height,
         )
         mockup_url = self._poll_for_mockup(task_key)
         return self._download(mockup_url)
@@ -107,12 +111,35 @@ class PrintfulAdapter(FulfillmentAdapter):
             raise OrderError(f"printful order: {exc}") from exc
 
     def _create_task(
-        self, *, product_id: int, variant_id: int, placement: str, artwork_url: str
+        self,
+        *,
+        product_id: int,
+        variant_id: int,
+        placement: str,
+        artwork_url: str,
+        artwork_width: int,
+        artwork_height: int,
     ) -> str:
         body = {
             "variant_ids": [variant_id],
             "format": "png",
-            "files": [{"placement": placement, "image_url": artwork_url}],
+            "files": [
+                {
+                    "placement": placement,
+                    "image_url": artwork_url,
+                    # Required by the API (MG-4 without it). Our templates are
+                    # drawn at the product's full print area, so the artwork
+                    # covers the area edge to edge.
+                    "position": {
+                        "area_width": artwork_width,
+                        "area_height": artwork_height,
+                        "width": artwork_width,
+                        "height": artwork_height,
+                        "top": 0,
+                        "left": 0,
+                    },
+                }
+            ],
         }
         resp = self._client.post(
             f"/mockup-generator/create-task/{product_id}", json=body
