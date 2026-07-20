@@ -6,6 +6,8 @@ a lightweight fake session so we don't need a live database.
 """
 from __future__ import annotations
 
+import json
+
 import httpx
 import pytest
 
@@ -15,7 +17,13 @@ from fulfillment.base import MockupError
 from fulfillment.printful import PrintfulAdapter
 
 # White Glossy Mug 11oz — Printful's own docs example.
-_MUG = {"product_id": 19, "variant_id": 1320, "placement": "default"}
+_MUG = {
+    "product_id": 19,
+    "variant_id": 1320,
+    "placement": "default",
+    "artwork_width": 2475,
+    "artwork_height": 1155,
+}
 
 
 def _adapter(handler, **kw):
@@ -36,6 +44,16 @@ def test_generate_mockup_happy_path(monkeypatch):
     def handler(req: httpx.Request) -> httpx.Response:
         if req.method == "POST" and req.url.path == "/mockup-generator/create-task/19":
             assert "Bearer test-key" in req.headers["authorization"]
+            # the API rejects tasks without a position block (MG-4)
+            body = json.loads(req.read())
+            assert body["files"][0]["position"] == {
+                "area_width": 2475,
+                "area_height": 1155,
+                "width": 2475,
+                "height": 1155,
+                "top": 0,
+                "left": 0,
+            }
             return httpx.Response(200, json={"result": {"task_key": "abc"}})
         if req.method == "GET" and req.url.path == "/mockup-generator/task":
             state["polls"] += 1

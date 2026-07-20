@@ -232,7 +232,7 @@ export default function SetupPage() {
                 type="text"
                 value={babyName}
                 onChange={(e) => setBabyName(e.target.value)}
-                placeholder="Lily Rose"
+                placeholder="Lily Wren"
                 autoFocus
                 autoComplete="off"
                 className="w-full px-4 py-4 text-xl rounded-xl border border-gray-300 dark:border-gray-600

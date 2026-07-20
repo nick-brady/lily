@@ -94,10 +94,16 @@ def claimed_item_ids(db: Session, *, birth_id: uuid.UUID) -> set[uuid.UUID]:
 
 
 def mark_paid(
-    db: Session, *, order_id: uuid.UUID, session_obj: dict
+    db: Session,
+    *,
+    order_id: uuid.UUID,
+    session_obj: dict,
+    charged_cents: int | None = None,
 ) -> tuple[MarkPaidOutcome, GiftOrder | None]:
     """CAS the order pending→paid, recording the payment identifiers and the
-    amount Stripe actually charged. Outcomes:
+    amount Stripe actually charged. `charged_cents` overrides the session's
+    amount_total when the session covers more than this one order (a "both"
+    purchase records each copy's share, not the doubled total). Outcomes:
 
     - "paid": this caller won — it (alone) creates the shipment and
       schedules fulfillment.
@@ -131,7 +137,8 @@ def mark_paid(
                 stripe_checkout_session_id=session_id
                 or order.stripe_checkout_session_id,
                 stripe_payment_intent_id=session_obj.get("payment_intent"),
-                amount_cents=session_obj.get("amount_total")
+                amount_cents=charged_cents
+                or session_obj.get("amount_total")
                 or order.amount_cents,
             )
         )
@@ -159,11 +166,20 @@ def mark_refunded(db: Session, *, order_id: uuid.UUID) -> None:
     db.commit()
 
 
-def grant_storage_gift(db: Session, *, birth: Birth, storage_years_granted: int) -> None:
+def grant_storage_gift(
+    db: Session, *, birth: Birth, storage_years_granted: int | None
+) -> None:
     """Extend (never shorten) `birth.storage_paid_until` by the granted
     years. Stacks from the later of "now" and the current value, so a
     second grandparent's gift adds on top of the first's instead of
-    resetting the clock."""
+    resetting the clock. `None` years is the lifetime gift — it sets the
+    permanent flag and leaves the date alone (lifetime never downgrades,
+    and a later year-grant on top of lifetime is a harmless no-op for
+    display, which prefers the flag)."""
+    if storage_years_granted is None:
+        birth.storage_lifetime = True
+        db.commit()
+        return
     now = datetime.now(timezone.utc)
     base = birth.storage_paid_until if birth.storage_paid_until and birth.storage_paid_until > now else now
     birth.storage_paid_until = base + timedelta(days=_DAYS_PER_YEAR * storage_years_granted)

@@ -60,6 +60,24 @@ def test_gift_session_form_fields_with_shipping():
     assert "gift_session=" in form["success_url"][0]
 
 
+def test_gift_session_both_carries_quantity_and_second_order():
+    seen = {}
+
+    def handler(req: httpx.Request) -> httpx.Response:
+        seen["form"] = parse_qs(req.read().decode())
+        return httpx.Response(200, json={"id": "cs_1", "url": "https://checkout/x"})
+
+    c = StripeClient(secret_key="sk", client=_client(handler))
+    c.create_gift_checkout_session(
+        **_gift_session_kwargs(), quantity=2, extra_order_id="o-2"
+    )
+    form = seen["form"]
+    assert form["line_items[0][quantity]"] == ["2"]
+    assert form["metadata[order_id]"] == ["o-1"]
+    assert form["metadata[order_id_2]"] == ["o-2"]
+    assert form["payment_intent_data[metadata][order_id_2]"] == ["o-2"]
+
+
 def test_gift_session_omits_shipping_when_saved_address():
     seen = {}
 
@@ -77,13 +95,22 @@ def test_refund_kind_namespaces_idempotency_key():
 
     def handler(req: httpx.Request) -> httpx.Response:
         seen["idem"] = req.headers.get("idempotency-key")
+        seen["form"] = parse_qs(req.read().decode())
         return httpx.Response(200, json={"id": "re_1"})
 
     c = StripeClient(secret_key="sk", client=_client(handler))
     c.create_refund(payment_intent_id="pi_x", kind="gift")
     assert seen["idem"] == "gift-refund-pi_x"
+    assert "amount" not in seen["form"]
     c.create_refund(payment_intent_id="pi_x")  # gift is the default
     assert seen["idem"] == "gift-refund-pi_x"
+    # a partial refund (one copy of a "both" purchase) carries the amount
+    # and keys per order so it can't dedupe against a full refund
+    c.create_refund(
+        payment_intent_id="pi_x", amount_cents=1800, key_suffix="-o1"
+    )
+    assert seen["idem"] == "gift-refund-pi_x-o1"
+    assert seen["form"]["amount"] == ["1800"]
 
 
 # ── shipping extraction across Stripe API versions ────────────────────────
@@ -405,6 +432,112 @@ class _FakeCommitSession:
         self.commits += 1
 
 
+def test_funnel_both_orders_fulfill_from_one_session(monkeypatch):
+    import main
+
+    family = _order()
+    selfo = _order()
+    selfo.recipient_kind = "self"
+    orders = {family.id: family, selfo.id: selfo}
+    birth = SimpleNamespace(
+        id=family.birth_id, shipping_address={"name": "Fam", "line1": "1 St"}
+    )
+    item = SimpleNamespace(kind=GiftKind.physical, storage_years_granted=None)
+
+    session_obj = _session_obj(family, session_id="cs_both")
+    session_obj["amount_total"] = 3600
+    session_obj["metadata"]["order_id_2"] = str(selfo.id)
+    session_obj["collected_information"] = {
+        "shipping_details": {"name": "Buyer", "address": {"line1": "9 Buyer Rd"}}
+    }
+
+    seen = []
+
+    def fake_mark_paid(db, *, order_id, session_obj, charged_cents=None):
+        seen.append((order_id, charged_cents))
+        return "paid", orders[order_id]
+
+    monkeypatch.setattr(main.gift_orders_repo, "mark_paid", fake_mark_paid)
+    created = []
+    monkeypatch.setattr(
+        main.gift_orders_repo,
+        "create_shipment",
+        lambda db, **kw: created.append(kw)
+        or SimpleNamespace(id=uuid.uuid4(), fulfillment_status="none"),
+    )
+
+    tasks = _Tasks()
+    status = asyncio.run(
+        main._fulfill_gift_from_session(
+            _dispatching_db(birth, item), SimpleNamespace(), session_obj, tasks,
+            raise_on_refund_error=True,
+        )
+    )
+    assert status == "fulfilled"
+    assert len(tasks.scheduled) == 2
+    # each order records its share of the doubled charge
+    assert seen == [(family.id, 1800), (selfo.id, 1800)]
+    # family copy → saved address; self copy → the address Stripe collected
+    by_kind = {c["order"].recipient_kind: c["address"] for c in created}
+    assert by_kind["family"]["name"] == "Fam"
+    assert by_kind["self"]["line1"] == "9 Buyer Rd"
+
+
+def test_funnel_both_family_claim_lost_refunds_half_fulfills_self(monkeypatch):
+    import main
+
+    family = _order()
+    selfo = _order()
+    selfo.recipient_kind = "self"
+    outcomes = {family.id: ("claim_lost", family), selfo.id: ("paid", selfo)}
+    birth = SimpleNamespace(id=family.birth_id, shipping_address=None)
+    item = SimpleNamespace(kind=GiftKind.physical, storage_years_granted=None)
+
+    session_obj = _session_obj(family, session_id="cs_both")
+    session_obj["amount_total"] = 3600
+    session_obj["metadata"]["order_id_2"] = str(selfo.id)
+    session_obj["collected_information"] = {
+        "shipping_details": {"name": "Buyer", "address": {"line1": "9 Buyer Rd"}}
+    }
+
+    monkeypatch.setattr(
+        main.gift_orders_repo,
+        "mark_paid",
+        lambda db, *, order_id, session_obj, charged_cents=None: outcomes[order_id],
+    )
+    refunds, marked = [], []
+    monkeypatch.setattr(
+        main.gift_orders_repo,
+        "mark_refunded",
+        lambda db, *, order_id: marked.append(order_id),
+    )
+    monkeypatch.setattr(
+        main.gift_orders_repo,
+        "create_shipment",
+        lambda db, **kw: SimpleNamespace(id=uuid.uuid4(), fulfillment_status="none"),
+    )
+    stripe = SimpleNamespace(create_refund=lambda **kw: refunds.append(kw))
+
+    status = asyncio.run(
+        main._fulfill_gift_from_session(
+            _dispatching_db(birth, item), stripe, session_obj, _Tasks(),
+            raise_on_refund_error=True,
+        )
+    )
+    # the self copy still ships, so the session reads fulfilled overall
+    assert status == "fulfilled"
+    assert marked == [family.id]
+    # only the family copy's share is refunded, keyed per order
+    assert refunds == [
+        {
+            "payment_intent_id": "pi_1",
+            "kind": "gift",
+            "amount_cents": 1800,
+            "key_suffix": f"-{family.id}",
+        }
+    ]
+
+
 def test_grant_storage_gift_from_nothing():
     from datetime import datetime, timedelta, timezone
 
@@ -420,6 +553,20 @@ def test_grant_storage_gift_from_nothing():
     # ~5 years out, give or take the leap-year approximation
     assert birth.storage_paid_until > before + timedelta(days=5 * 365 - 1)
     assert birth.storage_paid_until < before + timedelta(days=5 * 365 + 1)
+
+
+def test_grant_storage_gift_lifetime_sets_flag_not_date():
+    from repositories import gift_orders as repo
+
+    birth = SimpleNamespace(storage_paid_until=None, storage_lifetime=False)
+    db = _FakeCommitSession()
+
+    repo.grant_storage_gift(db, birth=birth, storage_years_granted=None)
+
+    assert db.commits == 1
+    assert birth.storage_lifetime is True
+    # lifetime is the flag, not a sentinel date
+    assert birth.storage_paid_until is None
 
 
 def test_grant_storage_gift_stacks_on_existing():

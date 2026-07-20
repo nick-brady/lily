@@ -296,16 +296,16 @@ export default function PublicBirthPage() {
           />
         )}
 
-        {!loading && birth && isAuthenticated && (
-          <MemberGifts birthId={birth.id} isParent={canManageThisBirth} />
-        )}
-
         {loading ? (
           <p className="text-center t-muted py-12">
             Loading timeline…
           </p>
         ) : (
           <Timeline events={sortedEvents} slug={slug} />
+        )}
+
+        {!loading && birth && isAuthenticated && (
+          <MemberGifts birthId={birth.id} isParent={canManageThisBirth} />
         )}
       </main>
 
@@ -367,5 +367,18 @@ function MemberGifts({ birthId, isParent }) {
     };
   }, [birthId]);
   if (!isMember) return null;
-  return <GiftGallery birthId={birthId} isParent={isParent} />;
+  return (
+    <>
+      {/* a quiet seam where the story ends and the keepsakes begin */}
+      <div className="flex items-center gap-4 px-10 pt-2" aria-hidden="true">
+        <div className="flex-1" style={{ borderTop: '1px solid var(--t-divider)' }} />
+        <span
+          className="w-1.5 h-1.5 rounded-full"
+          style={{ backgroundColor: 'var(--t-dot)' }}
+        />
+        <div className="flex-1" style={{ borderTop: '1px solid var(--t-divider)' }} />
+      </div>
+      <GiftGallery birthId={birthId} isParent={isParent} />
+    </>
+  );
 }

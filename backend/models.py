@@ -248,6 +248,11 @@ class Birth(Base):
     storage_paid_until: Mapped[datetime | None] = mapped_column(
         sa.DateTime(timezone=True), nullable=True
     )
+    # The lifetime storage gift — a real flag, not a far-future sentinel
+    # date, so the page can honestly say "forever". Never unset by grants.
+    storage_lifetime: Mapped[bool] = mapped_column(
+        sa.Boolean, nullable=False, server_default=sa.text("false")
+    )
     is_locked_to_invited: Mapped[bool] = mapped_column(
         sa.Boolean, nullable=False, server_default=sa.text("false")
     )
@@ -594,7 +599,12 @@ class GiftCatalogItem(Base):
     template_metadata: Mapped[dict] = mapped_column(
         JSONB, nullable=False, server_default=sa.text("'{}'::jsonb")
     )
+    # For storage gifts: the years granted, or NULL meaning lifetime.
     storage_years_granted: Mapped[int | None] = mapped_column(sa.Integer, nullable=True)
+    # Shelf position — tangible products first, storage after.
+    sort_order: Mapped[int] = mapped_column(
+        sa.Integer, nullable=False, server_default=sa.text("100")
+    )
     surfaces_in: Mapped[list] = mapped_column(
         JSONB, nullable=False, server_default=sa.text("'[]'::jsonb")
     )
@@ -783,11 +793,13 @@ class GiftOrder(Base):
     currency: Mapped[str] = mapped_column(
         sa.Text, nullable=False, server_default="usd"
     )
+    # Not unique: a "both" purchase is two orders (family + self copies)
+    # sharing one checkout session / payment intent.
     stripe_checkout_session_id: Mapped[str | None] = mapped_column(
-        sa.Text, nullable=True, unique=True
+        sa.Text, nullable=True, index=True
     )
     stripe_payment_intent_id: Mapped[str | None] = mapped_column(
-        sa.Text, nullable=True, unique=True
+        sa.Text, nullable=True, index=True
     )
     created_at: Mapped[datetime] = _created_at()
     paid_at: Mapped[datetime | None] = mapped_column(

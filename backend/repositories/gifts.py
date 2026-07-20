@@ -34,7 +34,7 @@ def list_active_catalog(db: Session) -> list[GiftCatalogItem]:
         db.scalars(
             select(GiftCatalogItem)
             .where(GiftCatalogItem.is_active.is_(True))
-            .order_by(GiftCatalogItem.created_at.asc())
+            .order_by(GiftCatalogItem.sort_order.asc(), GiftCatalogItem.created_at.asc())
         ).all()
     )
 
@@ -267,7 +267,8 @@ def _try_generate_mockup(db: Session, rendering: GiftRendering) -> None:
     if item is None or birth is None:
         return
     product = fulfillment_products.default_for_product_kind(item.product_kind)
-    if product is None:
+    template = gift_templates.get(rendering.template_id)
+    if product is None or template is None:
         return
 
     rendering.mockup_status = "pending"
@@ -280,6 +281,8 @@ def _try_generate_mockup(db: Session, rendering: GiftRendering) -> None:
             artwork_url=artwork,
             product_id=product.product_id,
             variant_id=product.variant_id,
+            artwork_width=template.width,
+            artwork_height=template.height,
             placement=product.placement,
         )
         key = object_key(
@@ -329,10 +332,13 @@ def render_product_mockup(mockup_id: uuid.UUID) -> None:
             return
         try:
             artwork = presigned_get_url(rendering.artwork_s3_key, expires_in=3600)
+            template = gift_templates.get(rendering.template_id)
             result = adapter.generate_mockup(
                 artwork_url=artwork,
                 product_id=product.product_id,
                 variant_id=product.variant_id,
+                artwork_width=template.width if template else 2475,
+                artwork_height=template.height if template else 1155,
                 placement=product.placement,
             )
             key = object_key(

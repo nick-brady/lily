@@ -13,6 +13,7 @@ export default function GiftGallery({ birthId, isParent = true }) {
   const [items, setItems] = useState(null);
   const [familyHasAddress, setFamilyHasAddress] = useState(false);
   const [storagePaidUntil, setStoragePaidUntil] = useState(null);
+  const [storageLifetime, setStorageLifetime] = useState(false);
   const [error, setError] = useState('');
   const [regenerating, setRegenerating] = useState(false);
   const pollRef = useRef(null);
@@ -23,6 +24,7 @@ export default function GiftGallery({ birthId, isParent = true }) {
       setItems(gallery.items);
       setFamilyHasAddress(gallery.family_has_shipping_address);
       setStoragePaidUntil(gallery.storage_paid_until);
+      setStorageLifetime(gallery.storage_lifetime ?? false);
       setError('');
       return gallery.items;
     } catch (err) {
@@ -53,6 +55,7 @@ export default function GiftGallery({ birthId, isParent = true }) {
       setItems(gallery.items);
       setFamilyHasAddress(gallery.family_has_shipping_address);
       setStoragePaidUntil(gallery.storage_paid_until);
+      setStorageLifetime(gallery.storage_lifetime ?? false);
     } catch (err) {
       setError(err.message || 'Could not regenerate');
     } finally {
@@ -86,18 +89,26 @@ export default function GiftGallery({ birthId, isParent = true }) {
         </div>
       )}
 
-      {storagePaidUntil && (
+      {storageLifetime ? (
+        <p className="mb-4 text-sm t-muted">
+          🤍 This page&rsquo;s storage is gifted — it&rsquo;s here forever.
+        </p>
+      ) : storagePaidUntil ? (
         <p className="mb-4 text-sm t-muted">
           🤍 This page&rsquo;s storage is gifted through {formatDate(storagePaidUntil)}.
         </p>
-      )}
+      ) : null}
 
       {items === null ? (
         <p className="text-sm t-muted">Loading gifts…</p>
       ) : (
         <div className="space-y-6">
-          {items.map((item) => (
-            <GiftItemCard key={item.id} item={item} birthId={birthId} familyHasAddress={familyHasAddress} />
+          <HeroArtwork items={items} />
+          {items
+            // once storage is forever there's nothing left to sell there
+            .filter((item) => !(storageLifetime && item.kind === 'storage_gift'))
+            .map((item) => (
+              <GiftItemCard key={item.id} item={item} birthId={birthId} familyHasAddress={familyHasAddress} />
           ))}
         </div>
       )}
@@ -105,7 +116,63 @@ export default function GiftGallery({ birthId, isParent = true }) {
   );
 }
 
+// The hero is the "oh wow" slot: their artwork big and flat before any
+// product framing. Wide-format pieces only — they genuinely fill the slot;
+// a portrait card floating in a wide box reads as dead space, so if no wide
+// artwork is ready there's simply no hero.
+const HERO_TEMPLATE_ORDER = ['mug_reel', 'mug_hours'];
+
+function HeroArtwork({ items }) {
+  const ready = (items || [])
+    .flatMap((item) => item.renderings || [])
+    .filter(
+      (r) =>
+        r.status === 'ready' &&
+        (r.artwork_url || r.mockup_url) &&
+        HERO_TEMPLATE_ORDER.includes(r.template_id),
+    );
+  if (ready.length === 0) return null;
+  const hero = [...ready].sort(
+    (a, b) =>
+      HERO_TEMPLATE_ORDER.indexOf(a.template_id) -
+      HERO_TEMPLATE_ORDER.indexOf(b.template_id),
+  )[0];
+  return (
+    <figure className="rounded-xl overflow-hidden">
+      <img
+        src={hero.artwork_url || hero.mockup_url}
+        alt="Keepsake artwork made from this birth's story"
+        className="w-full block"
+      />
+    </figure>
+  );
+}
+
+// Three beautiful designs reads "curated keepsakes"; nine reads "catalog".
+const VISIBLE_DESIGNS = 3;
+
+// Taste-ordered: what shows in each product's visible three, best first.
+// Unlisted templates keep their generated order after these.
+const DESIGN_ORDER = [
+  'mug_hours',
+  'mug_reel',
+  'mug_pool',
+  'card_story',
+  'card_pool',
+  'card_hours_photo',
+  'card_welcome',
+];
+
 function GiftItemCard({ item, birthId, familyHasAddress }) {
+  const [showAll, setShowAll] = useState(false);
+  const designRank = (r) => {
+    const i = DESIGN_ORDER.indexOf(r.template_id);
+    return i === -1 ? DESIGN_ORDER.length : i;
+  };
+  const usable = (item.renderings || [])
+    .filter((r) => r.status !== 'failed')
+    .sort((a, b) => designRank(a) - designRank(b));
+  const visible = showAll ? usable : usable.slice(0, VISIBLE_DESIGNS);
   return (
     <div>
       <div className="flex items-baseline justify-between mb-2">
@@ -125,14 +192,26 @@ function GiftItemCard({ item, birthId, familyHasAddress }) {
 
       {item.kind === 'storage_gift' ? (
         <StorageGiftCard item={item} birthId={birthId} />
-      ) : item.renderings.length === 0 ? (
+      ) : usable.length === 0 ? (
         <p className="text-sm t-muted">No designs yet.</p>
       ) : (
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          {item.renderings.map((r) => (
-            <RenderingTile key={r.id} rendering={r} birthId={birthId} item={item} familyHasAddress={familyHasAddress} />
-          ))}
-        </div>
+        <>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            {visible.map((r) => (
+              <RenderingTile key={r.id} rendering={r} birthId={birthId} item={item} familyHasAddress={familyHasAddress} />
+            ))}
+          </div>
+          {usable.length > VISIBLE_DESIGNS && !showAll && (
+            <button
+              type="button"
+              onClick={() => setShowAll(true)}
+              className="mt-2 text-xs t-muted hover:t-ink transition-colors"
+            >
+              Show {usable.length - VISIBLE_DESIGNS} more design
+              {usable.length - VISIBLE_DESIGNS === 1 ? '' : 's'} →
+            </button>
+          )}
+        </>
       )}
     </div>
   );
@@ -147,10 +226,17 @@ function StorageGiftCard({ item, birthId }) {
         style={{ backgroundColor: 'var(--t-soft-bg)' }}
       >
         <span className="text-2xl" aria-hidden="true">🎁</span>
-        <span>
-          Gift {item.storage_years_granted} years of storage — keep this
-          keepsake online for the family.
-        </span>
+        {item.storage_years_granted ? (
+          <span>
+            Gift {item.storage_years_granted} years of storage — less than
+            the cost of one photo print per year.
+          </span>
+        ) : (
+          <span>
+            Keep this page safe forever — it&rsquo;ll still be here when
+            they&rsquo;re 25. One gift, never a renewal.
+          </span>
+        )}
       </div>
 
       {item.is_purchasable && !item.is_claimed_for_family && (
@@ -276,10 +362,6 @@ function RenderingTile({ rendering, birthId, item, familyHasAddress }) {
           className="w-full block"
           style={{ backgroundColor: 'var(--t-soft-bg)' }}
         />
-      ) : rendering.status === 'failed' ? (
-        <div className="aspect-[2/1] flex items-center justify-center text-xs text-red-500 px-3 text-center">
-          Couldn't generate this design.
-        </div>
       ) : (
         <div className="aspect-[2/1] flex items-center justify-center text-xs t-muted gap-2">
           <span className="w-3 h-3 rounded-full animate-pulse" style={{ backgroundColor: 'var(--t-dot)' }} />
@@ -478,19 +560,25 @@ function ProductOption({ product, onRequest }) {
 }
 
 function GiftCheckoutSheet({ birthId, rendering, item, familyHasAddress, onClose }) {
-  const [recipient, setRecipient] = useState(
-    item.is_claimed_for_family ? 'self' : 'family',
-  );
+  // not either/or — both copies at once is a normal purchase (qty 2)
+  const [toFamily, setToFamily] = useState(!item.is_claimed_for_family);
+  const [toSelf, setToSelf] = useState(item.is_claimed_for_family);
   const [note, setNote] = useState('');
   const [starting, setStarting] = useState(false);
   const [error, setError] = useState('');
+
+  const copies = (toFamily ? 1 : 0) + (toSelf ? 1 : 0);
+  // Stripe collects one address per checkout (the buyer's, for the self
+  // copy) — both copies together need the family's saved address.
+  const bothBlocked = toFamily && toSelf && !familyHasAddress;
+  const recipientKind = toFamily && toSelf ? 'both' : toFamily ? 'family' : 'self';
 
   async function startCheckout() {
     setStarting(true);
     setError('');
     try {
       const { url } = await api.createGiftCheckout(birthId, rendering.id, {
-        recipientKind: recipient,
+        recipientKind,
         giftMessage: note.trim() || null,
       });
       window.location.assign(url);
@@ -499,7 +587,8 @@ function GiftCheckoutSheet({ birthId, rendering, item, familyHasAddress, onClose
         setError(
           "Someone already gifted this to the family — you can still get one for yourself.",
         );
-        setRecipient('self');
+        setToFamily(false);
+        setToSelf(true);
       } else if (err.status === 503) {
         setError("Payments aren't available right now — try again soon.");
       } else {
@@ -540,12 +629,10 @@ function GiftCheckoutSheet({ birthId, rendering, item, familyHasAddress, onClose
             style={{ borderColor: 'var(--t-soft-ring)' }}
           >
             <input
-              type="radio"
-              name="recipient"
-              value="family"
-              checked={recipient === 'family'}
+              type="checkbox"
+              checked={toFamily}
               disabled={item.is_claimed_for_family}
-              onChange={() => setRecipient('family')}
+              onChange={(e) => setToFamily(e.target.checked)}
               className="mt-1"
             />
             <span className="text-sm t-ink">
@@ -564,11 +651,9 @@ function GiftCheckoutSheet({ birthId, rendering, item, familyHasAddress, onClose
             style={{ borderColor: 'var(--t-soft-ring)' }}
           >
             <input
-              type="radio"
-              name="recipient"
-              value="self"
-              checked={recipient === 'self'}
-              onChange={() => setRecipient('self')}
+              type="checkbox"
+              checked={toSelf}
+              onChange={(e) => setToSelf(e.target.checked)}
               className="mt-1"
             />
             <span className="text-sm t-ink">
@@ -580,7 +665,21 @@ function GiftCheckoutSheet({ birthId, rendering, item, familyHasAddress, onClose
           </label>
         </div>
 
-        {recipient === 'family' && (
+        {bothBlocked && (
+          <div
+            className="p-3 rounded-lg text-sm t-ink flex items-start gap-2"
+            style={{ backgroundColor: 'var(--t-soft-bg)' }}
+          >
+            <span aria-hidden="true">✋</span>
+            <span>
+              Both at once needs the family&rsquo;s saved shipping address, and
+              they haven&rsquo;t added one yet — uncheck one to continue, and
+              send the other separately.
+            </span>
+          </div>
+        )}
+
+        {toFamily && (
           <label className="block text-xs t-muted">
             A note for the family (printed on the packing slip)
             <textarea
@@ -598,11 +697,13 @@ function GiftCheckoutSheet({ birthId, rendering, item, familyHasAddress, onClose
         <button
           type="button"
           onClick={startCheckout}
-          disabled={starting}
+          disabled={starting || copies === 0 || bothBlocked}
           className="w-full py-3 rounded-xl text-sm font-medium text-white disabled:opacity-50"
           style={{ backgroundColor: 'var(--t-accent)' }}
         >
-          {starting ? 'Opening checkout…' : 'Continue to checkout'}
+          {starting
+            ? 'Opening checkout…'
+            : `Continue to checkout · ${formatPrice(item.base_price_cents * Math.max(copies, 1))}`}
         </button>
         <button
           type="button"
