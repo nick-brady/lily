@@ -48,19 +48,17 @@ TEMPLATES: dict[str, GiftTemplate] = {
         clock_cx=640,
         clock_cy=577,
     ),
-    # The labor clock with the hero photo at its center — the labor radiates
-    # outward from the baby it produced.
-    "mug_hours_photo": GiftTemplate(
-        template_id="mug_hours_photo",
+    # The family pool: everyone's guesses vs. what actually happened — the
+    # winner's trophy mug.
+    "mug_pool": GiftTemplate(
+        template_id="mug_pool",
         product_kind="mug",
-        svg="mug_hours_photo.svg.j2",
+        svg="mug_pool.svg.j2",
         width=2475,
         height=1155,
         dpi=300,
-        photo=True,
-        scene="hours_photo",
-        clock_cx=640,
-        clock_cy=577,
+        photo=False,
+        scene="pool",
     ),
     # The reel: the day as a filmstrip — rotating the mug plays the story.
     "mug_reel": GiftTemplate(
@@ -72,27 +70,6 @@ TEMPLATES: dict[str, GiftTemplate] = {
         dpi=300,
         photo=False,
         scene="reel",
-    ),
-    # The family pool: everyone's guesses vs. what actually happened.
-    "mug_pool": GiftTemplate(
-        template_id="mug_pool",
-        product_kind="mug",
-        svg="mug_pool.svg.j2",
-        width=2475,
-        height=1155,
-        dpi=300,
-        photo=False,
-        scene="pool",
-    ),
-    # Hero photo with the contraction line wrapping the mug as a horizon.
-    "mug_horizon": GiftTemplate(
-        template_id="mug_horizon",
-        product_kind="mug",
-        svg="mug_horizon.svg.j2",
-        width=2475,
-        height=1155,
-        dpi=300,
-        photo=True,
     ),
     # ── cards — 5×7 in at 300 DPI = 1500 × 2100 px (portrait) ─────────────
     # The labor clock as an art print: the hours of labor around a clock

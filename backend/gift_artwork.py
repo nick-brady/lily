@@ -753,8 +753,10 @@ def build_hours_clock(
                 "y1": round(cy + r_in * math.sin(a), 1),
                 "x2": round(cx + (r_in + length) * math.cos(a), 1),
                 "y2": round(cy + (r_in + length) * math.sin(a), 1),
-                # the burst deepens as labor builds toward the star
-                "o": round(0.45 + 0.45 * progress, 2),
+                # the burst deepens as labor builds toward the star — capped
+                # well under 1.0 so overlapping strokes in a dense cluster
+                # stay soft instead of fusing into a solid saturated mass
+                "o": round(0.28 + 0.38 * progress, 2),
             }
         )
 
@@ -1044,7 +1046,7 @@ _POOL_LAYOUTS = {
 # a leader that stops early is fine, one that runs into text is not)
 _POOL_NAME_ADV = 0.74
 _POOL_GUESS_ADV = 0.68
-_POOL_ROW_FONT = 33
+_POOL_ROW_FONT = 36
 
 
 def _fmt_lbs_oz(lbs: float | None) -> str:
