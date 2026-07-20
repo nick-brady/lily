@@ -48,12 +48,31 @@
     mode: '0600'
   notify: restart lily app
 
+# The app's SSE streams hold their DB transactions open for the stream's
+# lifetime, so any migration needing an exclusive lock (column/table drops)
+# queues behind them forever — and postgres queues every NEW query behind
+# the waiting DDL, hanging the site (seen 2026-07-19, migration 0019).
+# Restarting first clears those sessions; the migration then wins the gap
+# before browsers reconnect. lock_timeout is the tripwire: if something
+# still holds a lock, the deploy fails fast instead of wedging prod.
+- name: Restart app before migrations (clear idle-in-transaction SSE sessions)
+  systemd:
+    name: lily
+    state: restarted
+  register: pre_migrate_restart
+  # first provision: the unit doesn't exist yet (systemd role runs after) —
+  # nothing is holding locks then either, so a missing service is fine
+  failed_when:
+    - pre_migrate_restart is failed
+    - "'Could not find the requested service' not in (pre_migrate_restart.msg | default(''))"
+
 - name: Run database migrations
   command: "{{ app_dir }}/venv/bin/alembic upgrade head"
   args:
     chdir: "{{ app_dir }}/backend"
   environment:
     DATABASE_URL: "postgresql://{{ db_user }}:{{ db_password }}@localhost:5432/{{ db_name }}"
+    PGOPTIONS: "-c lock_timeout=10s"
   become_user: "{{ app_user }}"
   register: alembic_result
   changed_when: "'Running upgrade' in alembic_result.stderr or 'Running upgrade' in alembic_result.stdout"
