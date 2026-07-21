@@ -347,21 +347,37 @@ function StorageGiftCheckoutSheet({ birthId, item, onClose }) {
 function RenderingTile({ rendering, birthId, item, familyHasAddress }) {
   const [pickerOpen, setPickerOpen] = useState(false);
   const [buyOpen, setBuyOpen] = useState(false);
+  const [detailOpen, setDetailOpen] = useState(false);
   // Prefer the product mockup (artwork on the real mug/card) when ready;
   // otherwise show the flat artwork.
   const src = rendering.mockup_url || rendering.artwork_url;
+  // Tapping the mockup opens a detail view with the full artwork plus any
+  // extra angle mockups the partner returned — only worth a modal when
+  // there's something beyond the one image already on the card.
+  const hasDetail = Boolean(
+    (rendering.artwork_url && rendering.mockup_url) ||
+      (rendering.mockup_extras || []).length > 0,
+  );
   return (
     <div
       className="rounded-lg border overflow-hidden"
       style={{ borderColor: 'var(--t-soft-ring)' }}
     >
       {rendering.status === 'ready' && src ? (
-        <img
-          src={src}
-          alt={`${rendering.template_id} design`}
+        <button
+          type="button"
+          onClick={() => hasDetail && setDetailOpen(true)}
           className="w-full block"
-          style={{ backgroundColor: 'var(--t-soft-bg)' }}
-        />
+          style={{ cursor: hasDetail ? 'zoom-in' : 'default' }}
+          aria-label={hasDetail ? 'See the full design and more views' : undefined}
+        >
+          <img
+            src={src}
+            alt={`${rendering.template_id} design`}
+            className="w-full block"
+            style={{ backgroundColor: 'var(--t-soft-bg)' }}
+          />
+        </button>
       ) : (
         <div className="aspect-[2/1] flex items-center justify-center text-xs t-muted gap-2">
           <span className="w-3 h-3 rounded-full animate-pulse" style={{ backgroundColor: 'var(--t-dot)' }} />
@@ -406,6 +422,81 @@ function RenderingTile({ rendering, birthId, item, familyHasAddress }) {
           onClose={() => setPickerOpen(false)}
         />
       )}
+
+      {detailOpen && (
+        <GiftDetailDialog rendering={rendering} onClose={() => setDetailOpen(false)} />
+      )}
+    </div>
+  );
+}
+
+// The full flat artwork (so you can actually read the design), plus the
+// product mockup and any extra angle shots the partner returned — as a
+// small tile gallery underneath.
+function GiftDetailDialog({ rendering, onClose }) {
+  const views = rendering.mockup_url
+    ? [{ title: 'Front', url: rendering.mockup_url }, ...(rendering.mockup_extras || [])]
+    : [];
+  return (
+    <div
+      className="fixed inset-0 z-50 bg-black/40 flex items-end sm:items-center justify-center"
+      onClick={onClose}
+    >
+      <div
+        className="animate-slide-up w-full sm:max-w-2xl bg-white dark:bg-gray-900
+                   rounded-t-2xl sm:rounded-2xl shadow-xl p-6 space-y-5 max-h-[90vh] overflow-y-auto"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="text-center">
+          <h2 className="text-lg font-semibold text-gray-800 dark:text-white">
+            The full design
+          </h2>
+          <p className="text-sm t-muted mt-1">
+            {views.length > 1
+              ? 'The artwork, and the mug from every angle.'
+              : 'The artwork this design is printed from.'}
+          </p>
+        </div>
+
+        {rendering.artwork_url && (
+          <img
+            src={rendering.artwork_url}
+            alt={`${rendering.template_id} full design`}
+            className="w-full rounded-lg"
+            style={{ backgroundColor: 'var(--t-soft-bg)' }}
+          />
+        )}
+
+        {views.length > 1 ? (
+          <div className="grid grid-cols-3 gap-3">
+            {views.map((v, i) => (
+              <img
+                key={i}
+                src={v.url}
+                alt={v.title ? `${rendering.template_id} — ${v.title}` : `${rendering.template_id} view`}
+                className="w-full aspect-square object-cover rounded-lg"
+                style={{ backgroundColor: 'var(--t-soft-bg)' }}
+              />
+            ))}
+          </div>
+        ) : views.length === 1 && !rendering.artwork_url ? (
+          <img
+            src={views[0].url}
+            alt={`${rendering.template_id} design`}
+            className="w-full rounded-lg"
+            style={{ backgroundColor: 'var(--t-soft-bg)' }}
+          />
+        ) : null}
+
+        <button
+          type="button"
+          onClick={onClose}
+          className="w-full py-3 rounded-xl text-sm font-medium text-gray-600 dark:text-gray-300
+                     bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors"
+        >
+          Close
+        </button>
+      </div>
     </div>
   );
 }

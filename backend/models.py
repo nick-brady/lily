@@ -651,6 +651,11 @@ class GiftRendering(Base):
     mockup_status: Mapped[str] = mapped_column(
         sa.Text, nullable=False, server_default="none"
     )
+    # Extra angle/view mockups the partner returned alongside the primary one
+    # (e.g. a mug's handle-from-left shot) — list of {"title", "s3_key"}.
+    mockup_extras: Mapped[list] = mapped_column(
+        JSONB, nullable=False, server_default=sa.text("'[]'::jsonb")
+    )
     rendering_metadata: Mapped[dict] = mapped_column(
         JSONB, nullable=False, server_default=sa.text("'{}'::jsonb")
     )

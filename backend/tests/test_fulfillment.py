@@ -64,11 +64,62 @@ def test_generate_mockup_happy_path(monkeypatch):
                 json={
                     "result": {
                         "status": "completed",
-                        "mockups": [{"mockup_url": "https://m.test/x.png"}],
+                        "mockups": [
+                            {
+                                "mockup_url": "https://m.test/x.png",
+                                "extra": [
+                                    {
+                                        "title": "Handle from left",
+                                        "url": "https://m.test/extra1.png",
+                                        "option": "left",
+                                        "option_group": "angle",
+                                    },
+                                    {
+                                        "title": "Wrinkled front",
+                                        "url": "https://m.test/extra2.png",
+                                        "option": "wrinkled",
+                                        "option_group": "angle",
+                                    },
+                                ],
+                            }
+                        ],
                     }
                 },
             )
         return httpx.Response(404)
+
+    monkeypatch.setattr(
+        "fulfillment.printful.httpx.get",
+        lambda url, **kw: httpx.Response(
+            200,
+            content=b"\x89PNG\r\n\x1a\nDATA:" + str(url).encode(),
+            headers={"content-type": "image/png"},
+            request=httpx.Request("GET", url),
+        ),
+    )
+    res = _adapter(handler).generate_mockup(artwork_url="https://art.test/a.png", **_MUG)
+    assert res.image_bytes.startswith(b"\x89PNG")
+    assert res.source_url == "https://m.test/x.png"
+    assert res.content_type == "image/png"
+    assert state["polls"] >= 2
+    assert [e.title for e in res.extra] == ["Handle from left", "Wrinkled front"]
+    assert res.extra[0].image_bytes.endswith(b"https://m.test/extra1.png")
+    assert res.extra[0].content_type == "image/png"
+
+
+def test_generate_mockup_without_extra(monkeypatch):
+    def handler(req: httpx.Request) -> httpx.Response:
+        if req.method == "POST":
+            return httpx.Response(200, json={"result": {"task_key": "abc"}})
+        return httpx.Response(
+            200,
+            json={
+                "result": {
+                    "status": "completed",
+                    "mockups": [{"mockup_url": "https://m.test/x.png"}],
+                }
+            },
+        )
 
     monkeypatch.setattr(
         "fulfillment.printful.httpx.get",
@@ -80,10 +131,7 @@ def test_generate_mockup_happy_path(monkeypatch):
         ),
     )
     res = _adapter(handler).generate_mockup(artwork_url="https://art.test/a.png", **_MUG)
-    assert res.image_bytes.startswith(b"\x89PNG")
-    assert res.source_url == "https://m.test/x.png"
-    assert res.content_type == "image/png"
-    assert state["polls"] >= 2
+    assert res.extra == []
 
 
 def test_generate_mockup_failed_status():

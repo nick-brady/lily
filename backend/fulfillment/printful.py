@@ -3,7 +3,9 @@
 Flow (https://developers.printful.com, Mockup Generator API):
   1. POST /mockup-generator/create-task/{product_id}  → returns a task_key
   2. GET  /mockup-generator/task?task_key=...          → poll until completed
-  3. download the returned mockup image
+  3. download the returned mockup image, plus any `extra` angle/view
+     mockups the same task produced (e.g. a mug's handle-from-left shot —
+     not every product has these)
 
 Auth is a Bearer token (a private/store token from the Printful dashboard);
 account-level tokens also send an X-PF-Store-Id header.
@@ -20,6 +22,7 @@ import httpx
 from fulfillment.base import (
     FulfillmentAdapter,
     MockupError,
+    MockupExtra,
     MockupResult,
     OrderError,
     OrderResult,
@@ -75,8 +78,21 @@ class PrintfulAdapter(FulfillmentAdapter):
             artwork_width=artwork_width,
             artwork_height=artwork_height,
         )
-        mockup_url = self._poll_for_mockup(task_key)
-        return self._download(mockup_url)
+        mockup_url, extra = self._poll_for_mockup(task_key)
+        result = self._download(mockup_url)
+        for item in extra:
+            url = item.get("url")
+            if not url:
+                continue
+            image_bytes, content_type = self._download_bytes(url)
+            result.extra.append(
+                MockupExtra(
+                    title=item.get("title") or "",
+                    image_bytes=image_bytes,
+                    content_type=content_type,
+                )
+            )
+        return result
 
     def create_order(
         self,
@@ -150,7 +166,7 @@ class PrintfulAdapter(FulfillmentAdapter):
             raise MockupError("Printful create-task returned no task_key")
         return task_key
 
-    def _poll_for_mockup(self, task_key: str) -> str:
+    def _poll_for_mockup(self, task_key: str) -> tuple[str, list[dict]]:
         for _ in range(self._poll_attempts):
             resp = self._client.get(
                 "/mockup-generator/task", params={"task_key": task_key}
@@ -162,17 +178,19 @@ class PrintfulAdapter(FulfillmentAdapter):
                 mockups = result.get("mockups") or []
                 if not mockups or not mockups[0].get("mockup_url"):
                     raise MockupError("Printful task completed without a mockup_url")
-                return mockups[0]["mockup_url"]
+                return mockups[0]["mockup_url"], mockups[0].get("extra") or []
             if status == "failed":
                 raise MockupError("Printful mockup task failed")
             time.sleep(self._poll_interval)
         raise MockupError("Printful mockup task timed out")
 
-    def _download(self, url: str) -> MockupResult:
+    def _download_bytes(self, url: str) -> tuple[bytes, str]:
         resp = httpx.get(url, timeout=_REQUEST_TIMEOUT, follow_redirects=True)
         resp.raise_for_status()
+        return resp.content, resp.headers.get("content-type", "image/png")
+
+    def _download(self, url: str) -> MockupResult:
+        image_bytes, content_type = self._download_bytes(url)
         return MockupResult(
-            image_bytes=resp.content,
-            content_type=resp.headers.get("content-type", "image/png"),
-            source_url=url,
+            image_bytes=image_bytes, content_type=content_type, source_url=url
         )

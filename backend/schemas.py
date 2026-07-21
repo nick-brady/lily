@@ -522,6 +522,14 @@ class SlugAvailableOut(BaseModel):
     suggestion: Optional[str] = None
 
 
+class MockupExtraOut(BaseModel):
+    """An extra angle/view mockup alongside the primary one (e.g. a mug's
+    handle-from-left shot). `title` is partner-supplied and may be empty."""
+
+    title: str
+    url: str
+
+
 class GiftRenderingOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
@@ -531,6 +539,7 @@ class GiftRenderingOut(BaseModel):
     artwork_url: Optional[str] = None
     mockup_url: Optional[str] = None
     mockup_status: str = "none"
+    mockup_extras: list[MockupExtraOut] = []
     is_visible_to_viewers: bool
 
 
