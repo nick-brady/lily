@@ -8,7 +8,7 @@ app run with no partner configured (the gallery just shows the flat artwork).
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 
 class MockupError(Exception):
@@ -20,10 +20,21 @@ class OrderError(Exception):
 
 
 @dataclass
+class MockupExtra:
+    """An additional angle/view of the same mockup (e.g. a mug's
+    handle-from-left shot). Not every product has these."""
+
+    title: str
+    image_bytes: bytes
+    content_type: str
+
+
+@dataclass
 class MockupResult:
     image_bytes: bytes
     content_type: str
     source_url: str
+    extra: list[MockupExtra] = field(default_factory=list)
 
 
 @dataclass
@@ -63,7 +74,8 @@ class FulfillmentAdapter(ABC):
         placement: str = "default",
     ) -> MockupResult:
         """Render `artwork_url` onto the partner's product/variant and return
-        the mockup image. Raises MockupError on failure. `artwork_url` must be
+        the mockup image, plus any extra angle/view mockups the partner
+        generated alongside it. Raises MockupError on failure. `artwork_url` must be
         reachable by the partner's servers (a public/presigned URL — not a
         localhost dev URL). `artwork_width`/`artwork_height` are the artwork's
         pixel dimensions — our templates are drawn at the product's full print

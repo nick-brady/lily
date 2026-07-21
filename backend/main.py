@@ -2074,6 +2074,7 @@ def _serialize_rendering(rendering) -> GiftRenderingOut:
         artwork_url=gifts_repo.artwork_url(rendering),
         mockup_url=gifts_repo.mockup_url(rendering),
         mockup_status=rendering.mockup_status,
+        mockup_extras=gifts_repo.mockup_extras(rendering),
         is_visible_to_viewers=rendering.is_visible_to_viewers,
     )
 

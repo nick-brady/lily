@@ -142,6 +142,18 @@ def mockup_url(rendering: GiftRendering) -> str | None:
     return presigned_get_url(rendering.mockup_s3_key)
 
 
+def mockup_extras(rendering: GiftRendering) -> list[dict]:
+    """Extra angle/view mockups alongside the primary one, presigned. Empty
+    when the mockup isn't ready or the product had none."""
+    if rendering.mockup_status != "ready":
+        return []
+    return [
+        {"title": extra.get("title", ""), "url": presigned_get_url(extra["s3_key"])}
+        for extra in (rendering.mockup_extras or [])
+        if extra.get("s3_key")
+    ]
+
+
 def product_mockup_url(mockup: GiftRenderingMockup) -> str | None:
     if mockup.status != "ready" or not mockup.mockup_s3_key:
         return None
@@ -294,7 +306,19 @@ def _try_generate_mockup(db: Session, rendering: GiftRendering) -> None:
             filename=f"gifts/{rendering.id}-mockup.png",
         )
         put_object(key=key, body=result.image_bytes, content_type=result.content_type)
+        extras = []
+        for i, extra in enumerate(result.extra):
+            extra_key = object_key(
+                family_id=birth.family_id,
+                birth_id=birth.id,
+                filename=f"gifts/{rendering.id}-mockup-extra-{i}.png",
+            )
+            put_object(
+                key=extra_key, body=extra.image_bytes, content_type=extra.content_type
+            )
+            extras.append({"title": extra.title, "s3_key": extra_key})
         rendering.mockup_s3_key = key
+        rendering.mockup_extras = extras
         rendering.mockup_status = "ready"
         db.commit()
     except Exception:  # MockupError or any transport error
