@@ -131,7 +131,7 @@ function HeroCopy() {
           The birth story your whole family lives together
         </p>
         <p className="text-base text-white/80 mb-10 max-w-sm drop-shadow">
-          Set up in 2 minutes. Share a link. Everyone follows in real time.
+          Free for your whole family. Set up in 2 minutes. Everyone follows in real time.
         </p>
         <Link to="/setup" className="btn-primary text-base px-8 py-4 shadow-xl">
           Create your baby's page →

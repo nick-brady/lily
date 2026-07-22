@@ -71,11 +71,29 @@ export default function LandingPage() {
         </div>
       </section>
 
-      {/* Free participation */}
-      <section className="bg-primary-50 dark:bg-gray-900 py-16 px-6">
-        <div className="max-w-xl mx-auto text-center">
-          <p className="text-lg text-gray-700 dark:text-gray-300 font-light leading-relaxed">
-            Family and friends can leave comments and reactions, free — to be there in every way that matters.
+      {/* The promise: everything live is free, memories are never hostage */}
+      <section className="bg-primary-50 dark:bg-gray-900 py-20 px-6">
+        <div className="max-w-xl mx-auto text-center space-y-4">
+          <h2 className="text-3xl font-light text-gray-800 dark:text-gray-100 mb-6">
+            Everything live is free.
+          </h2>
+          <p className="text-gray-600 dark:text-gray-400 font-light leading-relaxed">
+            Comments, photos, voice memos, the contraction timer, unlimited family.
+            All of it, for everyone. No limits.
+          </p>
+          <p className="text-gray-600 dark:text-gray-400 font-light leading-relaxed">
+            You will never hit a paywall in the middle of the moment.{' '}
+            <Link
+              to="/pricing"
+              className="underline underline-offset-4 decoration-gray-300 dark:decoration-gray-600 hover:text-primary-600 dark:hover:text-primary-400 transition-colors"
+            >
+              Prints, keepsakes, and keeping the page available after the first year
+            </Link>{' '}
+            are available, if you want them.
+          </p>
+          <p className="text-gray-600 dark:text-gray-400 font-light leading-relaxed">
+            We will never hold your memories hostage. You can download everything,
+            anytime, for free.
           </p>
         </div>
       </section>
@@ -88,7 +106,7 @@ export default function LandingPage() {
         >
           Create your baby's page →
         </Link>
-        <p className="mt-4 text-sm text-gray-400">Free to set up. No app to download.</p>
+        <p className="mt-4 text-sm text-gray-400">Free for your whole family. No app to download.</p>
       </section>
 
       {/* Footer */}
