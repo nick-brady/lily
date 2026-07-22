@@ -75,7 +75,7 @@ export default function LandingPage() {
       <section className="bg-primary-50 dark:bg-gray-900 py-20 px-6">
         <div className="max-w-xl mx-auto text-center space-y-4">
           <h2 className="text-3xl font-light text-gray-800 dark:text-gray-100 mb-6">
-            Everything live is free.
+            From bump to baby, it's free. Really.
           </h2>
           <p className="text-gray-600 dark:text-gray-400 font-light leading-relaxed">
             Comments, photos, voice memos, the contraction timer, unlimited family.
