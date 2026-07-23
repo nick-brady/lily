@@ -188,13 +188,13 @@ const comment = (id, author, body, base, offset) => ({
 
 export const HERO_CUES = [
   // -- Scene 1: the first entry (01/02) -------------------------------------
-  { t: 3.9, apply: (s, { ev }) => addEvent(s, ev.bump20) },
+  { t: 2.0, apply: (s, { ev }) => addEvent(s, ev.bump20) },
 
   // -- Interstitial A: the bump grows (fade + black) ------------------------
-  { t: 5.0, apply: (s, { ev }) => addEvent(s, ev.bump40) },
-  { t: 6.0, apply: (s) => patchEvent(s, 'hero-bump40', { reactions: toReactions({ love: 4 }) }) },
+  { t: 4.0, apply: (s, { ev }) => addEvent(s, ev.bump40) },
+  { t: 5.2, apply: (s) => patchEvent(s, 'hero-bump40', { reactions: toReactions({ love: 4 }) }) },
   {
-    t: 6.4,
+    t: 6.0,
     apply: (s, { base }) =>
       patchEvent(s, 'hero-bump40', {
         comment_count: 1,
