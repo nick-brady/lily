@@ -7,15 +7,17 @@ vars — see `get_messenger()`. Channels fall back independently, so a
 partly-configured environment still works and zero config keeps today's
 console behavior.
 
-Two contracts:
-- `send_challenge`: given a verified identifier (email or e164 phone), an
-  OTP code, and a magic-link URL, deliver the credentials so the user can
-  verify. For email, both the code and the link are useful. For SMS, only
-  the code is sent (links over SMS are jankier).
+Three contracts:
+- `send_challenge`: given a verified email address and an OTP code, deliver
+  the code so the user can sign in. Auth is email-only (2026-07-23 auth
+  decision) and magic links are retired — the code is the whole message.
 - `send_invitation`: given an identifier and an already-built invite URL,
-  tell someone they've been invited to a birth page. Unlike the OTP flow,
-  SMS carries the link too — there's no code to fall back on, the link is
-  the whole point.
+  tell someone they've been invited to a birth page. Invites may still ride
+  SMS — that's delivery of a link someone's family member asked us to send,
+  not a login channel.
+- `send_notify_optin`: confirmation text for the birth-events opt-in. It
+  verifies the number is real and delivers the STOP language the consent
+  record depends on. Birth events are the only thing SMS ever carries.
 """
 from __future__ import annotations
 
@@ -48,8 +50,10 @@ class Messenger(ABC):
         identifier: str,
         identifier_kind: AuthIdentifierKind,
         code: str,
-        magic_link_url: str,
     ) -> None: ...
+
+    @abstractmethod
+    def send_notify_optin(self, phone: str) -> None: ...
 
     @abstractmethod
     def send_invitation(
@@ -79,24 +83,24 @@ class ConsoleMessenger(Messenger):
         identifier: str,
         identifier_kind: AuthIdentifierKind,
         code: str,
-        magic_link_url: str,
     ) -> None:
         banner = "=" * 72
-        if identifier_kind is AuthIdentifierKind.email:
-            body = (
-                f"\n{banner}\n"
-                f"  EMAIL MAGIC LINK for {identifier}\n"
-                f"  Code: {code}\n"
-                f"  Link: {magic_link_url}\n"
-                f"{banner}"
-            )
-        else:
-            body = (
-                f"\n{banner}\n"
-                f"  SMS OTP for {identifier}\n"
-                f"  Code: {code}\n"
-                f"{banner}"
-            )
+        body = (
+            f"\n{banner}\n"
+            f"  SIGN-IN CODE for {identifier}\n"
+            f"  Code: {code}\n"
+            f"{banner}"
+        )
+        print(body, flush=True, file=sys.stderr)
+
+    def send_notify_optin(self, phone: str) -> None:
+        banner = "=" * 72
+        body = (
+            f"\n{banner}\n"
+            f"  SMS OPT-IN CONFIRMATION for {phone}\n"
+            f"  (would send the birth-alerts confirmation text)\n"
+            f"{banner}"
+        )
         print(body, flush=True, file=sys.stderr)
 
     def send_invitation(
@@ -121,9 +125,11 @@ class ConsoleMessenger(Messenger):
         print(body, flush=True, file=sys.stderr)
 
 
-def _email_html(code: str, magic_link_url: str) -> str:
-    """Minimal, inline-styled, on-brand: the code big, one button, the
-    expiry note. Every client renders this."""
+def _email_html(code: str) -> str:
+    """Minimal, inline-styled, on-brand: the code big, the expiry note.
+    No links or buttons — a code renders identically everywhere, can't be
+    swallowed by a link-rewriting spam filter, and works when the sign-in
+    happens on a different device than the inbox (the iPad-at-2am case)."""
     return f"""\
 <div style="font-family: Georgia, 'Times New Roman', serif; max-width: 420px;
             margin: 0 auto; padding: 32px 24px; color: #44364a;">
@@ -132,12 +138,8 @@ def _email_html(code: str, magic_link_url: str) -> str:
   <p style="font-size: 16px; margin: 0 0 20px;">Here's your sign-in code:</p>
   <p style="font-size: 40px; letter-spacing: 8px; font-weight: bold;
             margin: 0 0 24px;">{code}</p>
-  <a href="{magic_link_url}"
-     style="display: inline-block; background: #a21caf; color: #ffffff;
-            text-decoration: none; padding: 12px 24px; border-radius: 8px;
-            font-size: 16px;">Sign in</a>
   <p style="font-size: 13px; color: #6d6076; margin: 24px 0 0;">
-    The code and link expire in 15 minutes. If you didn't request this,
+    The code expires in 15 minutes. If you didn't request this,
     you can ignore it.
   </p>
 </div>
@@ -185,7 +187,6 @@ class ResendMessenger(Messenger):
         identifier: str,
         identifier_kind: AuthIdentifierKind,
         code: str,
-        magic_link_url: str,
     ) -> None:
         try:
             resp = self._client.post(
@@ -194,17 +195,21 @@ class ResendMessenger(Messenger):
                     "from": self._from,
                     "to": [identifier],
                     "subject": f"Your Arrival Story sign-in code: {code}",
-                    "html": _email_html(code, magic_link_url),
+                    "html": _email_html(code),
                     "text": (
                         f"Your Arrival Story sign-in code: {code}\n\n"
-                        f"Or sign in with this link: {magic_link_url}\n\n"
-                        "The code and link expire in 15 minutes."
+                        "The code expires in 15 minutes."
                     ),
                 },
             )
             resp.raise_for_status()
         except httpx.HTTPError as exc:
             raise ChallengeDeliveryError(f"resend: {exc}") from exc
+
+    def send_notify_optin(self, phone: str) -> None:
+        raise ChallengeDeliveryError(
+            "resend is an email channel; notify opt-in requires SMS"
+        )
 
     def send_invitation(
         self,
@@ -259,15 +264,27 @@ class TwilioMessenger(Messenger):
         identifier: str,
         identifier_kind: AuthIdentifierKind,
         code: str,
-        magic_link_url: str,
     ) -> None:
+        # Auth is email-only; sign-in codes never ride SMS.
+        raise ChallengeDeliveryError("twilio is an SMS channel; sign-in codes go by email")
+
+    def send_notify_optin(self, phone: str) -> None:
         try:
             resp = self._client.post(
                 self._url,
                 data={
-                    "To": identifier,
+                    "To": phone,
                     "From": self._from,
-                    "Body": f"Arrival Story sign-in code: {code} — expires in 15 minutes.",
+                    # The consent-confirmation text: verifies the number is
+                    # real and delivers the STOP language the TCPA consent
+                    # record depends on. Must stay in sync with the sample
+                    # registered in the Twilio A2P 10DLC campaign. STOP
+                    # itself is handled by Twilio's Advanced Opt-Out.
+                    "Body": (
+                        "Arrival Story: you're set — we'll text you the moment "
+                        "labor begins. Birth updates only, ever. "
+                        "Msg & data rates may apply. Reply STOP to opt out."
+                    ),
                 },
             )
             resp.raise_for_status()
@@ -321,14 +338,12 @@ class RoutingMessenger(Messenger):
         identifier: str,
         identifier_kind: AuthIdentifierKind,
         code: str,
-        magic_link_url: str,
     ) -> None:
-        channel = (
-            self._email
-            if identifier_kind is AuthIdentifierKind.email
-            else self._phone
-        )
-        channel.send_challenge(identifier, identifier_kind, code, magic_link_url)
+        # Auth is email-only; the phone channel never carries sign-in codes.
+        self._email.send_challenge(identifier, identifier_kind, code)
+
+    def send_notify_optin(self, phone: str) -> None:
+        self._phone.send_notify_optin(phone)
 
     def send_invitation(
         self,

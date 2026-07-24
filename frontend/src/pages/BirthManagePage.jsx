@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link, Navigate, useParams } from 'react-router-dom';
-import { api, getToken } from '../api/client';
+import { api } from '../api/client';
 import { useAuth } from '../contexts/AuthContext';
 import { useSSE } from '../hooks/useSSE';
 import { contractionsFromEvents } from '../utils/statistics';
@@ -136,14 +136,11 @@ export default function BirthManagePage() {
     }
   }, [currentUserId]);
 
-  // EventSource can't send Authorization headers, so we pass the JWT as a
-  // query parameter on the private stream URL. The backend accepts both.
+  // EventSource can't send Authorization headers, but it does send the
+  // same-origin httpOnly session cookie — no token in the URL.
   const streamUrl = useMemo(() => {
     if (!birth) return null;
-    const token = getToken();
-    const url = new URL(`${api.apiUrl}/birth/${birth.id}/stream`, window.location.origin);
-    if (token) url.searchParams.set('token', token);
-    return url.toString();
+    return new URL(`${api.apiUrl}/birth/${birth.id}/stream`, window.location.origin).toString();
   }, [birth]);
   const { isConnected } = useSSE(streamUrl, handleSSE);
 

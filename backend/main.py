@@ -42,14 +42,20 @@ from sqlalchemy.orm import Session
 
 from auth import (
     ChallengeCooldownError,
+    apply_session_cookie,
+    clear_session_cookie,
     get_active_messenger,
     get_current_user,
     get_current_user_stream,
     get_optional_current_user,
+    google_verify,
     normalize_identifier,
+    refreshed_session_token,
     request_challenge,
+    set_session_cookie,
     verify_challenge,
     FRONTEND_URL,
+    SESSION_COOKIE_NAME,
 )
 from messenger import ChallengeDeliveryError
 from db import get_db
@@ -147,7 +153,9 @@ from schemas import (
     InvitationOut,
     InvitationRedemptionOut,
     MeOut,
+    GoogleAuthIn,
     MeUpdateIn,
+    NotifyPhoneIn,
     PendingCoParentInviteOut,
     ReactionCountOut,
     ReactionToggleIn,
@@ -190,6 +198,21 @@ app.add_middleware(
 )
 
 
+@app.middleware("http")
+async def slide_session_cookie(request: Request, call_next):
+    """Sessions are sacred infrastructure: any request carrying a session
+    cookie older than SESSION_REFRESH_AFTER gets a fresh one, so the single
+    auth event happens months before the birth and never recurs during it.
+    """
+    response = await call_next(request)
+    raw = request.cookies.get(SESSION_COOKIE_NAME)
+    if raw:
+        fresh = refreshed_session_token(raw)
+        if fresh:
+            apply_session_cookie(response, fresh)
+    return response
+
+
 @app.get("/")
 async def root() -> dict:
     return {"name": "arrival-story", "status": "running"}
@@ -216,8 +239,32 @@ def auth_request(payload: AuthRequestIn, db: Session = Depends(get_db)) -> AuthR
 
 
 @app.post("/auth/verify", response_model=TokenOut)
-def auth_verify(payload: AuthVerifyIn, db: Session = Depends(get_db)) -> TokenOut:
-    return verify_challenge(payload, db)
+def auth_verify(
+    payload: AuthVerifyIn, response: Response, db: Session = Depends(get_db)
+) -> TokenOut:
+    result = verify_challenge(payload, db)
+    # The httpOnly cookie is the browser's session (localStorage is
+    # ITP-purgeable); the body token remains for tests and scripts.
+    apply_session_cookie(response, result.access_token)
+    return result
+
+
+@app.post("/auth/google", response_model=TokenOut)
+def auth_google(
+    payload: GoogleAuthIn, response: Response, db: Session = Depends(get_db)
+) -> TokenOut:
+    """'Continue with Google' — a login method, not a separate identity;
+    resolves to the same email-keyed user as the OTP path."""
+    result = google_verify(payload, db)
+    apply_session_cookie(response, result.access_token)
+    return result
+
+
+@app.post("/auth/logout", status_code=204)
+def auth_logout(response: Response) -> None:
+    # Mutations on the injected response (the delete-cookie header) are
+    # carried onto the empty 204.
+    clear_session_cookie(response)
 
 
 @app.get("/me", response_model=MeOut)
@@ -261,6 +308,46 @@ def update_me(
 ) -> UserOut:
     """Set the name family sees on your comments and in the family list."""
     users_repo.set_display_name(db, user=current_user, name=payload.display_name)
+    db.commit()
+    db.refresh(current_user)
+    return UserOut.model_validate(current_user)
+
+
+@app.put("/me/notify-phone", response_model=UserOut)
+def set_notify_phone(
+    payload: NotifyPhoneIn,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> UserOut:
+    """The birth-events text opt-in — "Want a text the moment labor
+    begins?" Sends the confirmation text first (it verifies the number is
+    real and delivers the STOP language); only a successful send records
+    the consent. Scoped to birth events only, forever — this is what keeps
+    SMS legally boring (no marketing consent needed)."""
+    identifier, kind = normalize_identifier(payload.phone)
+    if kind is not AuthIdentifierKind.phone:
+        raise HTTPException(status_code=400, detail="Enter a phone number")
+    try:
+        get_active_messenger().send_notify_optin(identifier)
+    except ChallengeDeliveryError:
+        raise HTTPException(
+            status_code=503,
+            detail="We couldn't text that number — check it and try again",
+        )
+    current_user.notify_phone = identifier
+    current_user.notify_phone_opted_in_at = datetime.now(timezone.utc)
+    db.commit()
+    db.refresh(current_user)
+    return UserOut.model_validate(current_user)
+
+
+@app.delete("/me/notify-phone", response_model=UserOut)
+def clear_notify_phone(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> UserOut:
+    current_user.notify_phone = None
+    current_user.notify_phone_opted_in_at = None
     db.commit()
     db.refresh(current_user)
     return UserOut.model_validate(current_user)
@@ -488,7 +575,12 @@ def list_timeline(
     )
 
 
-# ============ Public birth (no auth) ============
+# ============ Public birth ============
+# Viewing is auth-gated (2026-07-23 decision): `/b/{slug}` itself stays
+# unauthenticated and serves the PREVIEW — name, status, theme — so a
+# first-time visitor (QR scan, forwarded link) gets the emotional hook
+# before the sign-in ask. The timeline and stream require a session; an
+# invite link grants the right to sign up, never content.
 
 
 def _resolve_public_birth(db: Session, slug: str) -> Birth:
@@ -524,7 +616,7 @@ def public_timeline(
     slug: str,
     after_sequence_id: int | None = None,
     limit: int = 1000,
-    current_user: User | None = Depends(get_optional_current_user),
+    current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> list[TimelineEventOut]:
     birth = _resolve_public_birth(db, slug)
@@ -1109,11 +1201,11 @@ def list_event_comments(
 def public_list_event_comments(
     slug: str,
     event_id: uuid.UUID,
-    current_user: User | None = Depends(get_optional_current_user),
+    current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> list[CommentOut]:
-    """Anonymous readers see comments — they're the heart of the
-    keepsake. Posting is gated below."""
+    """Comments are the heart of the keepsake — and viewing is auth-gated,
+    so readers are signed-in viewers like everyone else on the page."""
     birth = _resolve_public_birth(db, slug)
     visible = _scope_set_for_visitor(db, birth, current_user)
     event = timeline_repo.get_event(db, event_id)
@@ -1334,11 +1426,11 @@ def list_guesses(
 @app.get("/b/{slug}/guesses", response_model=GuessBoardOut)
 def list_public_guesses(
     slug: str,
-    current_user: User | None = Depends(get_optional_current_user),
+    current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> GuessBoardOut:
-    """The pool is page content — anonymous visitors can read it (like
-    reaction counts); `is_mine` is simply false for them."""
+    """The pool is page content, and viewing is auth-gated like the rest
+    of the page."""
     birth = _resolve_public_birth(db, slug)
     return _guess_board(db, birth, current_user.id if current_user else None)
 
@@ -2416,6 +2508,11 @@ def get_media(
     current_user: User | None = Depends(get_optional_current_user),
     db: Session = Depends(get_db),
 ) -> FileResponse | RedirectResponse:
+    # Viewing is auth-gated: family photos never serve to anonymous
+    # requests, whatever their audience scope. `<img>` tags send the
+    # same-origin session cookie, so signed-in viewers are unaffected.
+    if current_user is None:
+        raise HTTPException(status_code=401, detail="Not authenticated")
     asset = media_repo.get_media_asset(db, media_id)
     if asset is None or not asset.is_visible_to_viewers:
         raise HTTPException(status_code=404, detail="Media not found")
@@ -2530,7 +2627,7 @@ async def stream_public(
     request: Request,
     slug: str,
     last_event_id: str | None = Header(default=None, alias="Last-Event-ID"),
-    current_user: User | None = Depends(get_optional_current_user),
+    current_user: User = Depends(get_current_user_stream),
     db: Session = Depends(get_db),
 ) -> StreamingResponse:
     birth = _resolve_public_birth(db, slug)

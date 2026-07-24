@@ -27,11 +27,13 @@ She's in.
 
 **What happens:** Sarah opens the app and creates the family page. Names it ("Welcoming Baby Reyes"). Adds her husband Marco as co-parent. Then comes the invite flow.
 
-The invite flow has to feel like a *celebration*, not a chore. Sarah taps "Invite Family" and gets a shareable link. She drops it into her family group text on iMessage. Twenty-three people get the link instantly. Each one taps it, confirms their name with a phone or email code, and they're in.
+The invite flow has to feel like a *celebration*, not a chore. Sarah taps "Invite Family" and gets a shareable link. She drops it into her family group text on iMessage. Twenty-three people get the link instantly. Each one taps it, confirms their name with an email code (or one tap of *Continue with Google*), and they're in. The link grants the right to sign up, never a session — so a forwarded link produces a new identifiable viewer Sarah can see and revoke, not an anonymous one.
 
 For close family Sarah wants to invite individually, she can type a phone number or email directly and we send an SMS or email invite from our side.
 
 **Critical UX:** Setup must take under 2 minutes. Sarah has 800 other things to do. If this feels like work, she abandons.
+
+One optional, skippable beat at setup: *"Someone planning your shower?"* — Sarah can hand a link to her shower host, who gets a real role (manage the invite, see RSVPs, order cards). If she skips it, the prompt quietly re-surfaces around week 28–30 when showers actually get planned. Never front-loaded, never required.
 
 **Subtle hook:** As Sarah invites people, the page itself starts feeling real. She uploads a belly photo. She writes "Due April 8 — we can't wait to meet you." Family viewers see this and start engaging *before labor even begins*. Sarah's mom texts: "I cried looking at this."
 
@@ -53,11 +55,9 @@ Sarah's mom in Phoenix is now glued to the page.
 
 Sarah's sister in Seattle posts a comment: "We're with you. We're so proud."
 
-Wait — *commenting requires the unlock*. The first time the sister tries to comment, she hits a soft prompt: "Family conversations and personal messages happen here. Anyone in the family can unlock the comments for everyone — $12, one time."
+It posts instantly. No prompt, no payment — commenting is free for every authenticated viewer, because this is the product's emotional peak and nothing is allowed to interrupt it. Between contractions, Marco shows Sarah the comment. She cries.
 
-The sister pays without thinking. Her message posts. Between contractions, Marco shows Sarah the comment. She cries.
-
-**Critical moment:** The conversion happens here. It's *the sister* who paid, not Sarah. It happened naturally — she wanted to participate, the unlock was right there, the friction was minimal. The unlock is now active for everyone watching.
+**Critical moment:** Nothing is sold here, on purpose. This is where viewers become emotionally invested — and emotionally invested viewers are the ones who buy keepsakes at Day Two. Spectators don't buy; participants do. The live experience is the top of the gift funnel, not a revenue moment.
 
 **What Sarah is NOT doing:** Touching the phone. Marco is running the page. The contraction timer works because he's tapping it. The voice memos are recorded when she has breath between contractions. The product is *around her*, not in her hands.
 
@@ -85,19 +85,17 @@ Family viewers go back and re-read it. Janet in Phoenix scrolls slowly through e
 
 ### Stage 7: The gift moment (days 2-21)
 
-**Trigger:** ~48 hours after Lily's birth, every family viewer receives a "first day" message — email if they have one on file, SMS if not. It opens a beautifully curated recap of Lily's first 24 hours, with the gift catalog as the natural close. Some viewers find it on the page itself when they revisit; the message is the trigger for most.
+**Trigger:** ~48 hours after Lily's birth, every family viewer receives an email — identity is email-keyed, so every viewer has one: *"Lily's birth story is ready."* It opens on a **finished object, not a product page**: the artifact is auto-generated before anyone taps — Lily's contraction curve, the 3:47am photo, Janet's comment overlaid. Some viewers find it on the page itself when they revisit; the message is the trigger for most.
 
-**What happens:** Each viewer sees four products auto-generated from the actual timeline:
-- A framed timeline print ($49)
-- A contraction-pattern mug with photos ($35)
-- A photo book of the first 24 hours ($69)
-- An ornament with birth time and weight ($25)
+**What happens:** The message leads with the big items — the photo book of the first 24 hours ($69) and the framed timeline print ($49) — anchoring high, with the contraction-pattern mug ($35) and the birth-stat ornament ($25) after. Each shows a preview *with their family's actual data already populated*. The buy moment is one tap on something that already exists.
 
-Each shows a preview *with their family's actual data already populated*. Grandma in Phoenix buys the mug (and one for herself). Marco's sister buys the photo book. The neighbor buys the ornament.
+It also includes one free thing: a shareable digital birth-announcement graphic. It's the viral hook, and it makes the message feel like a gift rather than an invoice.
+
+Marco's sister buys the photo book. Grandma in Phoenix buys the mug (and one for herself). The neighbor buys the ornament.
 
 At checkout, the *and-one-for-me* option is right there: *Send to Sarah and Marco · Get one for myself · Both*. About a third of buyers pick Both, doubling AOV per transaction without any added pressure.
 
-Total: four sales, ~$200 in revenue, meaningful margin to the business. From the same family graph that already paid the $12 unlock.
+Total: four sales, ~$200 in revenue, meaningful margin to the business — from a family graph that spent the whole labor commenting and reacting for free. Emotionally invested viewers buy keepsakes; this moment now carries essentially all the monetization weight.
 
 **Coordination mechanic:** Once the gift-to-family copy of the mug is bought, it shows "claimed" to other viewers. The photo book disappears as an option after it sells. No duplicates *for the family* — but "one for me" copies don't count toward the claim, so multiple grandparents can each get their own keepsake.
 
@@ -127,7 +125,7 @@ A week later, Aunt Linda in Ohio gets one in the mail. She scans the QR out of c
 
 ### Stage 10: One year later (~week 51 post-birth)
 
-**Trigger:** A week before Lily's first birthday, Sarah gets a message. Email if she has one on file, SMS link if not. The framing isn't transactional — it's *memory*. Subject (or SMS preview): *"One year ago this week."*
+**Trigger:** A week before Lily's first birthday, Sarah gets an email. The framing isn't transactional — it's *memory*. Subject line: *"One year ago this week."*
 
 **What happens:** Sarah taps through. A beautiful landing page opens — Lily's birth recap from a year ago. The first photos. A voice memo of Marco saying her name for the first time. The comments her mother and sister left during labor. Sarah hadn't looked at the page in months. She cries on the couch reading her dad's comment from 11:11 AM.
 
@@ -152,7 +150,7 @@ No urgency, no countdown, no fine print. Just a clear, dignified decision. Sarah
 
 **Why the export option matters:** Without it, the renewal feels coercive — pay or lose the memories. With it, the choice feels respectful: keep it live with us, or take it with you. Most families pay because the export is a clunky zip and the live page is beautiful. The trust this builds is enormous.
 
-**Channel logic:** Same as the Day Two prompt — email if available, SMS link if not. SMS is short; the landing page does the work.
+**Channel logic:** Same as the Day Two prompt — email, always. The message is short; the landing page does the work.
 
 **If Sarah doesn't act:** One gentle follow-up on the actual birthday — *"Happy first birthday, Lily 🤍"* with the same options. After that, silence. The page moves to archived storage (still preserved, not deleted). She can reactivate any time at $3/year.
 
@@ -170,9 +168,9 @@ Janet is the most emotionally engaged human in the entire system. She's not the 
 
 **Trigger:** Sarah sends her an SMS invite.
 
-**What happens:** Janet gets a text: "Sarah Reyes has invited you to follow her baby's arrival. Tap to view." Janet taps. Browser opens to Sarah's family page. She sees a clean, simple "Confirm you're Janet Reyes-Walker" with her phone number pre-filled. Tap confirm. Done. She's in. No app required.
+**What happens:** Janet gets a text: "Sarah Reyes has invited you to follow her baby's arrival. Tap to view." Janet taps. Browser opens to Sarah's family page. She sees a clean, simple "Confirm you're Janet Reyes-Walker," types her email, and enters the 6-digit code that lands in her inbox (a code, deliberately — not a magic link that strands her in the Mail app or a spam folder). Then one warm follow-up screen: *"Want a text the moment labor begins?"* Of course she does. She types her number; a confirmation text arrives immediately (verifying the number and carrying the STOP language). Done. She's in. No app required.
 
-**Critical UX:** No download. No password. No friction. Janet's a 64-year-old grandmother and she got through this in 11 seconds.
+**Critical UX:** No download. No password. No app. The email code is the only typing Janet ever does — her session lasts 12+ months and silently refreshes on every visit, so this one calm pre-labor minute is the last auth event she'll ever see, including during the birth itself. Design the second-device flow (signing in on the iPad at 2am) deliberately, and test both screens with someone over 60. The phone opt-in lands at peak intent — it converts extremely well, and it's what makes her labor text both legal and wanted. Those texts are scoped to birth events only, forever.
 
 ### Stage 2: The wait
 
@@ -182,17 +180,15 @@ Janet is the most emotionally engaged human in the entire system. She's not the 
 
 ### Stage 3: Labor begins
 
-**Trigger:** Push notification (Janet enabled it during signup): "Sarah has started timing contractions."
+**Trigger:** The text Janet opted into at signup (plus a push notification, if she enabled it): "Sarah has started timing contractions."
 
 **What happens:** Janet's day stops. She calls her husband. They sit together on the couch, the page open on the iPad. Contractions appearing in real time. Sarah's voice memo plays. Marco's text updates. Janet feels like she's *there*.
 
-Three hours in, Janet wants to send a message. She taps the comment field. Soft prompt appears: "Unlock comments to send a message Sarah will see — $12, anyone in the family can unlock — it's permanent for this baby." Janet pays without thinking.
+Three hours in, Janet wants to send a message. She taps the comment field and types slowly: "We love you, baby girl. Mom is so strong. Grandpa is crying."
 
-She types slowly: "We love you, baby girl. Mom is so strong. Grandpa is crying."
+It posts immediately — no payment, no prompt. This is the product's best moment, and it is deliberately free. That message will be on her granddaughter's page forever.
 
-That message will be on her granddaughter's page forever.
-
-**Critical UX:** Comment composition has to be forgiving. Janet will type slowly, make typos, want to edit. Don't make her feel old. The unlock prompt must feel optional and dignified, never aggressive. "$12 to send a message" should land as a small, easy gesture, not a paywall.
+**Critical UX:** Comment composition has to be forgiving. Janet will type slowly, make typos, want to edit. Don't make her feel old. And nothing commercial may interrupt this window — Janet at 2am, mid-labor, is the moment that makes the whole product feel alive. She converts at Day Two, not here.
 
 ### Stage 4: The birth itself
 
@@ -204,15 +200,15 @@ That message will be on her granddaughter's page forever.
 
 ### Stage 5: The "first day" update (~48 hours after birth)
 
-**Trigger:** Janet signed up via SMS code, so she gets a text two days after the baby's arrival. The message is short: *"Sarah and Marco's first day with Lily 🤍 [link]"*. She taps it.
+**Trigger:** Two days after the baby's arrival, an email lands in Janet's inbox. Subject line: *"Sarah and Marco's first day with Lily 🤍"*. She taps it. (Her texts stay reserved for the birth moments she asked for — gift content never rides SMS.)
 
 **What happens:** A beautiful landing page opens — same visual identity as Sarah's birth page, but curated. The first photos. A voice memo where Sarah whispers Lily's name. The comments Janet's sister and the other grandparents left. It feels like a love letter to the day Lily arrived.
 
-At the bottom, gently: *"Send Sarah and Marco something made from Lily's day."* A few options appear: physical gifts (a contraction-pattern mug, a framed timeline print, a photo book of the first 24 hours), and one quieter option — *Keep Lily's page alive forever, $59.* Janet reads that last one twice.
+At the bottom, gently: *"Send Sarah and Marco something made from Lily's day."* The options lead with the big keepsakes — the photo book of the first 24 hours and the framed timeline print — then the contraction-pattern mug, each already rendered with Lily's actual data, with *one for me* visible right on Janet's version. And one quieter option — *Keep Lily's page alive forever, $59.* Janet reads that last one twice.
 
 **Critical UX:** The framing is sacred. This is *not* a "buy a gift" notification — it's a memories update that happens to surface gifts. If it ever reads as marketing, the trust is gone. The message is genuinely emotionally valuable on its own; non-buyers should still read it and feel served, not pitched at.
 
-**Channel logic:** Email if she has one on file; SMS if not. Most viewers will be SMS-first since auth-by-text is lower friction. The SMS version is short — just a few words and a link. The page does all the work. Single touchpoint. No follow-up nags. If she doesn't engage, we leave her alone.
+**Channel logic:** Email, always — identity is email-keyed, so every viewer has one on file, and CAN-SPAM (an unsubscribe link) is the only legal surface. SMS never carries gift content; it stays scoped to the birth events Janet opted into. The email is short; the landing page does all the work. Single touchpoint. No follow-up nags. If she doesn't engage, we leave her alone.
 
 ### Stage 6: The gift moment
 
@@ -236,7 +232,7 @@ The *storage as a gift* mechanic is the other major unlock. For Janets — senti
 
 **Trigger:** Janet checks the page on holidays, birthdays, Mother's Day.
 
-**What happens:** Her granddaughter grows up partly through this medium. Janet is the most engaged user the product has, even though she's never been the buyer beyond that initial unlock and gift. She's the *audience* the keepsake is built for.
+**What happens:** Her granddaughter grows up partly through this medium. Janet is the most engaged user the product has, even though her only purchases were the gifts — the mug and the storage. She's the *audience* the keepsake is built for.
 
 In 18 years, when Sarah's daughter is grown, the page is still there. Janet's comment from labor day, written between contractions and tears, is part of the story Sarah's daughter inherits about how she came into the world — and how loved she was from the first hour.
 
@@ -254,7 +250,9 @@ Lisa isn't family, but she's a critical persona. She represents the outer ring o
 
 **Trigger:** Sarah sends her an SMS invite. (Alternatively: Lisa attends Sarah's baby shower, sees a card with a QR code on it, scans it out of curiosity, and signs up that way. Same end result, different entry path. The shower QR cards turn the celebration itself into a quiet product activation moment.)
 
-**What happens:** Lisa is touched. Being invited means a lot — it signals that Sarah considers her real family. She'll feel honored, especially if other friends weren't included. Same frictionless signup as Janet: tap link, confirm name, done.
+A third path: **Lisa is the shower host.** Sarah hands her a link during setup and Lisa gets a real role — she manages the shower invite, sees RSVPs and viewer signups, and is the one who orders the printed cards. The role feels like delegation ("help me with the shower"), not a sales pitch — and it means the outer-ring friend has an account and an emotional stake weeks before labor. The host role is a viral vector.
+
+**What happens:** Lisa is touched. Being invited means a lot — it signals that Sarah considers her real family. She'll feel honored, especially if other friends weren't included. Same frictionless signup as Janet — except Lisa, mid-30s and living in Chrome, just one-taps *Continue with Google*: tap link, confirm name, done.
 
 **Critical emotional moment:** Lisa is making sense of her permission level. Is she allowed to comment? Will it feel weird? The product's design has to make her feel *welcome but not intrusive* — small cues matter, like the warmth of the welcome screen and the lack of any "guest" framing.
 
@@ -268,13 +266,9 @@ Lisa isn't family, but she's a critical persona. She represents the outer ring o
 
 **Trigger:** Depends on timing. If labor happens at 2am her time, she'll wake up to the "Baby Born!" notification and have missed the live experience. If labor happens during her workday, she'll be the one *most* glued to the page — sneaking glances between meetings, texting other friends to compare reactions.
 
-**What happens:** If she's awake during active labor, she sees the placeholder for photos. She wants to participate. She might be the one to unlock if no family has yet — $12 is nothing to her and she wants to leave a real message, not just a heart.
+**What happens:** If she's awake during active labor, she's watching the timeline fill in. She wants to participate — and she can, freely. She types: "I cannot believe how perfect she is, I'm sobbing at work."
 
-Or she might assume "the family will pay for that" and wait. Hard to predict — depends on her personality.
-
-If unlocked, she types: "I cannot believe how perfect she is, I'm sobbing at work."
-
-**Critical UX:** The unlock prompt for friends has to feel different in spirit than the family one. Family unlocks because they want to participate as family. Friends unlock because they want to *honor* their friend. The framing should make Lisa feel like she's contributing to Sarah's experience, not buying access.
+**Critical UX:** Lisa's uncertainty here is social, not financial — "is it my place to comment among the family?" Since nothing is paywalled, the design's whole job is making her feel *welcome but not intrusive*: warm comment framing, no guest-tier signaling, her message landing alongside the grandmothers' without ceremony. The friend who participates during labor is the friend who buys the photo book at Day Two.
 
 ### Stage 4: The gift moment
 
@@ -304,7 +298,7 @@ A few principles emerge when you look at all three personas together:
 
 **Sarah designs the page. Janet experiences it. Lisa amplifies it.** Each persona has a different role. The product must serve all three without compromising any. The best test of any feature: would Janet find it confusing? Would Lisa feel weird participating? Would Sarah have time for it during week 2?
 
-**The free tier carries Janet's emotional weight.** Janet pays the unlock, but she experiences the free tier first. If the free experience doesn't move her, she doesn't pay. The unlock isn't a paywall — it's an upgrade to a relationship she's already invested in.
+**The free experience carries Janet's emotional weight.** Everything live is free — Janet watches, reacts, and comments through the entire labor without ever hitting a payment. That's deliberate: her investment is built during the birth and *converted* at Day Two. If the live experience doesn't move her, no gift email will. The keepsakes aren't a paywall — they're a way to hold onto a day she already lived through.
 
 **The grandmother is the silent center of gravity.** Sarah is the user. Lisa is the future user. But Janet is the emotional engine. The keepsake is built for her grief, her witnessing, her permanence. Every feature decision should pass the "would this matter to Janet in 10 years?" test.
 
@@ -312,7 +306,7 @@ A few principles emerge when you look at all three personas together:
 
 **Authentic > engaging.** Every persona is hurt by overly engagement-driven design. Sarah doesn't want push notifications. Janet doesn't want gamification. Lisa doesn't want pressure. The product wins by being *quiet, dignified, and present at the right moments*, not by maximizing time-in-app.
 
-**Multiple buyer paths is the breakthrough.** Sarah might never pay anything beyond storage. Janet pays the unlock and a mug. Lisa buys a photo book. The business model works because all three paths exist. Design for all three.
+**Multiple buyer paths is the breakthrough.** Sarah might never pay anything beyond storage. Janet buys the mug and the lifetime storage gift. Lisa buys the photo book — or, as shower host, the printed cards before the birth even happens. The business model works because all these paths exist, and every one of them is a physical or permanent thing: everything live is free, everything you can hold costs money. Design for all of them.
 
 ---
 
@@ -321,6 +315,7 @@ A few principles emerge when you look at all three personas together:
 These are personas worth building out over time, especially as the business matures:
 
 - **The Partner (The Marco)** — Sarah's husband, the one who actually drives the page during labor while she's in pain. He has different needs than Sarah and is probably an underweighted persona right now. Worth interviewing real partners (including the founders themselves) before v1 ships.
+- **The Shower Host** — often a Lisa; grandma or a close friend. The buyer of the printed shower cards and the first named family role. Gets a real capability (manage the invite, see RSVPs, order cards) rather than an email capture. Named roles that each map to a buyer moment may be the product's real acquisition architecture — worth developing as the role system grows (co-parent, host, eventually a grandparent invite).
 - **The Reluctant Grandfather** — Janet's husband. Less expressive than her. Lurks on the page but rarely comments. Probably wants to forward photos to his coworkers without ever leaving a reaction.
 - **The Adult Child Returning (The Future Lily)** — age 18, logging in for the first time to see the day she was born. This persona doesn't drive revenue but drives *purpose*. Why we're doing this.
 - **The Grieving Family** — pregnancy loss, infant loss. Sensitive, important, requires deliberate product care. A long-term persona that informs how we treat loss and memorial moments.

@@ -122,7 +122,17 @@ class User(Base):
 
     id: Mapped[uuid.UUID] = _uuid_pk()
     email: Mapped[str | None] = mapped_column(sa.Text, nullable=True)
+    # Legacy identity phone from the phone-or-email era; new users are
+    # always email-keyed (2026-07-23 auth decision). Kept so pre-migration
+    # accounts stay linkable to their content.
     phone: Mapped[str | None] = mapped_column(sa.Text, nullable=True)
+    # The birth-events-only text opt-in ("Want a text the moment labor
+    # begins?"). E.164. The opted_in_at timestamp is the TCPA consent
+    # record; the confirmation text carries the STOP language.
+    notify_phone: Mapped[str | None] = mapped_column(sa.Text, nullable=True)
+    notify_phone_opted_in_at: Mapped[datetime | None] = mapped_column(
+        sa.DateTime(timezone=True), nullable=True
+    )
     display_name: Mapped[str | None] = mapped_column(sa.Text, nullable=True)
     avatar_url: Mapped[str | None] = mapped_column(sa.Text, nullable=True)
     # Set by account deletion: the row survives as a PII-free sentinel when
@@ -374,7 +384,7 @@ class ViewerInvitation(Base):
 
     The token sent to the recipient is `{invitation_id}.{secret}`. Only
     the salted hash of the secret is stored, mirroring how AuthChallenge
-    handles magic-link secrets.
+    stores its OTP codes.
 
     Multi-use by default — the same link can be redeemed by anyone in the
     family group chat. `revoked_at` is the kill switch; `expires_at` is
@@ -537,12 +547,12 @@ class TimelineEventComment(Base):
 
 
 class AuthChallenge(Base):
-    """Short-lived auth challenges. Two valid completion paths:
-    - email magic link: client follows `/auth/verify?token=<token>` URL
-    - SMS / email OTP: client posts `{identifier, code}` to /auth/verify
+    """Short-lived auth challenges — email OTP only (2026-07-23 auth
+    decision): client posts `{identifier, code}` to /auth/verify.
 
-    `code_hash` and `magic_link_token_hash` both populated; either one can
-    redeem the challenge. Stored as `sha256(salt || secret)` hex.
+    `code_hash` is `sha256(salt || code)` hex. `magic_link_token_hash`
+    is a retired column (magic links are gone); it's still NOT NULL, so
+    it gets a hash of a discarded secret until a cleanup migration drops it.
     """
 
     __tablename__ = "auth_challenges"

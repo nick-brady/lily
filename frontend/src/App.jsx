@@ -3,7 +3,6 @@ import { AuthProvider } from './contexts/AuthContext';
 import { PageTracking } from './hooks/usePageTracking';
 import AccountPage from './pages/AccountPage';
 import AuthPage from './pages/AuthPage';
-import AuthVerifyPage from './pages/AuthVerifyPage';
 import BirthManagePage from './pages/BirthManagePage';
 import BirthSettingsPage from './pages/BirthSettingsPage';
 import InviteRedeemPage from './pages/InviteRedeemPage';
@@ -24,7 +23,6 @@ export default function App() {
           <Route path="/account" element={<AccountPage />} />
           <Route path="/setup" element={<SetupPage />} />
           <Route path="/login" element={<AuthPage />} />
-          <Route path="/auth/verify" element={<AuthVerifyPage />} />
           <Route path="/pricing" element={<PricingPage />} />
           <Route path="/privacy" element={<PrivacyPage />} />
           <Route path="/terms" element={<TermsPage />} />

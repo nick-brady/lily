@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link, useParams, useSearchParams } from 'react-router-dom';
-import { api, getToken } from '../api/client';
+import { api } from '../api/client';
 import { useAuth } from '../contexts/AuthContext';
 import { useSSE } from '../hooks/useSSE';
 import CelebrationOverlay from '../components/CelebrationOverlay';
@@ -15,7 +15,7 @@ export default function PublicBirthPage() {
   const { slug } = useParams();
   const [searchParams, setSearchParams] = useSearchParams();
   const [giftBanner, setGiftBanner] = useState('');
-  const { isAuthenticated, me } = useAuth();
+  const { isAuthenticated, loading: authLoading, me } = useAuth();
   const [birth, setBirth] = useState(null);
   const [events, setEvents] = useState(() => new Map());
   const [loading, setLoading] = useState(true);
@@ -39,9 +39,15 @@ export default function PublicBirthPage() {
   }, [darkMode, effectiveDark]);
 
   useEffect(() => {
+    if (authLoading) return undefined;
     let cancelled = false;
     setLoading(true);
-    Promise.all([api.getPublicBirth(slug), api.listPublicTimeline(slug)])
+    // Viewing is auth-gated: `/b/{slug}` alone is the anonymous preview
+    // (name, status, theme); the timeline needs a session.
+    const loads = isAuthenticated
+      ? Promise.all([api.getPublicBirth(slug), api.listPublicTimeline(slug)])
+      : api.getPublicBirth(slug).then((b) => [b, []]);
+    loads
       .then(([b, rows]) => {
         if (cancelled) return;
         setBirth(b);
@@ -58,7 +64,7 @@ export default function PublicBirthPage() {
     };
     // Re-fetch when the user signs in / out so the audience-widened
     // timeline is reloaded with the new role.
-  }, [slug, isAuthenticated]);
+  }, [slug, isAuthenticated, authLoading]);
 
   const currentUserId = me?.user?.id;
 
@@ -147,11 +153,10 @@ export default function PublicBirthPage() {
   }, [currentUserId]);
 
   const streamUrl = useMemo(() => {
-    if (!birth) return null;
-    const url = new URL(`${api.apiUrl}/b/${slug}/stream`, window.location.origin);
-    const token = getToken();
-    if (token) url.searchParams.set('token', token);
-    return url.toString();
+    if (!birth || !isAuthenticated) return null;
+    // The httpOnly session cookie rides the same-origin EventSource on its
+    // own — no token in the URL (or the access logs).
+    return new URL(`${api.apiUrl}/b/${slug}/stream`, window.location.origin).toString();
   }, [birth, slug, isAuthenticated]);
   const { isConnected } = useSSE(streamUrl, handleSSE);
 
@@ -288,7 +293,7 @@ export default function PublicBirthPage() {
           </section>
         )}
 
-        {!loading && birth && (
+        {!loading && birth && isAuthenticated && (
           <Predictions
             slug={slug}
             status={birth.status}
@@ -300,8 +305,10 @@ export default function PublicBirthPage() {
           <p className="text-center t-muted py-12">
             Loading timeline…
           </p>
-        ) : (
+        ) : isAuthenticated ? (
           <Timeline events={sortedEvents} slug={slug} />
+        ) : (
+          <TimelinePreview slug={slug} childName={birth?.child_name} />
         )}
 
         {!loading && birth && isAuthenticated && (
@@ -325,6 +332,54 @@ export default function PublicBirthPage() {
         />
       )}
     </div>
+  );
+}
+
+// The unauthenticated preview (v1 requirement): the emotional hook —
+// the name, the moment — before the email ask, never a login wall as the
+// first thing a QR-scanning great-aunt sees. The blurred bars are
+// decorative; no real content is fetched (the API enforces that).
+function TimelinePreview({ slug, childName }) {
+  const widths = [78, 92, 64, 85, 70];
+  return (
+    <section className="card relative overflow-hidden py-8">
+      <div aria-hidden="true" className="space-y-5 px-6" style={{ filter: 'blur(6px)', opacity: 0.45 }}>
+        {widths.map((w, i) => (
+          <div key={i} className="flex items-start gap-3">
+            <div
+              className="w-8 h-8 rounded-full shrink-0"
+              style={{ backgroundColor: 'var(--t-soft-bg)' }}
+            />
+            <div className="flex-1 space-y-2">
+              <div
+                className="h-3 rounded-full"
+                style={{ width: `${w}%`, backgroundColor: 'var(--t-soft-bg)' }}
+              />
+              <div
+                className="h-3 rounded-full"
+                style={{ width: `${Math.max(30, w - 35)}%`, backgroundColor: 'var(--t-soft-bg)' }}
+              />
+            </div>
+          </div>
+        ))}
+      </div>
+      <div className="absolute inset-0 flex flex-col items-center justify-center text-center px-6">
+        <p className="t-display mb-1" style={{ fontSize: '1.5rem' }}>
+          {childName ? `Follow ${childName}'s story` : 'Follow the story'}
+        </p>
+        <p className="text-sm t-muted mb-4 max-w-xs">
+          Photos, milestones, and the moments as they happen — shared with
+          family and friends.
+        </p>
+        <Link
+          to={`/login?next=/b/${slug}`}
+          className="px-5 py-3 rounded-lg text-white font-medium transition-colors"
+          style={{ backgroundColor: 'var(--t-accent)' }}
+        >
+          Sign in to follow along
+        </Link>
+      </div>
+    </section>
   );
 }
 
