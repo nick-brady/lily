@@ -1,9 +1,8 @@
-import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom';
+import { BrowserRouter, Navigate, Route, Routes, useParams } from 'react-router-dom';
 import { AuthProvider } from './contexts/AuthContext';
 import { PageTracking } from './hooks/usePageTracking';
 import AccountPage from './pages/AccountPage';
 import AuthPage from './pages/AuthPage';
-import BirthManagePage from './pages/BirthManagePage';
 import BirthSettingsPage from './pages/BirthSettingsPage';
 import InviteRedeemPage from './pages/InviteRedeemPage';
 import LandingPage from './pages/LandingPage';
@@ -12,6 +11,11 @@ import PrivacyPage from './pages/PrivacyPage';
 import PublicBirthPage from './pages/PublicBirthPage';
 import SetupPage from './pages/SetupPage';
 import TermsPage from './pages/TermsPage';
+
+function ManageRedirect() {
+  const { slug } = useParams();
+  return <Navigate to={`/b/${slug}`} replace />;
+}
 
 export default function App() {
   return (
@@ -28,7 +32,9 @@ export default function App() {
           <Route path="/terms" element={<TermsPage />} />
           <Route path="/invite/:token" element={<InviteRedeemPage />} />
           <Route path="/b/:slug" element={<PublicBirthPage />} />
-          <Route path="/b/:slug/manage" element={<BirthManagePage />} />
+          {/* The manage page merged into the birth page (parent tooling
+              renders by role); keep old bookmarks working. */}
+          <Route path="/b/:slug/manage" element={<ManageRedirect />} />
           <Route path="/b/:slug/settings" element={<BirthSettingsPage />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>

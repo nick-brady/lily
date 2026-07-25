@@ -32,6 +32,11 @@ export function useSSE(url, onEvent) {
     };
 
     source.addEventListener('open', () => setIsConnected(true));
+    // birth_update carries no id: line (negative sequence id server-side),
+    // so evt.lastEventId is empty — the guard in handle() tolerates that.
+    // This listener is what makes labor-start and "baby born" appear live
+    // for viewers; without it the pages' birth_update branches never fire.
+    source.addEventListener('birth_update', handle('birth_update'));
     source.addEventListener('appended', handle('appended'));
     source.addEventListener('updated', handle('updated'));
     source.addEventListener('deleted', handle('deleted'));
