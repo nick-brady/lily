@@ -205,11 +205,10 @@ PR; today every invited viewer sees every `group_targeted` post.
 
 - `/` — redirects to the default birth's public page (`VITE_DEFAULT_BIRTH_SLUG`,
   defaults to `lily-wren`)
-- `/login?next=/path` — magic link / OTP form. The `next` param lets guarded actions (e.g. tapping a reaction while anonymous) come back to where the user was after sign-in.
-- `/auth/verify?token=...&next=...` — consumes the magic link, stores the JWT, then lands at `next` (or the user's first family birth, or the default slug).
-- `/invite/:token` — viewer invitation redeem page (verifies email/phone, attaches as family_viewer)
-- `/b/:slug` — public keepsake view; renders family-only posts too when the signed-in user is an invited viewer. Reactions + comments inline on every milestone, post, and photo.
-- `/b/:slug/manage` — parent dashboard (contraction button, post composer, stats, invitation manager)
+- `/login?next=/path` — email OTP form + "Continue with Google" (identity is email; sessions ride an httpOnly cookie). The `next` param lets guarded actions come back to where the user was after sign-in.
+- `/invite/:token` — viewer invitation redeem page (email code or Google, then the birth-alerts phone opt-in, attaches as family_viewer)
+- `/b/:slug` — THE birth page, for every role: anonymous visitors get a preview (name + sign-in CTA), signed-in viewers the audience-scoped timeline with reactions + comments, and parents additionally the inline tooling (contraction button, post composer, Baby Born, stats tab) rendered by role.
+- `/b/:slug/manage` — legacy URL; client-redirects to `/b/:slug` (the manage page merged into the birth page)
 
 ## Production deployment (single instance, bare-metal)
 

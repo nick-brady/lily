@@ -51,7 +51,7 @@ function Headline() {
 
 // The parent's screen: same page chrome, but the manage view — the real
 // ContractionButton in its card above the real Timeline of logged
-// contractions, mirroring BirthManagePage's layout in miniature.
+// contractions, mirroring the birth page's parent layout in miniature.
 function ParentScreen({ startTime, events, pressed }) {
   return (
     <div

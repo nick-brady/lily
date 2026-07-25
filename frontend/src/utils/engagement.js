@@ -1,6 +1,6 @@
 /**
  * Pure helpers for updating the events Map when engagement SSE events
- * arrive. Both BirthManagePage and PublicBirthPage use these — the
+ * arrive. The birth page (PublicBirthPage) uses these — the
  * keepsake page and the parent dashboard speak the same event language.
  */
 

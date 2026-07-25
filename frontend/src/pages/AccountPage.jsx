@@ -39,7 +39,7 @@ function BirthCard({ birth }) {
       }}
     >
       <Link
-        to={isParent ? `/b/${birth.slug}/manage` : `/b/${birth.slug}`}
+        to={`/b/${birth.slug}`}
         className="flex-1 flex flex-col items-center justify-center gap-3 px-5 py-8 text-center"
       >
         <span className="t-display leading-tight" style={{ fontSize: 'var(--t-title-size)' }}>

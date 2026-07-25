@@ -3,40 +3,42 @@ import { Link, useParams, useSearchParams } from 'react-router-dom';
 import { api } from '../api/client';
 import { useAuth } from '../contexts/AuthContext';
 import { useSSE } from '../hooks/useSSE';
+import { useDarkMode } from '../hooks/useDarkMode';
 import CelebrationOverlay from '../components/CelebrationOverlay';
 import ConnectionStatus from '../components/ConnectionStatus';
-import Timeline from '../components/Timeline';
-import Predictions from '../components/Predictions';
+import ContractionButton from '../components/ContractionButton';
+import DarkModeToggle from '../components/DarkModeToggle';
 import GiftGallery from '../components/GiftGallery';
+import HeaderMenu from '../components/HeaderMenu';
+import Predictions from '../components/Predictions';
+import StatsTab from '../components/StatsTab';
+import Timeline from '../components/Timeline';
+import UpdateForm from '../components/UpdateForm';
 import { bumpCommentCount, updateReaction } from '../utils/engagement';
 import { getTheme, themeVars } from '../utils/themes';
 
+// THE birth page — one page for every role. Anonymous visitors get the
+// preview; signed-in family sees the timeline; parents additionally get
+// the labor tooling (contraction timer, composer, Baby Born, stats)
+// rendered inline behind `canManageThisBirth`. Reads go through the slug
+// endpoints for everyone (the server widens audience scopes by role);
+// parent writes use the id endpoints, which enforce parenthood.
 export default function PublicBirthPage() {
   const { slug } = useParams();
   const [searchParams, setSearchParams] = useSearchParams();
   const [giftBanner, setGiftBanner] = useState('');
-  const { isAuthenticated, loading: authLoading, me } = useAuth();
+  const { isAuthenticated, loading: authLoading, me, refreshMe } = useAuth();
   const [birth, setBirth] = useState(null);
   const [events, setEvents] = useState(() => new Map());
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [celebration, setCelebration] = useState(null);
-
-  const [darkMode, setDarkMode] = useState(() => {
-    if (typeof window === 'undefined') return false;
-    return (
-      localStorage.getItem('darkMode') === 'true'
-      || window.matchMedia('(prefers-color-scheme: dark)').matches
-    );
-  });
+  const [activeTab, setActiveTab] = useState('timeline');
+  const [confirmingBorn, setConfirmingBorn] = useState(false);
+  const [markingBorn, setMarkingBorn] = useState(false);
 
   const theme = getTheme(birth?.theme);
-  const effectiveDark = darkMode || Boolean(theme.alwaysDark);
-
-  useEffect(() => {
-    document.documentElement.classList.toggle('dark', effectiveDark);
-    localStorage.setItem('darkMode', darkMode);
-  }, [darkMode, effectiveDark]);
+  const { darkMode, setDarkMode, effectiveDark } = useDarkMode(theme.alwaysDark);
 
   useEffect(() => {
     if (authLoading) return undefined;
@@ -118,7 +120,8 @@ export default function PublicBirthPage() {
       return;
     }
     if ((kind === 'appended' || kind === 'updated') && data?.id) {
-      // Public stream is already audience-filtered on the server.
+      // The stream is already audience-filtered on the server. Preserve
+      // engagement fields across updates — the broker payload drops them.
       setEvents((prev) => {
         const next = new Map(prev);
         const existing = next.get(data.id);
@@ -155,7 +158,8 @@ export default function PublicBirthPage() {
   const streamUrl = useMemo(() => {
     if (!birth || !isAuthenticated) return null;
     // The httpOnly session cookie rides the same-origin EventSource on its
-    // own — no token in the URL (or the access logs).
+    // own — no token in the URL (or the access logs). One stream for every
+    // role; the server filters events by the viewer's audience scopes.
     return new URL(`${api.apiUrl}/b/${slug}/stream`, window.location.origin).toString();
   }, [birth, slug, isAuthenticated]);
   const { isConnected } = useSSE(streamUrl, handleSSE);
@@ -163,6 +167,11 @@ export default function PublicBirthPage() {
   const sortedEvents = useMemo(
     () => [...events.values()].sort((a, b) => a.sequence_id - b.sequence_id),
     [events],
+  );
+
+  const activeContraction = useMemo(
+    () => sortedEvents.find((e) => e.event_type === 'contraction' && !e.payload?.end_time),
+    [sortedEvents],
   );
 
   const canManageThisBirth = useMemo(() => {
@@ -176,6 +185,54 @@ export default function PublicBirthPage() {
     }
     return false;
   }, [me, birth]);
+
+  // ---- Parent actions (id endpoints; the server enforces parenthood) ----
+
+  const handleStart = async () => {
+    try {
+      await api.startContraction(birth.id);
+    } catch (err) {
+      setError(err.message || 'Failed to start contraction');
+    }
+  };
+
+  const handleStop = async () => {
+    if (!activeContraction) return;
+    try {
+      await api.stopContraction(birth.id, activeContraction.id, new Date().toISOString());
+    } catch (err) {
+      setError(err.message || 'Failed to stop contraction');
+    }
+  };
+
+  const handleCancel = async () => {
+    if (!activeContraction) return;
+    try {
+      await api.deleteEvent(birth.id, activeContraction.id);
+    } catch (err) {
+      setError(err.message || 'Failed to cancel contraction');
+    }
+  };
+
+  const handleBorn = async () => {
+    setMarkingBorn(true);
+    setError('');
+    try {
+      const updated = await api.markBorn(birth.id);
+      // Celebrate immediately for the parent who tapped — don't rely on
+      // our own SSE echo. Viewers get the moment via birth_update.
+      setBirth((prev) => (prev ? { ...prev, ...updated } : prev));
+      setCelebration({ name: updated.child_name || birth.child_name });
+      // Keep the account page badge fresh; fire-and-forget on purpose —
+      // page data is keyed on the slug, so this triggers no refetch.
+      refreshMe().catch(() => {});
+    } catch (err) {
+      setError(err.message || 'Failed to mark baby born');
+    } finally {
+      setMarkingBorn(false);
+      setConfirmingBorn(false);
+    }
+  };
 
   const title = birth?.child_name
     ? `Welcoming ${birth.child_name}`
@@ -213,37 +270,43 @@ export default function PublicBirthPage() {
               {title}
             </h1>
             <div className="flex items-center gap-2">
-              {canManageThisBirth && (
-                <Link
-                  to={`/b/${slug}/manage`}
-                  className="px-3 py-2 text-sm rounded-lg text-white font-medium transition-colors"
-                  style={{ backgroundColor: 'var(--t-accent)' }}
-                >
-                  Manage
-                </Link>
-              )}
-              {isAuthenticated ? (
-                <Link
-                  to="/account"
-                  className="px-3 py-2 text-sm rounded-lg transition-opacity hover:opacity-80"
-                  style={{ backgroundColor: 'var(--t-soft-bg)', color: 'var(--t-soft-text)' }}
-                  title="Back to your account"
-                >
-                  Home
-                </Link>
-              ) : (
-                <Link
-                  to="/login"
-                  className="px-3 py-2 text-sm rounded-lg transition-opacity hover:opacity-80"
-                  style={{ backgroundColor: 'var(--t-soft-bg)', color: 'var(--t-soft-text)' }}
-                >
-                  Sign in
-                </Link>
+              {!canManageThisBirth && (
+                isAuthenticated ? (
+                  <Link
+                    to="/account"
+                    className="px-3 py-2 text-sm rounded-lg transition-opacity hover:opacity-80"
+                    style={{ backgroundColor: 'var(--t-soft-bg)', color: 'var(--t-soft-text)' }}
+                    title="Back to your account"
+                  >
+                    Home
+                  </Link>
+                ) : (
+                  <Link
+                    to="/login"
+                    className="px-3 py-2 text-sm rounded-lg transition-opacity hover:opacity-80"
+                    style={{ backgroundColor: 'var(--t-soft-bg)', color: 'var(--t-soft-text)' }}
+                  >
+                    Sign in
+                  </Link>
+                )
               )}
               <DarkModeToggle darkMode={darkMode} setDarkMode={setDarkMode} />
+              {canManageThisBirth && (
+                <HeaderMenu
+                  items={[
+                    { label: 'Account', to: '/account' },
+                    { label: 'Birth settings', to: `/b/${slug}/settings` },
+                  ]}
+                />
+              )}
             </div>
           </div>
-          <ConnectionStatus isConnected={isConnected} />
+          <div className="flex items-center justify-between">
+            <ConnectionStatus isConnected={isConnected} />
+            {canManageThisBirth && (
+              <TabSwitcher activeTab={activeTab} setActiveTab={setActiveTab} />
+            )}
+          </div>
         </div>
       </header>
 
@@ -264,7 +327,10 @@ export default function PublicBirthPage() {
             {error}
           </div>
         )}
-        {!loading && birth?.status === 'in_labor' && (
+
+        {/* Viewers get the ambient labor banner; parents get the timer
+            itself instead. */}
+        {!loading && !canManageThisBirth && birth?.status === 'in_labor' && (
           <div
             className="card flex items-center gap-3 py-3"
             style={{ backgroundColor: 'var(--t-soft-bg)' }}
@@ -276,7 +342,7 @@ export default function PublicBirthPage() {
           </div>
         )}
 
-        {!loading && birth?.status === 'born' && (
+        {!loading && !canManageThisBirth && birth?.status === 'born' && (
           <section className="card text-center py-8">
             <div className="text-4xl mb-2">👶</div>
             <h2 className="t-display" style={{ fontSize: '2rem', lineHeight: 1.15 }}>
@@ -293,9 +359,93 @@ export default function PublicBirthPage() {
           </section>
         )}
 
-        {!loading && birth && isAuthenticated && (
+        {/* ---- Parent tooling ---- */}
+
+        {/* The birth happened; the page steps back into keepsake mode — no
+            labor tooling after "born". A contraction still running when the
+            arrival was announced stays visible until it's stopped or
+            cancelled, so it can't get stranded open. */}
+        {!loading && canManageThisBirth
+          && ((birth.status !== 'born' && birth.status !== 'archived') || activeContraction) ? (
+          <section className="card relative flex justify-center py-8">
+            {activeContraction && (
+              <button
+                onClick={handleCancel}
+                className="absolute top-3 right-3 p-2 text-gray-400 hover:text-red-500
+                           dark:text-gray-500 dark:hover:text-red-400 transition-colors"
+                title="Cancel contraction"
+              >
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            )}
+            <ContractionButton
+              onStart={handleStart}
+              onStop={handleStop}
+              startTime={activeContraction?.occurred_at || null}
+            />
+          </section>
+        ) : null}
+
+        {!loading && canManageThisBirth && (
+          birth.status !== 'born' ? (
+            <section className="card flex flex-col items-center gap-3 py-5">
+              {confirmingBorn ? (
+                <>
+                  <p className="text-sm t-ink text-center">
+                    Announce the arrival to everyone watching?
+                  </p>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={handleBorn}
+                      disabled={markingBorn}
+                      className="px-5 py-2.5 rounded-full t-btn-accent font-medium disabled:opacity-50"
+                    >
+                      {markingBorn ? 'Announcing…' : '🎉 Baby Born!'}
+                    </button>
+                    <button
+                      onClick={() => setConfirmingBorn(false)}
+                      disabled={markingBorn}
+                      className="px-4 py-2.5 rounded-full text-sm t-muted hover:opacity-80"
+                    >
+                      Not yet
+                    </button>
+                  </div>
+                </>
+              ) : (
+                <button
+                  onClick={() => setConfirmingBorn(true)}
+                  className="px-6 py-3 rounded-full font-semibold text-base transition-opacity hover:opacity-90"
+                  style={{ backgroundColor: 'var(--t-accent)', color: '#fff' }}
+                >
+                  👶 Baby Born!
+                </button>
+              )}
+            </section>
+          ) : (
+            <section className="card text-center py-5">
+              <p className="t-display" style={{ fontSize: '1.5rem' }}>
+                {birth.child_name || 'Baby'} is here 🤍
+              </p>
+              {birth.birth_completed_at && (
+                <p className="text-sm t-muted mt-1">
+                  Born {new Date(birth.birth_completed_at).toLocaleString([], {
+                    dateStyle: 'medium',
+                    timeStyle: 'short',
+                  })}
+                </p>
+              )}
+            </section>
+          )
+        )}
+
+        {/* ---- Shared page content ---- */}
+
+        {!loading && birth && isAuthenticated && activeTab === 'timeline' && (
           <Predictions
             slug={slug}
+            birthId={canManageThisBirth ? birth.id : undefined}
             status={birth.status}
             isParent={canManageThisBirth}
           />
@@ -305,13 +455,20 @@ export default function PublicBirthPage() {
           <p className="text-center t-muted py-12">
             Loading timeline…
           </p>
-        ) : isAuthenticated ? (
-          <Timeline events={sortedEvents} slug={slug} />
-        ) : (
+        ) : !isAuthenticated ? (
           <TimelinePreview slug={slug} childName={birth?.child_name} />
+        ) : canManageThisBirth && activeTab === 'stats' ? (
+          <StatsTab events={sortedEvents} />
+        ) : canManageThisBirth ? (
+          <>
+            <UpdateForm birthId={birth.id} />
+            <Timeline events={sortedEvents} canManage birthId={birth.id} />
+          </>
+        ) : (
+          <Timeline events={sortedEvents} slug={slug} />
         )}
 
-        {!loading && birth && isAuthenticated && (
+        {!loading && birth && isAuthenticated && activeTab === 'timeline' && (
           <MemberGifts birthId={birth.id} isParent={canManageThisBirth} />
         )}
       </main>
@@ -331,6 +488,27 @@ export default function PublicBirthPage() {
           onDone={() => setCelebration(null)}
         />
       )}
+    </div>
+  );
+}
+
+function TabSwitcher({ activeTab, setActiveTab }) {
+  return (
+    <div className="flex rounded-lg p-1" style={{ backgroundColor: 'var(--t-soft-bg)' }}>
+      {['timeline', 'stats'].map((tab) => (
+        <button
+          key={tab}
+          onClick={() => setActiveTab(tab)}
+          className={`px-4 py-1.5 text-sm font-medium rounded-md transition-colors capitalize ${
+            activeTab === tab ? 'shadow-sm' : ''
+          }`}
+          style={activeTab === tab
+            ? { backgroundColor: 'var(--t-card-bg)', color: 'var(--t-ink)' }
+            : { color: 'var(--t-soft-text)' }}
+        >
+          {tab}
+        </button>
+      ))}
     </div>
   );
 }
@@ -382,29 +560,6 @@ function TimelinePreview({ slug, childName }) {
     </section>
   );
 }
-
-function DarkModeToggle({ darkMode, setDarkMode }) {
-  return (
-    <button
-      onClick={() => setDarkMode(!darkMode)}
-      className="p-2 rounded-lg transition-opacity hover:opacity-80"
-      style={{ backgroundColor: 'var(--t-soft-bg)', color: 'var(--t-soft-text)' }}
-    >
-      {darkMode ? (
-        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-            d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z" />
-        </svg>
-      ) : (
-        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-            d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z" />
-        </svg>
-      )}
-    </button>
-  );
-}
-
 
 // Gifts are member-only (the API 403s non-members); probe once and render
 // the gallery only for family members, so Aunt-Linda-before-joining sees

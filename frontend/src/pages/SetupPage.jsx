@@ -99,10 +99,10 @@ export default function SetupPage() {
         const birth = await api.createBirth({
           babyName, slug, theme: selectedTheme, familyId: familyIdToJoin,
         });
-        // The manage page resolves the birth from `me`; refresh it so the
-        // new birth is present before we land there.
+        // The birth page derives parent tooling from `me`; refresh it so
+        // we land there already wearing the parent hat.
         await refreshMe();
-        navigate(`/b/${birth.slug}/manage`, { replace: true });
+        navigate(`/b/${birth.slug}`, { replace: true });
       } catch (err) {
         setError(err.message || 'Something went wrong');
         setAuthLoading(false);
@@ -139,9 +139,9 @@ export default function SetupPage() {
         babyName, slug, theme: selectedTheme, familyId: familyIdToJoin,
       });
       // completeSignIn fetched /me before the birth existed; refresh so
-      // the manage page can resolve the new birth from `me`.
+      // the birth page recognizes us as its parent on arrival.
       await refreshMe();
-      navigate(`/b/${birth.slug}/manage`, { replace: true });
+      navigate(`/b/${birth.slug}`, { replace: true });
     } catch (err) {
       setError(err.message || 'Something went wrong');
     } finally { setAuthLoading(false); }

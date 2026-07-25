@@ -109,16 +109,15 @@ export default function BirthSettingsPage() {
           </h1>
           <div className="flex items-center gap-2">
             <Link
-              to={`/b/${slug}/manage`}
+              to={`/b/${slug}`}
               className="px-3 py-2 text-sm rounded-lg transition-opacity hover:opacity-80"
               style={{ backgroundColor: 'var(--t-soft-bg)', color: 'var(--t-soft-text)' }}
             >
-              Manage
+              View page
             </Link>
             <HeaderMenu
               items={[
                 { label: 'Account', to: '/account' },
-                { label: 'Public view', to: `/b/${slug}` },
               ]}
             />
           </div>
