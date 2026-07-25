@@ -296,25 +296,31 @@ export default function BirthManagePage() {
           </div>
         )}
 
-        <section className="card relative flex justify-center py-8">
-          {activeContraction && (
-            <button
-              onClick={handleCancel}
-              className="absolute top-3 right-3 p-2 text-gray-400 hover:text-red-500
-                         dark:text-gray-500 dark:hover:text-red-400 transition-colors"
-              title="Cancel contraction"
-            >
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-              </svg>
-            </button>
-          )}
-          <ContractionButton
-            onStart={handleStart}
-            onStop={handleStop}
-            startTime={activeContraction?.occurred_at || null}
-          />
-        </section>
+        {/* The birth happened; the page steps back into keepsake mode — no
+            labor tooling after "born". A contraction still running when the
+            arrival was announced stays visible until it's stopped or
+            cancelled, so it can't get stranded open. */}
+        {(birth.status !== 'born' && birth.status !== 'archived') || activeContraction ? (
+          <section className="card relative flex justify-center py-8">
+            {activeContraction && (
+              <button
+                onClick={handleCancel}
+                className="absolute top-3 right-3 p-2 text-gray-400 hover:text-red-500
+                           dark:text-gray-500 dark:hover:text-red-400 transition-colors"
+                title="Cancel contraction"
+              >
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            )}
+            <ContractionButton
+              onStart={handleStart}
+              onStop={handleStop}
+              startTime={activeContraction?.occurred_at || null}
+            />
+          </section>
+        ) : null}
 
         {birth.status !== 'born' ? (
           <section className="card flex flex-col items-center gap-3 py-5">
