@@ -34,3 +34,9 @@ backup_s3_prefix: "s3://{{ s3_bucket }}/backups/pg"
 
 # Keepsake rendering timezone (family wall-clock time on the artwork)
 gift_render_tz: America/New_York
+
+# "Continue with Google" OAuth web client id — public by design (it ships
+# in the JS bundle); the secret is never used (GIS ID-token flow). The
+# Google console must list https://{{ app_domain }} as an authorized
+# JavaScript origin or the button won't render in prod.
+google_client_id: 11330872235-d356kmn6d6cvmij8qs6r66bs3jej3bkl.apps.googleusercontent.com
