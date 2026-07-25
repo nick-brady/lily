@@ -5,23 +5,18 @@ import { getAttribution } from '../utils/attribution';
 // rewrite-strip. The prefix matters — /b/{slug} is both an SPA route and an
 // API route, so a bare same-origin path could never be proxied safely.
 const API_URL = '/api';
-const TOKEN_KEY = 'lily_auth_token';
 
-export function getToken() {
-  return localStorage.getItem(TOKEN_KEY);
-}
+// Sessions live in an httpOnly cookie set by the backend — never in
+// localStorage (Safari's ITP purges script-writable storage after ~7 days
+// of not visiting, which would silently sign out occasional visitors).
+// Same-origin fetch/EventSource/<img>/<a download> all send the cookie on
+// their own, so requests need no auth headers at all.
 
-export function setToken(token) {
-  if (token) {
-    localStorage.setItem(TOKEN_KEY, token);
-  } else {
-    localStorage.removeItem(TOKEN_KEY);
-  }
-}
-
-function authHeaders() {
-  const token = getToken();
-  return token ? { Authorization: `Bearer ${token}` } : {};
+// One-time cleanup of the retired localStorage token.
+try {
+  localStorage.removeItem('lily_auth_token');
+} catch {
+  // storage unavailable (private mode edge cases) — nothing to clean
 }
 
 async function jsonOrThrow(res) {
@@ -53,14 +48,13 @@ export const api = {
     return jsonOrThrow(res);
   },
 
-  async verifyChallenge({ identifier, code, token, inviteToken }) {
+  async verifyChallenge({ identifier, code, inviteToken }) {
     const res = await fetch(`${API_URL}/auth/verify`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         identifier,
         code,
-        token,
         invite_token: inviteToken,
         // First-touch attribution; the backend records it only when this
         // verify creates a brand-new user.
@@ -70,26 +64,62 @@ export const api = {
     return jsonOrThrow(res);
   },
 
+  // "Continue with Google" — a login method, not a separate identity; the
+  // backend resolves the verified email to the same user row as the OTP path.
+  async googleAuth({ credential, inviteToken }) {
+    const res = await fetch(`${API_URL}/auth/google`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        credential,
+        invite_token: inviteToken,
+        ...getAttribution(),
+      }),
+    });
+    return jsonOrThrow(res);
+  },
+
+  async logout() {
+    const res = await fetch(`${API_URL}/auth/logout`, { method: 'POST' });
+    return jsonOrThrow(res); // 204 → null
+  },
+
+  // Birth-events text opt-in. The backend sends the confirmation text
+  // before recording consent, so a success here means the number is real.
+  async setNotifyPhone(phone) {
+    const res = await fetch(`${API_URL}/me/notify-phone`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ phone }),
+    });
+    return jsonOrThrow(res);
+  },
+
+  async clearNotifyPhone() {
+    const res = await fetch(`${API_URL}/me/notify-phone`, { method: 'DELETE' });
+    return jsonOrThrow(res);
+  },
+
   // Fire-and-forget page-view ping (self-hosted analytics). keepalive lets
   // the request survive an immediate navigation away.
   async track(payload) {
     await fetch(`${API_URL}/track`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', ...authHeaders() },
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
       keepalive: true,
     });
   },
 
   async me() {
-    const res = await fetch(`${API_URL}/me`, { headers: authHeaders() });
+    const res = await fetch(`${API_URL}/me`, {});
     return jsonOrThrow(res);
   },
 
   async updateMe({ displayName }) {
     const res = await fetch(`${API_URL}/me`, {
       method: 'PATCH',
-      headers: { 'Content-Type': 'application/json', ...authHeaders() },
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ display_name: displayName }),
     });
     return jsonOrThrow(res);
@@ -100,13 +130,13 @@ export const api = {
   async deleteAccount({ removeContributions = false } = {}) {
     const res = await fetch(
       `${API_URL}/me?remove_contributions=${removeContributions}`,
-      { method: 'DELETE', headers: authHeaders() }
+      { method: 'DELETE' }
     );
     return jsonOrThrow(res); // 204 → null
   },
 
   async getBirth(birthId) {
-    const res = await fetch(`${API_URL}/birth/${birthId}`, { headers: authHeaders() });
+    const res = await fetch(`${API_URL}/birth/${birthId}`, {});
     return jsonOrThrow(res);
   },
 
@@ -118,7 +148,7 @@ export const api = {
   async listTimeline(birthId, { afterSequenceId } = {}) {
     const url = new URL(`${API_URL}/birth/${birthId}/timeline`, window.location.origin);
     if (afterSequenceId != null) url.searchParams.set('after_sequence_id', afterSequenceId);
-    const res = await fetch(url, { headers: authHeaders() });
+    const res = await fetch(url, {});
     return jsonOrThrow(res);
   },
 
@@ -127,14 +157,14 @@ export const api = {
     if (afterSequenceId != null) url.searchParams.set('after_sequence_id', afterSequenceId);
     // Sending Bearer here is intentional: authed viewers get widened
     // audience visibility on the same public endpoint.
-    const res = await fetch(url, { headers: authHeaders() });
+    const res = await fetch(url, {});
     return jsonOrThrow(res);
   },
 
   async startContraction(birthId, { audienceScope = 'public' } = {}) {
     const res = await fetch(`${API_URL}/birth/${birthId}/contraction/start`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', ...authHeaders() },
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ audience_scope: audienceScope }),
     });
     return jsonOrThrow(res);
@@ -143,7 +173,7 @@ export const api = {
   async stopContraction(birthId, eventId, endTimeIso) {
     const res = await fetch(`${API_URL}/birth/${birthId}/contraction/${eventId}/stop`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', ...authHeaders() },
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ end_time: endTimeIso }),
     });
     return jsonOrThrow(res);
@@ -152,7 +182,7 @@ export const api = {
   async createTextNote(birthId, body, { audienceScope = 'public' } = {}) {
     const res = await fetch(`${API_URL}/birth/${birthId}/event`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', ...authHeaders() },
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         type: 'text_note',
         body,
@@ -165,7 +195,7 @@ export const api = {
   async createMilestone(birthId, { kind, title, body, audienceScope = 'public' }) {
     const res = await fetch(`${API_URL}/birth/${birthId}/event`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', ...authHeaders() },
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         type: 'milestone',
         kind,
@@ -185,16 +215,13 @@ export const api = {
     if (caption) form.append('caption', caption);
     const res = await fetch(`${API_URL}/birth/${birthId}/media`, {
       method: 'POST',
-      headers: authHeaders(),
       body: form,
     });
     return jsonOrThrow(res);
   },
 
   async listGifts(birthId) {
-    const res = await fetch(`${API_URL}/birth/${birthId}/gifts`, {
-      headers: authHeaders(),
-    });
+    const res = await fetch(`${API_URL}/birth/${birthId}/gifts`, {});
     return jsonOrThrow(res);
   },
 
@@ -202,7 +229,6 @@ export const api = {
     const qs = renderingId ? `?rendering_id=${renderingId}` : '';
     const res = await fetch(`${API_URL}/birth/${birthId}/gifts/generate${qs}`, {
       method: 'POST',
-      headers: authHeaders(),
     });
     return jsonOrThrow(res);
   },
@@ -212,7 +238,7 @@ export const api = {
       `${API_URL}/birth/${birthId}/gifts/${renderingId}/checkout`,
       {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', ...authHeaders() },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           recipient_kind: recipientKind,
           gift_message: giftMessage || null,
@@ -227,7 +253,7 @@ export const api = {
       `${API_URL}/birth/${birthId}/gifts/storage/${itemId}/checkout`,
       {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', ...authHeaders() },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ gift_message: giftMessage || null }),
       },
     );
@@ -244,32 +270,28 @@ export const api = {
   },
 
   async getShippingAddress(birthId) {
-    const res = await fetch(`${API_URL}/birth/${birthId}/shipping-address`, {
-      headers: authHeaders(),
-    });
+    const res = await fetch(`${API_URL}/birth/${birthId}/shipping-address`, {});
     return jsonOrThrow(res);
   },
 
   async putShippingAddress(birthId, address) {
     const res = await fetch(`${API_URL}/birth/${birthId}/shipping-address`, {
       method: 'PUT',
-      headers: { 'Content-Type': 'application/json', ...authHeaders() },
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(address),
     });
     return jsonOrThrow(res);
   },
 
   async listGiftOrders(birthId) {
-    const res = await fetch(`${API_URL}/birth/${birthId}/gifts/orders`, {
-      headers: authHeaders(),
-    });
+    const res = await fetch(`${API_URL}/birth/${birthId}/gifts/orders`, {});
     return jsonOrThrow(res);
   },
 
   async retryGiftFulfillment(birthId, orderId) {
     const res = await fetch(
       `${API_URL}/birth/${birthId}/gifts/orders/${orderId}/retry-fulfillment`,
-      { method: 'POST', headers: authHeaders() },
+      { method: 'POST' },
     );
     return jsonOrThrow(res);
   },
@@ -277,7 +299,7 @@ export const api = {
   async listRenderingProducts(birthId, renderingId) {
     const res = await fetch(
       `${API_URL}/birth/${birthId}/gifts/${renderingId}/products`,
-      { headers: authHeaders() },
+      {},
     );
     return jsonOrThrow(res);
   },
@@ -285,22 +307,20 @@ export const api = {
   async requestRenderingProductMockup(birthId, renderingId, productKey) {
     const res = await fetch(
       `${API_URL}/birth/${birthId}/gifts/${renderingId}/products/${productKey}/mockup`,
-      { method: 'POST', headers: authHeaders() },
+      { method: 'POST' },
     );
     return jsonOrThrow(res);
   },
 
   async listInvitations(birthId) {
-    const res = await fetch(`${API_URL}/birth/${birthId}/invitations`, {
-      headers: authHeaders(),
-    });
+    const res = await fetch(`${API_URL}/birth/${birthId}/invitations`, {});
     return jsonOrThrow(res);
   },
 
   async createInvitation(birthId, payload = {}) {
     const res = await fetch(`${API_URL}/birth/${birthId}/invitations`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', ...authHeaders() },
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         display_name_hint: payload.displayNameHint,
         email_hint: payload.emailHint,
@@ -313,7 +333,7 @@ export const api = {
   async listInvitationRedemptions(birthId, invitationId) {
     const res = await fetch(
       `${API_URL}/birth/${birthId}/invitations/${invitationId}/redemptions`,
-      { headers: authHeaders() },
+      {},
     );
     return jsonOrThrow(res);
   },
@@ -321,7 +341,7 @@ export const api = {
   async revokeInvitation(birthId, invitationId) {
     const res = await fetch(
       `${API_URL}/birth/${birthId}/invitations/${invitationId}`,
-      { method: 'DELETE', headers: authHeaders() },
+      { method: 'DELETE' },
     );
     return jsonOrThrow(res);
   },
@@ -329,7 +349,7 @@ export const api = {
   async removeViewer(birthId, userId) {
     const res = await fetch(
       `${API_URL}/birth/${birthId}/viewers/${userId}`,
-      { method: 'DELETE', headers: authHeaders() },
+      { method: 'DELETE' },
     );
     return jsonOrThrow(res);
   },
@@ -337,7 +357,7 @@ export const api = {
   async markBorn(birthId, payload = {}) {
     const res = await fetch(`${API_URL}/birth/${birthId}/born`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', ...authHeaders() },
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         occurred_at: payload.occurredAt,
         body: payload.body,
@@ -347,16 +367,14 @@ export const api = {
   },
 
   async listCoParents(familyId) {
-    const res = await fetch(`${API_URL}/family/${familyId}/co-parents`, {
-      headers: authHeaders(),
-    });
+    const res = await fetch(`${API_URL}/family/${familyId}/co-parents`, {});
     return jsonOrThrow(res);
   },
 
   async inviteCoParent(familyId, payload = {}) {
     const res = await fetch(`${API_URL}/family/${familyId}/co-parents/invitations`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', ...authHeaders() },
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         display_name_hint: payload.displayNameHint,
         email_hint: payload.emailHint,
@@ -369,7 +387,7 @@ export const api = {
   async revokeCoParentInvite(familyId, invitationId) {
     const res = await fetch(
       `${API_URL}/family/${familyId}/co-parents/invitations/${invitationId}`,
-      { method: 'DELETE', headers: authHeaders() },
+      { method: 'DELETE' },
     );
     return jsonOrThrow(res);
   },
@@ -382,7 +400,6 @@ export const api = {
   async redeemInvitationAuthed(token) {
     const res = await fetch(`${API_URL}/invite/${token}/redeem`, {
       method: 'POST',
-      headers: authHeaders(),
     });
     return jsonOrThrow(res);
   },
@@ -390,7 +407,7 @@ export const api = {
   async editEvent(birthId, eventId, patch) {
     const res = await fetch(`${API_URL}/birth/${birthId}/event/${eventId}`, {
       method: 'PATCH',
-      headers: { 'Content-Type': 'application/json', ...authHeaders() },
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(patch),
     });
     return jsonOrThrow(res);
@@ -399,7 +416,6 @@ export const api = {
   async deleteEvent(birthId, eventId) {
     const res = await fetch(`${API_URL}/birth/${birthId}/event/${eventId}`, {
       method: 'DELETE',
-      headers: authHeaders(),
     });
     return jsonOrThrow(res);
   },
@@ -407,7 +423,6 @@ export const api = {
   async toggleIgnoreInterval(birthId, eventId) {
     const res = await fetch(`${API_URL}/birth/${birthId}/event/${eventId}/toggle-ignore`, {
       method: 'POST',
-      headers: authHeaders(),
     });
     return jsonOrThrow(res);
   },
@@ -423,7 +438,7 @@ export const api = {
       : `${API_URL}/b/${slug}/event/${eventId}/reactions`;
     const res = await fetch(url, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', ...authHeaders() },
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ kind }),
     });
     return jsonOrThrow(res);
@@ -435,7 +450,6 @@ export const api = {
       : `${API_URL}/b/${slug}/event/${eventId}/reactions/${kind}`;
     const res = await fetch(url, {
       method: 'DELETE',
-      headers: authHeaders(),
     });
     return jsonOrThrow(res);
   },
@@ -446,7 +460,7 @@ export const api = {
     const url = birthId
       ? `${API_URL}/birth/${birthId}/event/${eventId}/comments`
       : `${API_URL}/b/${slug}/event/${eventId}/comments`;
-    const res = await fetch(url, { headers: authHeaders() });
+    const res = await fetch(url, {});
     return jsonOrThrow(res);
   },
 
@@ -456,7 +470,7 @@ export const api = {
       : `${API_URL}/b/${slug}/event/${eventId}/comments`;
     const res = await fetch(url, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', ...authHeaders() },
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ body }),
     });
     return jsonOrThrow(res);
@@ -468,7 +482,7 @@ export const api = {
       : `${API_URL}/b/${slug}/event/${eventId}/comments/${commentId}`;
     const res = await fetch(url, {
       method: 'PATCH',
-      headers: { 'Content-Type': 'application/json', ...authHeaders() },
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ body }),
     });
     return jsonOrThrow(res);
@@ -480,7 +494,6 @@ export const api = {
       : `${API_URL}/b/${slug}/event/${eventId}/comments/${commentId}`;
     const res = await fetch(url, {
       method: 'DELETE',
-      headers: authHeaders(),
     });
     return jsonOrThrow(res);
   },
@@ -493,7 +506,7 @@ export const api = {
   async createBirth({ babyName, slug, theme = 'lily', familyId = null }) {
     const res = await fetch(`${API_URL}/births`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', ...authHeaders() },
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ baby_name: babyName, slug, theme, family_id: familyId }),
     });
     return jsonOrThrow(res);
@@ -502,7 +515,7 @@ export const api = {
   async updateBirth(birthId, patch) {
     const res = await fetch(`${API_URL}/birth/${birthId}`, {
       method: 'PATCH',
-      headers: { 'Content-Type': 'application/json', ...authHeaders() },
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(patch),
     });
     return jsonOrThrow(res);
@@ -512,7 +525,7 @@ export const api = {
     const url = birthId
       ? `${API_URL}/birth/${birthId}/guesses`
       : `${API_URL}/b/${slug}/guesses`;
-    const res = await fetch(url, { headers: authHeaders() });
+    const res = await fetch(url, {});
     return jsonOrThrow(res);
   },
 
@@ -522,7 +535,7 @@ export const api = {
       : `${API_URL}/b/${slug}/guess`;
     const res = await fetch(url, {
       method: 'PUT',
-      headers: { 'Content-Type': 'application/json', ...authHeaders() },
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ weight_lbs, length_in }),
     });
     return jsonOrThrow(res);
@@ -532,11 +545,10 @@ export const api = {
     return `${API_URL}/media/${mediaId}`;
   },
 
-  // Browser-navigated download, so the JWT rides the query string like the
-  // SSE streams do (<a download> can't set an Authorization header). The
-  // export is always free — it must never gain a paywall check.
+  // Browser-navigated download; the session cookie rides along, so no
+  // token ever appears in the URL (or the access logs). The export is
+  // always free — it must never gain a paywall check.
   birthExportUrl(birthId) {
-    const token = getToken();
-    return `${API_URL}/birth/${birthId}/export?token=${encodeURIComponent(token || '')}`;
+    return `${API_URL}/birth/${birthId}/export`;
   },
 };

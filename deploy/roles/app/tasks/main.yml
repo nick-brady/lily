@@ -82,6 +82,10 @@
     module: command
     cmd: npm run build
     chdir: "{{ playbook_dir }}/../frontend"
+  environment:
+    # Vite bakes VITE_* vars into the bundle at build time; the local
+    # repo-root .env is docker-compose-only, so pass it explicitly.
+    VITE_GOOGLE_CLIENT_ID: "{{ google_client_id }}"
   become: no
   run_once: true
 

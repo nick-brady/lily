@@ -2,28 +2,56 @@ import { useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { api } from '../api/client';
-import IdentifierInput from '../components/IdentifierInput';
-import { formatIdentifierDisplay, normalizeIdentifier } from '../utils/identifier';
+import GoogleSignInButton from '../components/GoogleSignInButton';
+import PhoneOptIn from '../components/PhoneOptIn';
 
+// Identity is email — one auth path (email code or Continue-with-Google,
+// both resolving to the same email-keyed user). Phones are collected on the
+// next screen as an explicit birth-alerts opt-in, never as a login.
 export default function AuthPage() {
-  const { acceptToken } = useAuth();
+  const { completeSignIn } = useAuth();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const nextPath = searchParams.get('next');
-  const [step, setStep] = useState('identifier'); // 'identifier' | 'code'
-  const [identifier, setIdentifier] = useState('');
+  const [step, setStep] = useState('email'); // 'email' | 'code' | 'notify'
+  const [email, setEmail] = useState('');
   const [code, setCode] = useState('');
-  const [identifierKind, setIdentifierKind] = useState(null);
+  const [profile, setProfile] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
-  const submitIdentifier = async (e) => {
+  // After sign-in we land in this order:
+  // 1. `?next=` if the user was redirected here from a guarded action
+  //    (e.g. opening a birth page while anonymous).
+  // 2. The account page if they have any births.
+  // 3. Setup for brand-new users.
+  const finish = (loadedProfile) => {
+    if (nextPath) {
+      navigate(nextPath, { replace: true });
+      return;
+    }
+    const hasBirth = loadedProfile?.families?.some((f) => f.births?.length > 0);
+    navigate(hasBirth ? '/account' : '/setup', { replace: true });
+  };
+
+  // Sign-in succeeded (code or Google) → offer the birth-alerts opt-in
+  // once, at peak intent, unless they've already opted in before.
+  const handleSignedIn = async () => {
+    const loaded = await completeSignIn();
+    if (loaded?.user?.notify_phone) {
+      finish(loaded);
+      return;
+    }
+    setProfile(loaded);
+    setStep('notify');
+  };
+
+  const submitEmail = async (e) => {
     e.preventDefault();
     setError('');
     setLoading(true);
     try {
-      const result = await api.requestChallenge(normalizeIdentifier(identifier).value);
-      setIdentifierKind(result.identifier_kind);
+      await api.requestChallenge(email.trim().toLowerCase());
       setStep('code');
     } catch (err) {
       setError(err.message || 'Could not send code');
@@ -37,25 +65,10 @@ export default function AuthPage() {
     setError('');
     setLoading(true);
     try {
-      const result = await api.verifyChallenge({
-        identifier: normalizeIdentifier(identifier).value,
-        code,
-      });
-      const profile = await acceptToken(result.access_token);
-      // After sign-in we land in this order:
-      // 1. `?next=` if the user was redirected here from a guarded action
-      //    (e.g. tapping a reaction while anonymous on the keepsake page).
-      // 2. The account page if they have any births.
-      // 3. Setup for brand-new users.
-      if (nextPath) {
-        navigate(nextPath, { replace: true });
-        return;
-      }
-      const hasBirth = profile?.families?.some((f) => f.births?.length > 0);
-      navigate(hasBirth ? '/account' : '/setup', { replace: true });
+      await api.verifyChallenge({ identifier: email.trim().toLowerCase(), code });
+      await handleSignedIn();
     } catch (err) {
       setError(err.message || 'Invalid code');
-    } finally {
       setLoading(false);
     }
   };
@@ -76,51 +89,56 @@ export default function AuthPage() {
           </div>
         )}
 
-        {step === 'identifier' && (
-          <form onSubmit={submitIdentifier} className="space-y-4">
-            <label className="block">
-              <span className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                Email or phone
-              </span>
-              <IdentifierInput
-                value={identifier}
-                onChange={setIdentifier}
-                autoComplete="email"
-                placeholder="you@example.com or (555) 555-5555"
-                className="w-full px-4 py-3 rounded-lg border border-gray-300 dark:border-gray-600
-                           bg-white dark:bg-gray-700 text-gray-900 dark:text-white
-                           focus:ring-2 focus:ring-primary-500 focus:border-transparent
-                           focus:outline-none transition-colors"
-                required
-              />
-            </label>
-            <button
-              type="submit"
-              disabled={loading || !identifier.trim()}
-              className="w-full py-3 rounded-lg bg-primary-600 hover:bg-primary-700
-                         text-white font-medium transition-colors
-                         disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              {loading ? 'Sending…' : 'Send code'}
-            </button>
-            <p className="text-xs text-gray-500 dark:text-gray-400 text-center">
-              We'll send you a 6-digit code and a magic link. By continuing, you agree to
-              our <Link to="/terms" className="underline hover:text-primary-600 dark:hover:text-primary-400">Terms</Link> and{' '}
-              <Link to="/privacy" className="underline hover:text-primary-600 dark:hover:text-primary-400">Privacy Policy</Link>.
-              Msg &amp; data rates may apply.
-            </p>
-          </form>
+        {step === 'email' && (
+          <div className="space-y-4">
+            <GoogleSignInButton
+              onSuccess={handleSignedIn}
+              onError={(err) => setError(err.message || 'Google sign-in failed')}
+            />
+            <form onSubmit={submitEmail} className="space-y-4">
+              <label className="block">
+                <span className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                  Email
+                </span>
+                <input
+                  type="email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  autoComplete="email"
+                  autoCapitalize="none"
+                  autoCorrect="off"
+                  placeholder="you@example.com"
+                  className="w-full px-4 py-3 rounded-lg border border-gray-300 dark:border-gray-600
+                             bg-white dark:bg-gray-700 text-gray-900 dark:text-white
+                             focus:ring-2 focus:ring-primary-500 focus:border-transparent
+                             focus:outline-none transition-colors"
+                  required
+                />
+              </label>
+              <button
+                type="submit"
+                disabled={loading || !email.trim()}
+                className="w-full py-3 rounded-lg bg-primary-600 hover:bg-primary-700
+                           text-white font-medium transition-colors
+                           disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {loading ? 'Sending…' : 'Send code'}
+              </button>
+              <p className="text-xs text-gray-500 dark:text-gray-400 text-center">
+                We'll email you a 6-digit code — no password needed. By continuing, you agree to
+                our <Link to="/terms" className="underline hover:text-primary-600 dark:hover:text-primary-400">Terms</Link> and{' '}
+                <Link to="/privacy" className="underline hover:text-primary-600 dark:hover:text-primary-400">Privacy Policy</Link>.
+              </p>
+            </form>
+          </div>
         )}
 
         {step === 'code' && (
           <form onSubmit={submitCode} className="space-y-4">
             <p className="text-sm text-gray-600 dark:text-gray-300">
               We sent a code to{' '}
-              <span className="font-medium text-gray-900 dark:text-white">
-                {formatIdentifierDisplay(identifier)}
-              </span>
-              {identifierKind === 'email' && '. Check your email — or paste the 6-digit code below.'}
-              {identifierKind === 'phone' && '. Check your texts — enter the 6-digit code below.'}
+              <span className="font-medium text-gray-900 dark:text-white">{email.trim()}</span>.
+              Check your email — enter the 6-digit code below.
             </p>
 
             <label className="block">
@@ -155,16 +173,18 @@ export default function AuthPage() {
             <button
               type="button"
               onClick={() => {
-                setStep('identifier');
+                setStep('email');
                 setCode('');
                 setError('');
               }}
               className="w-full text-sm text-gray-500 dark:text-gray-400 hover:text-primary-600 dark:hover:text-primary-400"
             >
-              Use a different address
+              Use a different email
             </button>
           </form>
         )}
+
+        {step === 'notify' && <PhoneOptIn onDone={() => finish(profile)} />}
       </div>
     </div>
   );

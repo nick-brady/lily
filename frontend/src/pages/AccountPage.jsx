@@ -156,6 +156,122 @@ function NameField({ user, onSaved }) {
   );
 }
 
+function NotifyPhoneField({ user, onSaved }) {
+  const [editing, setEditing] = useState(false);
+  const [value, setValue] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+
+  const save = async () => {
+    if (!value.trim()) return;
+    setBusy(true);
+    setError('');
+    try {
+      await api.setNotifyPhone(value.trim());
+      await onSaved?.();
+      setEditing(false);
+      setValue('');
+    } catch (err) {
+      setError(err.message || "We couldn't text that number");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const remove = async () => {
+    setBusy(true);
+    setError('');
+    try {
+      await api.clearNotifyPhone();
+      await onSaved?.();
+    } catch (err) {
+      setError(err.message || 'Could not update');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  if (!editing) {
+    return (
+      <div className="mt-1">
+        <p className="text-xs text-gray-500 dark:text-gray-400">
+          {user?.notify_phone ? (
+            <>
+              We'll text{' '}
+              <span className="font-medium text-gray-700 dark:text-gray-200">
+                {user.notify_phone}
+              </span>{' '}
+              the moment labor begins — birth updates only, ever.
+              <button
+                type="button"
+                onClick={() => setEditing(true)}
+                className="ml-2 text-primary-600 dark:text-primary-400 hover:underline"
+              >
+                Change
+              </button>
+              <button
+                type="button"
+                onClick={remove}
+                disabled={busy}
+                className="ml-2 text-gray-400 dark:text-gray-500 hover:underline"
+              >
+                Turn off
+              </button>
+            </>
+          ) : (
+            <>
+              Want a text the moment labor begins? Birth updates only, ever.
+              <button
+                type="button"
+                onClick={() => setEditing(true)}
+                className="ml-2 text-primary-600 dark:text-primary-400 hover:underline"
+              >
+                Add your number
+              </button>
+            </>
+          )}
+        </p>
+        {error && <p className="mt-1 text-xs text-red-500">{error}</p>}
+      </div>
+    );
+  }
+
+  return (
+    <div className="mt-2 flex flex-wrap items-center gap-2">
+      <input
+        type="tel"
+        value={value}
+        onChange={(e) => setValue(e.target.value)}
+        autoFocus
+        inputMode="tel"
+        autoComplete="tel"
+        placeholder="(555) 555-5555"
+        onKeyDown={(e) => e.key === 'Enter' && save()}
+        className="px-3 py-1.5 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-sm text-gray-900 dark:text-white"
+      />
+      <button
+        type="button"
+        onClick={save}
+        disabled={busy || !value.trim()}
+        className="px-3 py-1.5 text-sm rounded-lg bg-primary-600 hover:bg-primary-700 text-white font-medium disabled:opacity-50"
+      >
+        {busy ? 'Sending…' : 'Save'}
+      </button>
+      <button
+        type="button"
+        onClick={() => { setEditing(false); setError(''); }}
+        className="px-2 py-1.5 text-sm text-gray-500 dark:text-gray-400 hover:opacity-80"
+      >
+        Cancel
+      </button>
+      {error && <span className="text-xs text-red-500">{error}</span>}
+      <p className="w-full text-xs text-gray-400 dark:text-gray-500">
+        We'll send one confirmation text. Msg &amp; data rates may apply. Reply STOP anytime.
+      </p>
+    </div>
+  );
+}
+
 export default function AccountPage() {
   const { isAuthenticated, loading, me, user, logout, refreshMe } = useAuth();
   const navigate = useNavigate();
@@ -236,6 +352,14 @@ export default function AccountPage() {
           >
             + Add another birth
           </Link>
+        </div>
+
+        {/* Birth alerts (the birth-events-only text opt-in) */}
+        <div className="mt-10 pt-6 border-t border-gray-200 dark:border-gray-800">
+          <h2 className="text-sm font-semibold text-gray-700 dark:text-gray-200">
+            Text alerts
+          </h2>
+          <NotifyPhoneField user={user} onSaved={refreshMe} />
         </div>
 
         {/* Identity footer */}

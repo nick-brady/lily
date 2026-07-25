@@ -1,41 +1,16 @@
 import { createContext, useCallback, useContext, useEffect, useState } from 'react';
-import { api, getToken, setToken } from '../api/client';
+import { api } from '../api/client';
 
 const AuthContext = createContext(null);
 
-function decodeJwtExp(token) {
-  try {
-    const payload = JSON.parse(atob(token.split('.')[1]));
-    return typeof payload.exp === 'number' ? payload.exp * 1000 : null;
-  } catch {
-    return null;
-  }
-}
-
+// The session is an httpOnly cookie — invisible to JS by design, so "am I
+// signed in?" is answered by asking the backend, not by inspecting storage.
 export function AuthProvider({ children }) {
-  const [token, setTokenState] = useState(() => getToken());
   const [user, setUser] = useState(null);
   const [me, setMe] = useState(null);
   const [loading, setLoading] = useState(true);
 
-  const logout = useCallback(() => {
-    setToken(null);
-    setTokenState(null);
-    setUser(null);
-    setMe(null);
-  }, []);
-
   useEffect(() => {
-    if (!token) {
-      setLoading(false);
-      return;
-    }
-    const exp = decodeJwtExp(token);
-    if (!exp || exp < Date.now()) {
-      logout();
-      setLoading(false);
-      return;
-    }
     let cancelled = false;
     (async () => {
       try {
@@ -43,8 +18,9 @@ export function AuthProvider({ children }) {
         if (cancelled) return;
         setUser(profile.user);
         setMe(profile);
-      } catch (err) {
-        if (err.status === 401) logout();
+      } catch {
+        // 401 → anonymous visitor; anything else → treat the same and let
+        // the next explicit sign-in sort it out.
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -52,11 +28,11 @@ export function AuthProvider({ children }) {
     return () => {
       cancelled = true;
     };
-  }, [token, logout]);
+  }, []);
 
-  const acceptToken = useCallback(async (accessToken) => {
-    setToken(accessToken);
-    setTokenState(accessToken);
+  // Called after /auth/verify or /auth/google succeeds — the server has
+  // already set the session cookie; we just load the profile it unlocked.
+  const completeSignIn = useCallback(async () => {
     const profile = await api.me();
     setUser(profile.user);
     setMe(profile);
@@ -70,15 +46,24 @@ export function AuthProvider({ children }) {
     return profile;
   }, []);
 
+  const logout = useCallback(async () => {
+    try {
+      await api.logout();
+    } catch {
+      // Clearing local state matters more than the server ack.
+    }
+    setUser(null);
+    setMe(null);
+  }, []);
+
   return (
     <AuthContext.Provider
       value={{
-        token,
         user,
         me,
         loading,
         isAuthenticated: Boolean(user),
-        acceptToken,
+        completeSignIn,
         refreshMe,
         logout,
       }}

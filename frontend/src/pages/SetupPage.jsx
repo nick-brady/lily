@@ -4,8 +4,6 @@ import { useAuth } from '../contexts/AuthContext';
 import { api } from '../api/client';
 import { THEMES, getTheme, themeVars } from '../utils/themes';
 import ThemeCard from '../components/ThemeCard';
-import IdentifierInput from '../components/IdentifierInput';
-import { formatIdentifierDisplay, normalizeIdentifier } from '../utils/identifier';
 
 function toSlug(name) {
   return name
@@ -25,7 +23,7 @@ function toDisplayName(raw) {
 }
 
 export default function SetupPage() {
-  const { isAuthenticated, loading, me, acceptToken, refreshMe } = useAuth();
+  const { isAuthenticated, loading, me, completeSignIn, refreshMe } = useAuth();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const isAddingAnother = searchParams.get('new') === '1';
@@ -54,7 +52,6 @@ export default function SetupPage() {
 
   const [authStep, setAuthStep] = useState('identifier');
   const [identifier, setIdentifier] = useState('');
-  const [identifierKind, setIdentifierKind] = useState(null);
   const [code, setCode] = useState('');
   const [authLoading, setAuthLoading] = useState(false);
   const [error, setError] = useState('');
@@ -121,8 +118,7 @@ export default function SetupPage() {
     setError('');
     setAuthLoading(true);
     try {
-      const result = await api.requestChallenge(normalizeIdentifier(identifier).value);
-      setIdentifierKind(result.identifier_kind);
+      await api.requestChallenge(identifier.trim().toLowerCase());
       setAuthStep('code');
     } catch (err) {
       setError(err.message || 'Could not send code');
@@ -134,16 +130,16 @@ export default function SetupPage() {
     setError('');
     setAuthLoading(true);
     try {
-      const authResult = await api.verifyChallenge({
-        identifier: normalizeIdentifier(identifier).value,
+      await api.verifyChallenge({
+        identifier: identifier.trim().toLowerCase(),
         code,
       });
-      await acceptToken(authResult.access_token);
+      await completeSignIn();
       const birth = await api.createBirth({
         babyName, slug, theme: selectedTheme, familyId: familyIdToJoin,
       });
-      // acceptToken fetched /me before the birth existed; refresh so the
-      // manage page can resolve the new birth from `me`.
+      // completeSignIn fetched /me before the birth existed; refresh so
+      // the manage page can resolve the new birth from `me`.
       await refreshMe();
       navigate(`/b/${birth.slug}/manage`, { replace: true });
     } catch (err) {
@@ -343,14 +339,17 @@ export default function SetupPage() {
               <form onSubmit={submitIdentifier} className="space-y-4">
                 <label className="block">
                   <span className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                    Email or phone
+                    Email
                   </span>
-                  <IdentifierInput
+                  <input
+                    type="email"
                     value={identifier}
-                    onChange={setIdentifier}
+                    onChange={(e) => setIdentifier(e.target.value)}
                     autoFocus
                     autoComplete="email"
-                    placeholder="you@example.com or (555) 555-5555"
+                    autoCapitalize="none"
+                    autoCorrect="off"
+                    placeholder="you@example.com"
                     className="w-full px-4 py-3 rounded-xl border border-gray-300 dark:border-gray-600
                                bg-white dark:bg-gray-800 text-gray-900 dark:text-white
                                focus:ring-2 focus:ring-primary-500 focus:border-transparent
@@ -368,10 +367,9 @@ export default function SetupPage() {
                   {authLoading ? 'Sending…' : 'Send code'}
                 </button>
                 <p className="text-xs text-gray-500 dark:text-gray-400 text-center">
-                  We'll send you a 6-digit code and a magic link. By continuing, you agree
+                  We'll email you a 6-digit code — no password needed. By continuing, you agree
                   to our <Link to="/terms" className="underline hover:text-primary-600 dark:hover:text-primary-400">Terms</Link> and{' '}
                   <Link to="/privacy" className="underline hover:text-primary-600 dark:hover:text-primary-400">Privacy Policy</Link>.
-                  Msg &amp; data rates may apply.
                 </p>
                 <button
                   type="button"
@@ -388,10 +386,9 @@ export default function SetupPage() {
                 <p className="text-sm text-gray-600 dark:text-gray-300">
                   We sent a code to{' '}
                   <span className="font-medium text-gray-900 dark:text-white">
-                    {formatIdentifierDisplay(identifier)}
+                    {identifier.trim()}
                   </span>
-                  {identifierKind === 'email' && '. Check your email.'}
-                  {identifierKind === 'phone' && '. Check your texts.'}
+                  . Check your email.
                 </p>
                 <label className="block">
                   <span className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">

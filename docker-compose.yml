@@ -79,6 +79,8 @@ services:
       TWILIO_ACCOUNT_SID: ${TWILIO_ACCOUNT_SID:-}
       TWILIO_AUTH_TOKEN: ${TWILIO_AUTH_TOKEN:-}
       TWILIO_FROM: ${TWILIO_FROM:-}
+      # "Continue with Google" — empty keeps the button hidden.
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
       STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY:-}
       STRIPE_WEBHOOK_SECRET: ${STRIPE_WEBHOOK_SECRET:-}
       PRINTFUL_CONFIRM_ORDERS: ${PRINTFUL_CONFIRM_ORDERS:-}
@@ -104,6 +106,7 @@ services:
     environment:
       # where the vite dev proxy forwards /api/* (see vite.config.js)
       API_PROXY_TARGET: http://backend:8000
+      VITE_GOOGLE_CLIENT_ID: ${VITE_GOOGLE_CLIENT_ID:-}
     ports:
       - "${FRONTEND_PORT:-3000}:3000"
     volumes:

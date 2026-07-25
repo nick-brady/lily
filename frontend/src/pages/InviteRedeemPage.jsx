@@ -2,37 +2,41 @@ import { useEffect, useRef, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { api } from '../api/client';
 import { useAuth } from '../contexts/AuthContext';
-import IdentifierInput from '../components/IdentifierInput';
-import {
-  formatIdentifierDisplay,
-  formatIdentifierInput,
-  normalizeIdentifier,
-} from '../utils/identifier';
+import GoogleSignInButton from '../components/GoogleSignInButton';
+import PhoneOptIn from '../components/PhoneOptIn';
 
+// Janet's eleven-calm-minutes flow: tap the invite link, type an email and
+// a 6-digit code (or one-tap Google), confirm a name, then the one question
+// that matters — "want a text the moment labor begins?" This is the only
+// auth event she ever sees; her session slides forever after.
 export default function InviteRedeemPage() {
   const { token } = useParams();
   const navigate = useNavigate();
-  const { isAuthenticated, acceptToken, refreshMe } = useAuth();
+  const { isAuthenticated, completeSignIn, refreshMe } = useAuth();
 
   const [context, setContext] = useState(null);
   const [contextError, setContextError] = useState('');
-  // 'identifier' | 'code' | 'redeeming' | 'name'
-  const [step, setStep] = useState('identifier');
-  const [identifier, setIdentifier] = useState('');
+  // 'email' | 'code' | 'redeeming' | 'name' | 'notify'
+  const [step, setStep] = useState('email');
+  const [email, setEmail] = useState('');
   const [code, setCode] = useState('');
   const [displayName, setDisplayName] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const autoRedeemStarted = useRef(false);
 
-  // After auth, send the user on — but pause to collect a name first if
-  // they don't have one yet, so their comments are attributed.
-  const finishOrAskName = (profile) => {
+  const goToPage = () => navigate(`/b/${context.birth_slug}`, { replace: true });
+
+  // After auth: collect a display name if missing (so comments are
+  // attributed), then offer the birth-alerts opt-in once, then the page.
+  const nextStepFor = (profile) => {
     if (profile?.user && !profile.user.display_name) {
       setDisplayName(context?.display_name_hint || '');
       setStep('name');
+    } else if (profile?.user && !profile.user.notify_phone) {
+      setStep('notify');
     } else {
-      navigate(`/b/${context.birth_slug}`, { replace: true });
+      goToPage();
     }
   };
 
@@ -42,11 +46,7 @@ export default function InviteRedeemPage() {
       .then((ctx) => {
         if (cancelled) return;
         setContext(ctx);
-        // Stored hints are already normalized (+1…); format for display.
-        if (ctx.email_hint && !identifier) setIdentifier(ctx.email_hint);
-        else if (ctx.phone_hint && !identifier) {
-          setIdentifier(formatIdentifierInput(ctx.phone_hint).value);
-        }
+        if (ctx.email_hint) setEmail((prev) => prev || ctx.email_hint);
       })
       .catch((err) => {
         if (!cancelled) setContextError(err.message || 'This invitation is invalid or expired.');
@@ -67,21 +67,27 @@ export default function InviteRedeemPage() {
       try {
         await api.redeemInvitationAuthed(token);
         const profile = await refreshMe();
-        finishOrAskName(profile);
+        nextStepFor(profile);
       } catch (err) {
         setError(err.message || 'Could not redeem invitation.');
-        setStep('identifier');
+        setStep('email');
       }
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isAuthenticated, context, token, refreshMe]);
 
-  const submitIdentifier = async (e) => {
+  const handleSignedIn = async () => {
+    autoRedeemStarted.current = true; // the invite rode along with the auth
+    const profile = await completeSignIn();
+    nextStepFor(profile);
+  };
+
+  const submitEmail = async (e) => {
     e.preventDefault();
     setError('');
     setLoading(true);
     try {
-      await api.requestChallenge(normalizeIdentifier(identifier).value);
+      await api.requestChallenge(email.trim().toLowerCase());
       setStep('code');
     } catch (err) {
       setError(err.message || 'Could not send code');
@@ -95,16 +101,14 @@ export default function InviteRedeemPage() {
     setError('');
     setLoading(true);
     try {
-      const result = await api.verifyChallenge({
-        identifier: normalizeIdentifier(identifier).value,
+      await api.verifyChallenge({
+        identifier: email.trim().toLowerCase(),
         code,
         inviteToken: token,
       });
-      const profile = await acceptToken(result.access_token);
-      finishOrAskName(profile);
+      await handleSignedIn();
     } catch (err) {
       setError(err.message || 'Invalid code');
-    } finally {
       setLoading(false);
     }
   };
@@ -115,11 +119,15 @@ export default function InviteRedeemPage() {
     setLoading(true);
     try {
       await api.updateMe({ displayName: displayName.trim() });
-      await refreshMe();
-      navigate(`/b/${context.birth_slug}`, { replace: true });
+      const profile = await refreshMe();
+      setLoading(false);
+      if (profile?.user && !profile.user.notify_phone) {
+        setStep('notify');
+      } else {
+        goToPage();
+      }
     } catch (err) {
       setError(err.message || 'Could not save your name');
-    } finally {
       setLoading(false);
     }
   };
@@ -175,40 +183,50 @@ export default function InviteRedeemPage() {
           </p>
         )}
 
-        {step === 'identifier' && (
-          <form onSubmit={submitIdentifier} className="space-y-4">
-            <label className="block">
-              <span className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                Verify your email or phone
-              </span>
-              <IdentifierInput
-                value={identifier}
-                onChange={setIdentifier}
-                autoComplete="email"
-                placeholder="you@example.com or (555) 555-5555"
-                className="w-full px-4 py-3 rounded-lg border border-gray-300 dark:border-gray-600
-                           bg-white dark:bg-gray-700 text-gray-900 dark:text-white
-                           focus:ring-2 focus:ring-primary-500 focus:border-transparent
-                           focus:outline-none transition-colors"
-                required
-              />
-            </label>
-            <button
-              type="submit"
-              disabled={loading || !identifier.trim()}
-              className="w-full py-3 rounded-lg bg-primary-600 hover:bg-primary-700
-                         text-white font-medium transition-colors
-                         disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              {loading ? 'Sending…' : 'Send code'}
-            </button>
-            <p className="text-xs text-gray-500 dark:text-gray-400 text-center">
-              We'll text or email you a 6-digit code to confirm you're you. By continuing,
-              you agree to our <Link to="/terms" className="underline hover:text-primary-600 dark:hover:text-primary-400">Terms</Link> and{' '}
-              <Link to="/privacy" className="underline hover:text-primary-600 dark:hover:text-primary-400">Privacy Policy</Link>.
-              Msg &amp; data rates may apply.
-            </p>
-          </form>
+        {step === 'email' && (
+          <div className="space-y-4">
+            <GoogleSignInButton
+              inviteToken={token}
+              onSuccess={handleSignedIn}
+              onError={(err) => setError(err.message || 'Google sign-in failed')}
+            />
+            <form onSubmit={submitEmail} className="space-y-4">
+              <label className="block">
+                <span className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                  Your email
+                </span>
+                <input
+                  type="email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  autoComplete="email"
+                  autoCapitalize="none"
+                  autoCorrect="off"
+                  placeholder="you@example.com"
+                  className="w-full px-4 py-3 rounded-lg border border-gray-300 dark:border-gray-600
+                             bg-white dark:bg-gray-700 text-gray-900 dark:text-white
+                             focus:ring-2 focus:ring-primary-500 focus:border-transparent
+                             focus:outline-none transition-colors"
+                  required
+                />
+              </label>
+              <button
+                type="submit"
+                disabled={loading || !email.trim()}
+                className="w-full py-3 rounded-lg bg-primary-600 hover:bg-primary-700
+                           text-white font-medium transition-colors
+                           disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {loading ? 'Sending…' : 'Send code'}
+              </button>
+              <p className="text-xs text-gray-500 dark:text-gray-400 text-center">
+                We'll email you a 6-digit code to confirm you're you — no password needed.
+                By continuing, you agree to our{' '}
+                <Link to="/terms" className="underline hover:text-primary-600 dark:hover:text-primary-400">Terms</Link> and{' '}
+                <Link to="/privacy" className="underline hover:text-primary-600 dark:hover:text-primary-400">Privacy Policy</Link>.
+              </p>
+            </form>
+          </div>
         )}
 
         {step === 'code' && (
@@ -216,7 +234,7 @@ export default function InviteRedeemPage() {
             <p className="text-sm text-gray-600 dark:text-gray-300">
               Enter the code sent to{' '}
               <span className="font-medium text-gray-900 dark:text-white">
-                {formatIdentifierDisplay(identifier)}
+                {email.trim()}
               </span>.
             </p>
             <input
@@ -278,6 +296,10 @@ export default function InviteRedeemPage() {
               This is the name friends and family see on your comments. You can change it later.
             </p>
           </form>
+        )}
+
+        {step === 'notify' && (
+          <PhoneOptIn babyName={context.birth_child_name} onDone={goToPage} />
         )}
       </div>
     </div>

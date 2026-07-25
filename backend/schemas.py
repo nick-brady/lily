@@ -84,6 +84,8 @@ class UserOut(BaseModel):
     phone: Optional[str] = None
     display_name: Optional[str] = None
     avatar_url: Optional[str] = None
+    # The birth-events-only text opt-in; None means not opted in.
+    notify_phone: Optional[str] = None
 
 
 class FamilyMembershipOut(BaseModel):
@@ -294,7 +296,7 @@ class MediaAssetOut(BaseModel):
 
 
 class AuthRequestIn(BaseModel):
-    identifier: str = Field(..., description="email address or phone number")
+    identifier: str = Field(..., description="email address (identity is email-keyed)")
 
 
 class AuthRequestOut(BaseModel):
@@ -303,7 +305,7 @@ class AuthRequestOut(BaseModel):
 
 
 class AuthVerifyIn(BaseModel):
-    """Either {identifier, code} (OTP) or {token} (magic link).
+    """{identifier, code} — the email OTP path. Magic links are retired.
 
     An optional `invite_token` redeems a viewer invitation atomically with
     the auth — saves a round trip during the invite flow.
@@ -311,7 +313,6 @@ class AuthVerifyIn(BaseModel):
 
     identifier: Optional[str] = None
     code: Optional[str] = None
-    token: Optional[str] = None
     invite_token: Optional[str] = None
     # First-touch acquisition attribution, forwarded from the landing-page
     # capture. Recorded only when this verify creates a brand-new user.
@@ -319,6 +320,24 @@ class AuthVerifyIn(BaseModel):
     utm_source: Optional[str] = Field(default=None, max_length=128)
     utm_medium: Optional[str] = Field(default=None, max_length=128)
     utm_campaign: Optional[str] = Field(default=None, max_length=128)
+
+
+class GoogleAuthIn(BaseModel):
+    """Google Identity Services ID token — verified server-side and resolved
+    to the same email-keyed identity as the OTP path."""
+
+    credential: str
+    invite_token: Optional[str] = None
+    ref: Optional[str] = Field(default=None, max_length=128)
+    utm_source: Optional[str] = Field(default=None, max_length=128)
+    utm_medium: Optional[str] = Field(default=None, max_length=128)
+    utm_campaign: Optional[str] = Field(default=None, max_length=128)
+
+
+class NotifyPhoneIn(BaseModel):
+    """Opt in to birth-event texts — the only thing SMS ever carries."""
+
+    phone: str
 
 
 class TokenOut(BaseModel):
