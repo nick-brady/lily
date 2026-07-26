@@ -15,7 +15,7 @@ from sqlalchemy.exc import IntegrityError
 import payments
 from fulfillment.base import OrderError
 from fulfillment.printful import PrintfulAdapter
-from models import GiftKind
+from models import Birth, GiftCatalogItem, GiftKind
 from payments import StripeClient
 
 
@@ -278,15 +278,13 @@ class _Tasks:
 
 def _dispatching_db(birth, item):
     """A fake session whose get() returns the right fixture per model —
-    _fulfill_gift_from_session now loads both the birth and the catalog
+    fulfill_gift_from_session loads both the birth and the catalog
     item to decide physical-vs-storage handling."""
-    import main
-
     class _DB:
         def get(self, model, _pk):
-            if model is main.Birth:
+            if model is Birth:
                 return birth
-            if model is main.GiftCatalogItem:
+            if model is GiftCatalogItem:
                 return item
             raise AssertionError(f"unexpected model {model}")
 
@@ -294,7 +292,7 @@ def _dispatching_db(birth, item):
 
 
 def test_funnel_paid_schedules_exactly_one_submission(monkeypatch):
-    import main
+    import gift_fulfillment
 
     order = _order(session_id="cs_1")
     shipment = SimpleNamespace(id=uuid.uuid4(), fulfillment_status="none")
@@ -302,18 +300,18 @@ def test_funnel_paid_schedules_exactly_one_submission(monkeypatch):
     item = SimpleNamespace(kind=GiftKind.physical, storage_years_granted=None)
 
     monkeypatch.setattr(
-        main.gift_orders_repo, "mark_paid", lambda db, **kw: ("paid", order)
+        gift_fulfillment.gift_orders_repo, "mark_paid", lambda db, **kw: ("paid", order)
     )
     created = []
     monkeypatch.setattr(
-        main.gift_orders_repo,
+        gift_fulfillment.gift_orders_repo,
         "create_shipment",
         lambda db, **kw: created.append(kw) or shipment,
     )
 
     tasks = _Tasks()
     status = asyncio.run(
-        main._fulfill_gift_from_session(
+        gift_fulfillment.fulfill_gift_from_session(
             _dispatching_db(birth, item), SimpleNamespace(), _session_obj(order), tasks,
             raise_on_refund_error=True,
         )
@@ -325,31 +323,31 @@ def test_funnel_paid_schedules_exactly_one_submission(monkeypatch):
 
 
 def test_funnel_paid_storage_gift_grants_storage_no_shipment(monkeypatch):
-    import main
+    import gift_fulfillment
 
     order = _order(session_id="cs_1")
     birth = SimpleNamespace(id=order.birth_id, shipping_address=None)
     item = SimpleNamespace(kind=GiftKind.storage_gift, storage_years_granted=5)
 
     monkeypatch.setattr(
-        main.gift_orders_repo, "mark_paid", lambda db, **kw: ("paid", order)
+        gift_fulfillment.gift_orders_repo, "mark_paid", lambda db, **kw: ("paid", order)
     )
     granted = []
     monkeypatch.setattr(
-        main.gift_orders_repo,
+        gift_fulfillment.gift_orders_repo,
         "grant_storage_gift",
         lambda db, **kw: granted.append(kw),
     )
     shipment_calls = []
     monkeypatch.setattr(
-        main.gift_orders_repo,
+        gift_fulfillment.gift_orders_repo,
         "create_shipment",
         lambda db, **kw: shipment_calls.append(kw),
     )
 
     tasks = _Tasks()
     status = asyncio.run(
-        main._fulfill_gift_from_session(
+        gift_fulfillment.fulfill_gift_from_session(
             _dispatching_db(birth, item), SimpleNamespace(), _session_obj(order), tasks,
             raise_on_refund_error=True,
         )
@@ -362,15 +360,15 @@ def test_funnel_paid_storage_gift_grants_storage_no_shipment(monkeypatch):
 
 
 def test_funnel_claim_lost_refunds_then_marks(monkeypatch):
-    import main
+    import gift_fulfillment
 
     order = _order()
     calls = []
     monkeypatch.setattr(
-        main.gift_orders_repo, "mark_paid", lambda db, **kw: ("claim_lost", order)
+        gift_fulfillment.gift_orders_repo, "mark_paid", lambda db, **kw: ("claim_lost", order)
     )
     monkeypatch.setattr(
-        main.gift_orders_repo,
+        gift_fulfillment.gift_orders_repo,
         "mark_refunded",
         lambda db, **kw: calls.append("marked"),
     )
@@ -379,7 +377,7 @@ def test_funnel_claim_lost_refunds_then_marks(monkeypatch):
     )
     tasks = _Tasks()
     status = asyncio.run(
-        main._fulfill_gift_from_session(
+        gift_fulfillment.fulfill_gift_from_session(
             None, stripe, _session_obj(order), tasks, raise_on_refund_error=True
         )
     )
@@ -396,7 +394,7 @@ def test_funnel_claim_lost_refunds_then_marks(monkeypatch):
     stripe_fail = SimpleNamespace(create_refund=failing)
     with pytest.raises(payments.StripeError):
         asyncio.run(
-            main._fulfill_gift_from_session(
+            gift_fulfillment.fulfill_gift_from_session(
                 None, stripe_fail, _session_obj(order), _Tasks(),
                 raise_on_refund_error=True,
             )
@@ -405,15 +403,15 @@ def test_funnel_claim_lost_refunds_then_marks(monkeypatch):
 
 
 def test_funnel_already_paid_schedules_nothing(monkeypatch):
-    import main
+    import gift_fulfillment
 
     order = _order(status="paid")
     monkeypatch.setattr(
-        main.gift_orders_repo, "mark_paid", lambda db, **kw: ("already_paid", order)
+        gift_fulfillment.gift_orders_repo, "mark_paid", lambda db, **kw: ("already_paid", order)
     )
     tasks = _Tasks()
     status = asyncio.run(
-        main._fulfill_gift_from_session(
+        gift_fulfillment.fulfill_gift_from_session(
             None, SimpleNamespace(), _session_obj(order), tasks,
             raise_on_refund_error=True,
         )
@@ -433,7 +431,7 @@ class _FakeCommitSession:
 
 
 def test_funnel_both_orders_fulfill_from_one_session(monkeypatch):
-    import main
+    import gift_fulfillment
 
     family = _order()
     selfo = _order()
@@ -457,10 +455,10 @@ def test_funnel_both_orders_fulfill_from_one_session(monkeypatch):
         seen.append((order_id, charged_cents))
         return "paid", orders[order_id]
 
-    monkeypatch.setattr(main.gift_orders_repo, "mark_paid", fake_mark_paid)
+    monkeypatch.setattr(gift_fulfillment.gift_orders_repo, "mark_paid", fake_mark_paid)
     created = []
     monkeypatch.setattr(
-        main.gift_orders_repo,
+        gift_fulfillment.gift_orders_repo,
         "create_shipment",
         lambda db, **kw: created.append(kw)
         or SimpleNamespace(id=uuid.uuid4(), fulfillment_status="none"),
@@ -468,7 +466,7 @@ def test_funnel_both_orders_fulfill_from_one_session(monkeypatch):
 
     tasks = _Tasks()
     status = asyncio.run(
-        main._fulfill_gift_from_session(
+        gift_fulfillment.fulfill_gift_from_session(
             _dispatching_db(birth, item), SimpleNamespace(), session_obj, tasks,
             raise_on_refund_error=True,
         )
@@ -484,7 +482,7 @@ def test_funnel_both_orders_fulfill_from_one_session(monkeypatch):
 
 
 def test_funnel_both_family_claim_lost_refunds_half_fulfills_self(monkeypatch):
-    import main
+    import gift_fulfillment
 
     family = _order()
     selfo = _order()
@@ -501,25 +499,25 @@ def test_funnel_both_family_claim_lost_refunds_half_fulfills_self(monkeypatch):
     }
 
     monkeypatch.setattr(
-        main.gift_orders_repo,
+        gift_fulfillment.gift_orders_repo,
         "mark_paid",
         lambda db, *, order_id, session_obj, charged_cents=None: outcomes[order_id],
     )
     refunds, marked = [], []
     monkeypatch.setattr(
-        main.gift_orders_repo,
+        gift_fulfillment.gift_orders_repo,
         "mark_refunded",
         lambda db, *, order_id: marked.append(order_id),
     )
     monkeypatch.setattr(
-        main.gift_orders_repo,
+        gift_fulfillment.gift_orders_repo,
         "create_shipment",
         lambda db, **kw: SimpleNamespace(id=uuid.uuid4(), fulfillment_status="none"),
     )
     stripe = SimpleNamespace(create_refund=lambda **kw: refunds.append(kw))
 
     status = asyncio.run(
-        main._fulfill_gift_from_session(
+        gift_fulfillment.fulfill_gift_from_session(
             _dispatching_db(birth, item), stripe, session_obj, _Tasks(),
             raise_on_refund_error=True,
         )
@@ -653,6 +651,7 @@ def test_webhook_dispatches_gift_kind(monkeypatch):
     import time as time_mod
 
     from fastapi.testclient import TestClient
+    import gift_fulfillment
     import main
 
     secret = "whsec_gift"
@@ -665,7 +664,7 @@ def test_webhook_dispatches_gift_kind(monkeypatch):
         called["gift"] += 1
         return "fulfilled"
 
-    monkeypatch.setattr(main, "_fulfill_gift_from_session", fake_gift)
+    monkeypatch.setattr(gift_fulfillment, "fulfill_gift_from_session", fake_gift)
 
     client = TestClient(main.app)
 

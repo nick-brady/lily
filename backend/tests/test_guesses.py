@@ -48,7 +48,7 @@ def _guess_row(name, weight, length, user_id=None):
 
 
 def test_guess_board_ranks_and_marks_mine(monkeypatch):
-    import main
+    from routes import engagement
 
     me = uuid.uuid4()
     rows = [
@@ -57,11 +57,11 @@ def test_guess_board_ranks_and_marks_mine(monkeypatch):
         _guess_row("Shrug", None, None),
     ]
     monkeypatch.setattr(
-        main.guesses_repo, "list_guesses", lambda db, birth_id: rows
+        engagement.guesses_repo, "list_guesses", lambda db, birth_id: rows
     )
     birth = SimpleNamespace(id=uuid.uuid4(), child_weight_lbs=8.4375, child_length_in=20.5)
 
-    board = main._guess_board(None, birth, me)
+    board = engagement._guess_board(None, birth, me)
     assert board.settled is True
     names = [g.display_name for g in board.guesses]
     assert names == ["Jena", "Papa", "Shrug"]  # exact win first, no-guess last
@@ -70,15 +70,15 @@ def test_guess_board_ranks_and_marks_mine(monkeypatch):
 
 
 def test_guess_board_unsettled_has_no_ranks(monkeypatch):
-    import main
+    from routes import engagement
 
     rows = [_guess_row("Papa", 9.6, 21.3)]
     monkeypatch.setattr(
-        main.guesses_repo, "list_guesses", lambda db, birth_id: rows
+        engagement.guesses_repo, "list_guesses", lambda db, birth_id: rows
     )
     birth = SimpleNamespace(id=uuid.uuid4(), child_weight_lbs=None, child_length_in=None)
 
-    board = main._guess_board(None, birth, None)
+    board = engagement._guess_board(None, birth, None)
     assert board.settled is False
     assert board.guesses[0].rank is None and board.guesses[0].score is None
     assert board.guesses[0].is_mine is False
