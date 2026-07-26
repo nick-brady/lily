@@ -34,12 +34,12 @@ def _payload(family_id=None, baby_name="Lily Rose"):
 
 
 def test_no_family_id_creates_new_family_and_owner_membership():
-    import main
+    from routes import births as births_routes
 
     user = SimpleNamespace(id=uuid.uuid4())
     db = _FakeFamilyDB()
 
-    family = main._resolve_birth_family(
+    family = births_routes._resolve_birth_family(
         db, payload=_payload(family_id=None), current_user=user
     )
 
@@ -54,46 +54,46 @@ def test_no_family_id_creates_new_family_and_owner_membership():
 
 
 def test_unknown_family_id_404s():
-    import main
+    from routes import births as births_routes
 
     user = SimpleNamespace(id=uuid.uuid4())
     db = _FakeFamilyDB(family=None)
 
     with pytest.raises(HTTPException) as exc_info:
-        main._resolve_birth_family(
+        births_routes._resolve_birth_family(
             db, payload=_payload(family_id=uuid.uuid4()), current_user=user
         )
     assert exc_info.value.status_code == 404
 
 
 def test_family_id_rejects_non_member(monkeypatch):
-    import main
+    from routes import births as births_routes
 
     user = SimpleNamespace(id=uuid.uuid4())
     family = Family(id=uuid.uuid4(), primary_owner_user_id=uuid.uuid4())
     db = _FakeFamilyDB(family=family)
-    monkeypatch.setattr(main.families_repo, "get_membership", lambda *a, **kw: None)
+    monkeypatch.setattr(births_routes.families_repo, "get_membership", lambda *a, **kw: None)
 
     with pytest.raises(HTTPException) as exc_info:
-        main._resolve_birth_family(
+        births_routes._resolve_birth_family(
             db, payload=_payload(family_id=family.id), current_user=user
         )
     assert exc_info.value.status_code == 403
 
 
 def test_family_id_rejects_viewer_role(monkeypatch):
-    import main
+    from routes import births as births_routes
 
     user = SimpleNamespace(id=uuid.uuid4())
     family = Family(id=uuid.uuid4(), primary_owner_user_id=uuid.uuid4())
     db = _FakeFamilyDB(family=family)
     membership = SimpleNamespace(role=FamilyRole.family_viewer)
     monkeypatch.setattr(
-        main.families_repo, "get_membership", lambda *a, **kw: membership
+        births_routes.families_repo, "get_membership", lambda *a, **kw: membership
     )
 
     with pytest.raises(HTTPException) as exc_info:
-        main._resolve_birth_family(
+        births_routes._resolve_birth_family(
             db, payload=_payload(family_id=family.id), current_user=user
         )
     assert exc_info.value.status_code == 403
@@ -101,17 +101,17 @@ def test_family_id_rejects_viewer_role(monkeypatch):
 
 @pytest.mark.parametrize("role", [FamilyRole.owner, FamilyRole.co_parent])
 def test_family_id_attaches_existing_family_for_parent(monkeypatch, role):
-    import main
+    from routes import births as births_routes
 
     user = SimpleNamespace(id=uuid.uuid4())
     family = Family(id=uuid.uuid4(), primary_owner_user_id=uuid.uuid4())
     db = _FakeFamilyDB(family=family)
     membership = SimpleNamespace(role=role)
     monkeypatch.setattr(
-        main.families_repo, "get_membership", lambda *a, **kw: membership
+        births_routes.families_repo, "get_membership", lambda *a, **kw: membership
     )
 
-    result = main._resolve_birth_family(
+    result = births_routes._resolve_birth_family(
         db, payload=_payload(family_id=family.id), current_user=user
     )
 

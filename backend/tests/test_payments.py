@@ -130,9 +130,10 @@ def test_get_stripe_gated_on_env(monkeypatch):
 @pytest.fixture
 def client_app():
     from fastapi.testclient import TestClient
+    import gift_fulfillment
     import main
 
-    return TestClient(main.app), main
+    return TestClient(main.app), gift_fulfillment
 
 
 def test_webhook_unconfigured_is_503(client_app, monkeypatch):
@@ -154,14 +155,14 @@ def test_webhook_bad_signature_is_400(client_app, monkeypatch):
 
 
 def test_webhook_ignores_foreign_events(client_app, monkeypatch):
-    client, main_mod = client_app
+    client, fulfillment_mod = client_app
     monkeypatch.setenv("STRIPE_WEBHOOK_SECRET", _SECRET)
     called = []
 
     async def fake_fulfill(db, stripe, obj, tasks, *, raise_on_refund_error):
         called.append(obj)
 
-    monkeypatch.setattr(main_mod, "_fulfill_gift_from_session", fake_fulfill)
+    monkeypatch.setattr(fulfillment_mod, "fulfill_gift_from_session", fake_fulfill)
 
     body = json.dumps({"type": "invoice.paid"}).encode()
     r = client.post(
@@ -185,7 +186,7 @@ def test_webhook_ignores_foreign_events(client_app, monkeypatch):
 
 
 def test_webhook_fulfills_signed_gift_event(client_app, monkeypatch):
-    client, main_mod = client_app
+    client, fulfillment_mod = client_app
     monkeypatch.setenv("STRIPE_WEBHOOK_SECRET", _SECRET)
     monkeypatch.setenv("STRIPE_SECRET_KEY", "sk_test_x")
     called = []
@@ -194,7 +195,7 @@ def test_webhook_fulfills_signed_gift_event(client_app, monkeypatch):
         called.append((obj["id"], raise_on_refund_error))
         return "fulfilled"
 
-    monkeypatch.setattr(main_mod, "_fulfill_gift_from_session", fake_fulfill)
+    monkeypatch.setattr(fulfillment_mod, "fulfill_gift_from_session", fake_fulfill)
 
     obj = {
         "id": "cs_1",
