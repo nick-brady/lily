@@ -143,6 +143,9 @@ export default function BirthSettingsPage() {
         {/* Family viewers */}
         <InviteManager birthId={birth.id} />
 
+        {/* The guess pool */}
+        <PoolSettingsCard birth={birth} onSaved={refreshMe} />
+
         {/* Keepsake gifts */}
         <ShippingAddressCard birthId={birth.id} />
 
@@ -397,6 +400,109 @@ function GiftsReceivedCard({ birthId }) {
           </li>
         ))}
       </ul>
+    </section>
+  );
+}
+
+
+// Pool controls: the due date (drives the 36-week guess-edit lock) and the
+// gender-surprise toggle (opens boy/girl guessing — only sensible for
+// families keeping it a surprise).
+function PoolSettingsCard({ birth, onSaved }) {
+  const [dueDate, setDueDate] = useState(birth.due_date || '');
+  const [genderPool, setGenderPool] = useState(Boolean(birth.gender_pool_enabled));
+  const [saving, setSaving] = useState(false);
+  const [savedTick, setSavedTick] = useState(false);
+  const [error, setError] = useState('');
+
+  const lockDate = dueDate
+    ? (() => {
+        const [y, m, d] = dueDate.split('-').map(Number);
+        const dt = new Date(y, m - 1, d);
+        dt.setDate(dt.getDate() - 28);
+        return dt.toLocaleDateString([], { month: 'long', day: 'numeric' });
+      })()
+    : null;
+
+  const dirty =
+    (dueDate || '') !== (birth.due_date || '')
+    || genderPool !== Boolean(birth.gender_pool_enabled);
+
+  const save = async () => {
+    setSaving(true);
+    setError('');
+    try {
+      await api.updateBirth(birth.id, {
+        ...(dueDate && dueDate !== birth.due_date ? { due_date: dueDate } : {}),
+        gender_pool_enabled: genderPool,
+      });
+      await onSaved?.();
+      setSavedTick(true);
+      setTimeout(() => setSavedTick(false), 2000);
+    } catch (err) {
+      setError(err.message || 'Could not save');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <section className="card space-y-4">
+      <div>
+        <h3 className="text-lg font-semibold t-ink">The family pool 🎈</h3>
+        <p className="text-sm t-muted">
+          Everyone's guesses at the big stats — sealed until the arrival.
+        </p>
+      </div>
+
+      <label className="block text-sm">
+        <span className="t-muted">Due date</span>
+        <div className="flex items-center gap-3 mt-1">
+          <input
+            type="date"
+            value={dueDate}
+            onChange={(e) => setDueDate(e.target.value)}
+            className="px-3 py-2 rounded-lg border text-sm bg-white dark:bg-gray-800 t-ink"
+            style={{ borderColor: 'var(--t-soft-ring)' }}
+          />
+          {lockDate && (
+            <span className="text-xs t-muted">
+              guesses lock {lockDate} (36 weeks)
+            </span>
+          )}
+        </div>
+        {!dueDate && (
+          <p className="text-xs t-faint mt-1">
+            Without a due date, guesses stay editable until the birth.
+          </p>
+        )}
+      </label>
+
+      <label className="flex items-start gap-3 text-sm cursor-pointer">
+        <input
+          type="checkbox"
+          checked={genderPool}
+          onChange={(e) => setGenderPool(e.target.checked)}
+          className="mt-0.5 h-4 w-4 accent-primary-600"
+        />
+        <span>
+          <span className="t-ink font-medium">Keeping the gender a surprise?</span>
+          <span className="block text-xs t-muted">
+            Let family guess boy or girl in the pool. Leave this off if
+            everyone already knows.
+          </span>
+        </span>
+      </label>
+
+      {error && <p className="text-xs text-red-500">{error}</p>}
+      <button
+        type="button"
+        onClick={save}
+        disabled={saving || !dirty}
+        className="px-4 py-2 rounded-lg text-sm font-medium t-btn-accent disabled:opacity-50"
+      >
+        {saving ? 'Saving…' : savedTick ? 'Saved ✓' : 'Save pool settings'}
+      </button>
     </section>
   );
 }

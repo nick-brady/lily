@@ -10,7 +10,7 @@ import ContractionButton from '../components/ContractionButton';
 import DarkModeToggle from '../components/DarkModeToggle';
 import GiftGallery from '../components/GiftGallery';
 import HeaderMenu from '../components/HeaderMenu';
-import Predictions from '../components/Predictions';
+import PoolPill from '../components/PoolPill';
 import StatsTab from '../components/StatsTab';
 import Timeline from '../components/Timeline';
 import UpdateForm from '../components/UpdateForm';
@@ -302,7 +302,17 @@ export default function PublicBirthPage() {
             </div>
           </div>
           <div className="flex items-center justify-between">
-            <ConnectionStatus isConnected={isConnected} />
+            <div className="flex items-center gap-3">
+              <ConnectionStatus isConnected={isConnected} />
+              {!loading && birth && isAuthenticated && (
+                <PoolPill
+                  slug={slug}
+                  birthId={canManageThisBirth ? birth.id : undefined}
+                  status={birth.status}
+                  isParent={canManageThisBirth}
+                />
+              )}
+            </div>
             {canManageThisBirth && (
               <TabSwitcher activeTab={activeTab} setActiveTab={setActiveTab} />
             )}
@@ -440,16 +450,8 @@ export default function PublicBirthPage() {
           )
         )}
 
-        {/* ---- Shared page content ---- */}
-
-        {!loading && birth && isAuthenticated && activeTab === 'timeline' && (
-          <Predictions
-            slug={slug}
-            birthId={canManageThisBirth ? birth.id : undefined}
-            status={birth.status}
-            isParent={canManageThisBirth}
-          />
-        )}
+        {/* ---- Shared page content (the pool lives in the header pill
+            and on the parent stats tab — never on the timeline) ---- */}
 
         {loading ? (
           <p className="text-center t-muted py-12">
@@ -458,7 +460,7 @@ export default function PublicBirthPage() {
         ) : !isAuthenticated ? (
           <TimelinePreview slug={slug} childName={birth?.child_name} />
         ) : canManageThisBirth && activeTab === 'stats' ? (
-          <StatsTab events={sortedEvents} />
+          <StatsTab events={sortedEvents} birthId={birth.id} status={birth.status} />
         ) : canManageThisBirth ? (
           <>
             <UpdateForm birthId={birth.id} />

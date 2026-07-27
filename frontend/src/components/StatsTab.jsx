@@ -1,5 +1,6 @@
 import { useCallback, useMemo, useState } from 'react';
 import { contractionsFromEvents } from '../utils/statistics';
+import Predictions from './Predictions';
 import StatsPanel from './StatsPanel';
 import TimeSeriesChart from './TimeSeriesChart';
 
@@ -9,7 +10,7 @@ import TimeSeriesChart from './TimeSeriesChart';
  * page's event list and owns its own range state (which therefore resets
  * when the parent switches tabs; deliberate, the ranges are ephemeral).
  */
-export default function StatsTab({ events }) {
+export default function StatsTab({ events, birthId, status }) {
   const [timeRange, setTimeRange] = useState('all');
   const [customRange, setCustomRange] = useState({ start: 0, end: 100 });
 
@@ -105,6 +106,7 @@ export default function StatsTab({ events }) {
           customTimestamps={timestamps}
         />
       </div>
+      {birthId && <Predictions birthId={birthId} status={status} isParent />}
     </>
   );
 }

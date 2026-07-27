@@ -11,6 +11,7 @@ card and the ranking on the page can't drift apart.
 """
 from __future__ import annotations
 
+import datetime as dt
 import uuid
 
 import sqlalchemy as sa
@@ -62,6 +63,12 @@ def get_own_guess(
     )
 
 
+# Sentinel for "the caller didn't send this field": distinct from None so a
+# mid-labor resubmit that omits date_guess (the form hides the closed field)
+# preserves the date already on record instead of nulling it.
+UNSET: object = object()
+
+
 def upsert_guess(
     db: Session,
     *,
@@ -69,28 +76,40 @@ def upsert_guess(
     user: User,
     weight_lbs: float | None,
     length_in: float | None,
+    sex_guess: str | None | object = UNSET,
+    date_guess: dt.date | None | object = UNSET,
 ) -> BirthGuess:
     """Create or update the user's guess for this birth. The partial unique
     index on (birth_id, user_id) WHERE user_id IS NOT NULL makes concurrent
-    submits safe; display_name is re-snapshotted on every write."""
+    submits safe; display_name is re-snapshotted on every write. Fields left
+    UNSET keep whatever the row already holds."""
+    values = {
+        "birth_id": birth.id,
+        "user_id": user.id,
+        "display_name": user.display_name,
+        "weight_lbs": weight_lbs,
+        "length_in": length_in,
+    }
+    updates = {
+        "display_name": user.display_name,
+        "weight_lbs": weight_lbs,
+        "length_in": length_in,
+        "updated_at": sa.func.now(),
+    }
+    if sex_guess is not UNSET:
+        values["sex_guess"] = sex_guess
+        updates["sex_guess"] = sex_guess
+    if date_guess is not UNSET:
+        values["date_guess"] = date_guess
+        updates["date_guess"] = date_guess
+
     stmt = (
         pg_insert(BirthGuess)
-        .values(
-            birth_id=birth.id,
-            user_id=user.id,
-            display_name=user.display_name,
-            weight_lbs=weight_lbs,
-            length_in=length_in,
-        )
+        .values(**values)
         .on_conflict_do_update(
             index_elements=["birth_id", "user_id"],
             index_where=BirthGuess.user_id.isnot(None),
-            set_={
-                "display_name": user.display_name,
-                "weight_lbs": weight_lbs,
-                "length_in": length_in,
-                "updated_at": sa.func.now(),
-            },
+            set_=updates,
         )
     )
     db.execute(stmt)

@@ -3,12 +3,14 @@ import { Link, useNavigate, useParams } from 'react-router-dom';
 import { api } from '../api/client';
 import { useAuth } from '../contexts/AuthContext';
 import GoogleSignInButton from '../components/GoogleSignInButton';
+import GuessForm from '../components/GuessForm';
 import PhoneOptIn from '../components/PhoneOptIn';
 
 // Janet's eleven-calm-minutes flow: tap the invite link, type an email and
-// a 6-digit code (or one-tap Google), confirm a name, then the one question
-// that matters — "want a text the moment labor begins?" This is the only
-// auth event she ever sees; her session slides forever after.
+// a 6-digit code (or one-tap Google), confirm a name, "want a text the
+// moment labor begins?", and the fun closer — "how big do you think the
+// baby will be? 🎈" This is the only auth event she ever sees; her session
+// slides forever after, and she arrives at the page already invested.
 export default function InviteRedeemPage() {
   const { token } = useParams();
   const navigate = useNavigate();
@@ -16,8 +18,9 @@ export default function InviteRedeemPage() {
 
   const [context, setContext] = useState(null);
   const [contextError, setContextError] = useState('');
-  // 'email' | 'code' | 'redeeming' | 'name' | 'notify'
+  // 'email' | 'code' | 'redeeming' | 'name' | 'notify' | 'guess'
   const [step, setStep] = useState('email');
+  const [poolBirth, setPoolBirth] = useState(null);
   const [email, setEmail] = useState('');
   const [code, setCode] = useState('');
   const [displayName, setDisplayName] = useState('');
@@ -27,8 +30,33 @@ export default function InviteRedeemPage() {
 
   const goToPage = () => navigate(`/b/${context.birth_slug}`, { replace: true });
 
+  // The fun closer: offer a pool guess if the pool is open and this user
+  // hasn't guessed. Any hiccup skips straight to the page — onboarding
+  // must never be blockable by a nicety.
+  const maybeGuessStep = async (profile) => {
+    try {
+      const birth = (profile?.families || [])
+        .flatMap((f) => f.births || [])
+        .find((b) => b.id === context.birth_id);
+      if (!birth || birth.status === 'born') {
+        goToPage();
+        return;
+      }
+      const board = await api.listGuesses({ slug: context.birth_slug });
+      if (board.settled || board.guesses.some((g) => g.is_mine)) {
+        goToPage();
+        return;
+      }
+      setPoolBirth(birth);
+      setStep('guess');
+    } catch {
+      goToPage();
+    }
+  };
+
   // After auth: collect a display name if missing (so comments are
-  // attributed), then offer the birth-alerts opt-in once, then the page.
+  // attributed — and the pool needs it), then the birth-alerts opt-in,
+  // then the pool guess, then the page.
   const nextStepFor = (profile) => {
     if (profile?.user && !profile.user.display_name) {
       setDisplayName(context?.display_name_hint || '');
@@ -36,7 +64,7 @@ export default function InviteRedeemPage() {
     } else if (profile?.user && !profile.user.notify_phone) {
       setStep('notify');
     } else {
-      goToPage();
+      maybeGuessStep(profile);
     }
   };
 
@@ -124,7 +152,7 @@ export default function InviteRedeemPage() {
       if (profile?.user && !profile.user.notify_phone) {
         setStep('notify');
       } else {
-        goToPage();
+        await maybeGuessStep(profile);
       }
     } catch (err) {
       setError(err.message || 'Could not save your name');
@@ -299,7 +327,36 @@ export default function InviteRedeemPage() {
         )}
 
         {step === 'notify' && (
-          <PhoneOptIn babyName={context.birth_child_name} onDone={goToPage} />
+          <PhoneOptIn
+            babyName={context.birth_child_name}
+            onDone={async () => {
+              const profile = await refreshMe().catch(() => null);
+              await maybeGuessStep(profile);
+            }}
+          />
+        )}
+
+        {step === 'guess' && poolBirth && (
+          <div className="space-y-4">
+            <div>
+              <h2 className="text-lg font-semibold text-gray-900 dark:text-white mb-1">
+                One last thing — join the pool 🎈
+              </h2>
+              <p className="text-sm text-gray-600 dark:text-gray-400">
+                How big will {context.birth_child_name || 'the baby'} be? When?
+                Everyone's guess is sealed until the arrival — closest wins bragging rights.
+              </p>
+            </div>
+            <GuessForm
+              scope={{ slug: context.birth_slug }}
+              mine={null}
+              status={poolBirth.status}
+              genderEnabled={poolBirth.gender_pool_enabled}
+              onSaved={goToPage}
+              onSkip={goToPage}
+              submitLabel="Lock in my guess"
+            />
+          </div>
         )}
       </div>
     </div>

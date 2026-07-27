@@ -138,16 +138,24 @@ class BirthOut(BaseModel):
     birth_completed_at: Optional[datetime] = None
     is_locked_to_invited: bool
     theme: str = "lily"
+    due_date: Optional[date] = None
+    gender_pool_enabled: bool = False
     child_weight_lbs: Optional[float] = None
     child_length_in: Optional[float] = None
 
 
 class GuessIn(BaseModel):
-    """A family member's guess. At least one of the two must be given
-    (validated at the route so the error message can be friendly)."""
+    """A family member's guess. At least one field must be given
+    (validated at the route so the error message can be friendly).
+    `sex_guess` is accepted only while the birth's gender pool is on;
+    `date_guess` only until labor starts. Omitting a field preserves any
+    previously-guessed value (the route distinguishes absent from null via
+    model_fields_set)."""
 
     weight_lbs: Optional[float] = Field(default=None, gt=0, lt=30)
     length_in: Optional[float] = Field(default=None, gt=0, lt=40)
+    sex_guess: Optional[Literal["boy", "girl"]] = None
+    date_guess: Optional[date] = None
 
 
 class GuessOut(BaseModel):
@@ -157,20 +165,31 @@ class GuessOut(BaseModel):
     display_name: str
     weight_lbs: Optional[float] = None
     length_in: Optional[float] = None
+    sex_guess: Optional[str] = None
+    date_guess: Optional[date] = None
     is_mine: bool = False
     # set only once the actual measurements are recorded
     score: Optional[float] = None
     rank: Optional[int] = None
+    # closest arrival-date call (ties share); separate from the size score
+    date_winner: bool = False
 
 
 class GuessBoardOut(BaseModel):
     """The family pool: everyone's guesses, plus the actuals and ranking
-    once the parents record the measurements."""
+    once the parents record the measurements. Pre-settle, other people's
+    guess VALUES are sealed server-side (names visible, numbers null) —
+    no anchoring, no spoiled reveal."""
 
     guesses: list[GuessOut] = []
     actual_weight_lbs: Optional[float] = None
     actual_length_in: Optional[float] = None
+    actual_sex: Optional[str] = None
+    actual_date: Optional[date] = None
     settled: bool = False
+    # existing guesses freeze at due_date - 28 days (36 weeks)
+    edits_locked: bool = False
+    gender_pool_enabled: bool = False
 
 
 class GiftCheckoutIn(BaseModel):
@@ -515,6 +534,9 @@ class BirthCreateIn(BaseModel):
     baby_name: str = Field(..., min_length=1, max_length=100)
     slug: str = Field(..., min_length=1, max_length=100)
     theme: str = Field(default="lily", max_length=50)
+    # Optional at setup; also settable later in Birth settings. Drives the
+    # pool's 36-week guess-edit lock.
+    due_date: Optional[date] = None
     # Attach to an existing family (second child, twins, etc.) instead of
     # starting a new one. The caller must already be an owner/co-parent
     # there — enforced in the route, not here.
@@ -527,6 +549,11 @@ class BirthUpdateIn(BaseModel):
     # the family pool and unlock the pool gift artwork.
     child_weight_lbs: Optional[float] = Field(default=None, gt=0, lt=30)
     child_length_in: Optional[float] = Field(default=None, gt=0, lt=40)
+    # Pool controls (Birth settings): expected arrival + the gender-surprise
+    # toggle. child_sex rides along with the actuals at settle.
+    due_date: Optional[date] = None
+    gender_pool_enabled: Optional[bool] = None
+    child_sex: Optional[Literal["boy", "girl"]] = None
 
     @field_validator("theme")
     @classmethod

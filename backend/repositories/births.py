@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import uuid
-from datetime import datetime
+from datetime import date, datetime
 from typing import Iterable
 
 from sqlalchemy import select
@@ -40,6 +40,7 @@ def create_birth(
     status: BirthStatus = BirthStatus.preparing,
     birth_started_at: datetime | None = None,
     birth_completed_at: datetime | None = None,
+    due_date: date | None = None,
 ) -> Birth:
     birth = Birth(
         family_id=family_id,
@@ -49,6 +50,7 @@ def create_birth(
         status=status,
         birth_started_at=birth_started_at,
         birth_completed_at=birth_completed_at,
+        due_date=due_date,
     )
     db.add(birth)
     db.flush()
@@ -62,6 +64,9 @@ def update_birth(
     theme: str | None = None,
     child_weight_lbs: float | None = None,
     child_length_in: float | None = None,
+    due_date: date | None = None,
+    gender_pool_enabled: bool | None = None,
+    child_sex: str | None = None,
 ) -> Birth:
     if theme is not None:
         birth.theme = theme
@@ -69,6 +74,14 @@ def update_birth(
         birth.child_weight_lbs = child_weight_lbs
     if child_length_in is not None:
         birth.child_length_in = child_length_in
+    if due_date is not None:
+        birth.due_date = due_date
+    # Explicit is-not-None: False is a real value here (turning the
+    # gender pool back off must work).
+    if gender_pool_enabled is not None:
+        birth.gender_pool_enabled = gender_pool_enabled
+    if child_sex is not None:
+        birth.child_sex = child_sex
     db.flush()
     return birth
 

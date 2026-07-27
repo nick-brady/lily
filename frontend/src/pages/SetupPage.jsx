@@ -30,6 +30,7 @@ export default function SetupPage() {
 
   const [step, setStep] = useState('name');
   const [babyName, setBabyName] = useState('');
+  const [dueDate, setDueDate] = useState('');
   const [slug, setSlug] = useState('');
   const [slugStatus, setSlugStatus] = useState(null);
   const [slugSuggestion, setSlugSuggestion] = useState('');
@@ -97,7 +98,7 @@ export default function SetupPage() {
       setError('');
       try {
         const birth = await api.createBirth({
-          babyName, slug, theme: selectedTheme, familyId: familyIdToJoin,
+          babyName, slug, theme: selectedTheme, familyId: familyIdToJoin, dueDate,
         });
         // The birth page derives parent tooling from `me`; refresh it so
         // we land there already wearing the parent hat.
@@ -136,7 +137,7 @@ export default function SetupPage() {
       });
       await completeSignIn();
       const birth = await api.createBirth({
-        babyName, slug, theme: selectedTheme, familyId: familyIdToJoin,
+        babyName, slug, theme: selectedTheme, familyId: familyIdToJoin, dueDate,
       });
       // completeSignIn fetched /me before the birth existed; refresh so
       // the birth page recognizes us as its parent on arrival.
@@ -254,6 +255,23 @@ export default function SetupPage() {
                 </button>
               )}
             </div>
+
+            {/* Due date — optional, skippable; drives the family pool's
+                36-week guess lock and can be set later in Birth settings */}
+            <label className="block">
+              <span className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                When are they due? <span className="font-normal text-gray-400">(optional)</span>
+              </span>
+              <input
+                type="date"
+                value={dueDate}
+                onChange={(e) => setDueDate(e.target.value)}
+                className="px-4 py-3 rounded-xl border border-gray-300 dark:border-gray-600
+                           bg-white dark:bg-gray-800 text-gray-900 dark:text-white
+                           focus:ring-2 focus:ring-primary-500 focus:border-transparent
+                           focus:outline-none transition-colors"
+              />
+            </label>
 
             {/* Theme picker */}
             <div className="space-y-4">
