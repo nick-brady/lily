@@ -503,11 +503,17 @@ export const api = {
     return jsonOrThrow(res);
   },
 
-  async createBirth({ babyName, slug, theme = 'lily', familyId = null }) {
+  async createBirth({ babyName, slug, theme = 'lily', familyId = null, dueDate = null }) {
     const res = await fetch(`${API_URL}/births`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ baby_name: babyName, slug, theme, family_id: familyId }),
+      body: JSON.stringify({
+        baby_name: babyName,
+        slug,
+        theme,
+        family_id: familyId,
+        due_date: dueDate || null,
+      }),
     });
     return jsonOrThrow(res);
   },
@@ -529,14 +535,17 @@ export const api = {
     return jsonOrThrow(res);
   },
 
-  async putGuess({ birthId, slug }, { weight_lbs, length_in }) {
+  async putGuess({ birthId, slug }, body) {
     const url = birthId
       ? `${API_URL}/birth/${birthId}/guess`
       : `${API_URL}/b/${slug}/guess`;
+    // body may carry weight_lbs/length_in/sex_guess/date_guess. Fields the
+    // form doesn't own right now are simply absent — the server preserves
+    // whatever the guess row already holds for absent fields.
     const res = await fetch(url, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ weight_lbs, length_in }),
+      body: JSON.stringify(body),
     });
     return jsonOrThrow(res);
   },

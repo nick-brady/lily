@@ -106,6 +106,7 @@ def create_birth(
         child_name=payload.baby_name,
         slug=slug,
         theme=payload.theme,
+        due_date=payload.due_date,
     )
     db.commit()
     db.refresh(birth)
@@ -129,6 +130,9 @@ def update_birth(
         theme=payload.theme,
         child_weight_lbs=payload.child_weight_lbs,
         child_length_in=payload.child_length_in,
+        due_date=payload.due_date,
+        gender_pool_enabled=payload.gender_pool_enabled,
+        child_sex=payload.child_sex,
     )
     db.commit()
     db.refresh(access.birth)

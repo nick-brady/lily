@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import enum
 import uuid
-from datetime import datetime
+from datetime import date, datetime
 
 import sqlalchemy as sa
 from sqlalchemy.dialects.postgresql import JSONB, UUID
@@ -269,6 +269,18 @@ class Birth(Base):
     theme: Mapped[str] = mapped_column(
         sa.Text, nullable=False, server_default="lily"
     )
+    # Expected arrival — drives the pool's 36-week guess-edit lock
+    # (edits freeze at due_date - 28 days). Optional; without it, guesses
+    # stay editable until the birth.
+    due_date: Mapped[date | None] = mapped_column(sa.Date, nullable=True)
+    # Parents keeping the gender a surprise can open a boy/girl guess in
+    # the pool. Off by default — a pool on "Welcoming Lily" asking boy-or-
+    # girl would be silly.
+    gender_pool_enabled: Mapped[bool] = mapped_column(
+        sa.Boolean, nullable=False, server_default=sa.text("false")
+    )
+    # Recorded with the actuals at settle when the gender pool is on.
+    child_sex: Mapped[str | None] = mapped_column(sa.Text, nullable=True)
     # Actual measurements, recorded by the parents once known. The family's
     # guesses live in `birth_guesses` and are scored against these.
     child_weight_lbs: Mapped[float | None] = mapped_column(sa.Float, nullable=True)
@@ -750,6 +762,12 @@ class BirthGuess(Base):
     display_name: Mapped[str] = mapped_column(sa.Text, nullable=False)
     weight_lbs: Mapped[float | None] = mapped_column(sa.Float, nullable=True)
     length_in: Mapped[float | None] = mapped_column(sa.Float, nullable=True)
+    # 'boy' | 'girl'; accepted only while the birth's gender pool is on.
+    sex_guess: Mapped[str | None] = mapped_column(sa.Text, nullable=True)
+    # Arrival-date call. Closes at labor start (guessing "today" from the
+    # contraction timeline is cheating); settles against
+    # birth_completed_at with its own winner, outside the size score.
+    date_guess: Mapped[date | None] = mapped_column(sa.Date, nullable=True)
     created_at: Mapped[datetime] = _created_at()
     updated_at: Mapped[datetime] = _updated_at()
 
