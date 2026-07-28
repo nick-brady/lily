@@ -12,7 +12,7 @@ import fulfillment
 from auth import get_current_user
 from db import get_db
 from fulfillment import products as fulfillment_products
-from models import GiftKind, GiftRendering, GiftRenderingStatus, User
+from models import BirthStatus, GiftKind, GiftRendering, GiftRenderingStatus, User
 from repositories import births as births_repo
 from repositories import gift_orders as gift_orders_repo
 from repositories import gifts as gifts_repo
@@ -138,10 +138,15 @@ def list_gifts(
     db: Session = Depends(get_db),
 ) -> GiftGalleryOut:
     """The gift gallery. Lazily ensures a rendering exists per (physical item
-    × template) and schedules a background render for newly-created ones."""
-    _, new_ids = gifts_repo.ensure_renderings(db, birth=access.birth)
-    for rendering_id in new_ids:
-        background_tasks.add_task(gifts_repo.render_rendering, rendering_id)
+    × template) and schedules a background render for newly-created ones —
+    but only once the birth is complete: gifts are made FROM the story
+    (Day Two is the moment), and a pre-birth page has no story to render.
+    Merely browsing the page must never generate artwork from an empty
+    timeline."""
+    if access.birth.status is BirthStatus.born:
+        _, new_ids = gifts_repo.ensure_renderings(db, birth=access.birth)
+        for rendering_id in new_ids:
+            background_tasks.add_task(gifts_repo.render_rendering, rendering_id)
     return _gift_gallery_out(
         db, access.birth, is_parent=births_repo.is_parent(access.role)
     )

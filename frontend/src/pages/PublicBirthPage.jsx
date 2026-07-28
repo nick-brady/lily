@@ -470,7 +470,11 @@ export default function PublicBirthPage() {
           <Timeline events={sortedEvents} slug={slug} />
         )}
 
-        {!loading && birth && isAuthenticated && activeTab === 'timeline' && (
+        {/* Keepsake gifts are made FROM the story — they exist only once
+            the birth is done (Day Two is the moment), never as a shop on
+            a page that's still waiting. */}
+        {!loading && birth && isAuthenticated && activeTab === 'timeline'
+          && birth.status === 'born' && (
           <MemberGifts birthId={birth.id} isParent={canManageThisBirth} />
         )}
       </main>
@@ -564,21 +568,27 @@ function TimelinePreview({ slug, childName }) {
 }
 
 // Gifts are member-only (the API 403s non-members); probe once and render
-// the gallery only for family members, so Aunt-Linda-before-joining sees
-// nothing rather than an error.
+// the gallery only for family members with actual artwork to show — a
+// birth whose gifts haven't rendered yet gets no empty shop, and
+// Aunt-Linda-before-joining sees nothing rather than an error.
 function MemberGifts({ birthId, isParent }) {
-  const [isMember, setIsMember] = useState(null);
+  const [hasGifts, setHasGifts] = useState(null);
   useEffect(() => {
     let cancelled = false;
     api
       .listGifts(birthId)
-      .then(() => !cancelled && setIsMember(true))
-      .catch(() => !cancelled && setIsMember(false));
+      .then((gallery) => {
+        if (cancelled) return;
+        setHasGifts(
+          (gallery.items || []).some((it) => (it.renderings || []).length > 0),
+        );
+      })
+      .catch(() => !cancelled && setHasGifts(false));
     return () => {
       cancelled = true;
     };
   }, [birthId]);
-  if (!isMember) return null;
+  if (!hasGifts) return null;
   return (
     <>
       {/* a quiet seam where the story ends and the keepsakes begin */}

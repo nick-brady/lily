@@ -151,7 +151,9 @@ export default function BirthSettingsPage() {
 
         <GiftsReceivedCard birthId={birth.id} />
 
-        <GiftGallery birthId={birth.id} isParent />
+        {/* Gift artwork is generated from the finished story — nothing to
+            manage until the birth is done. */}
+        {birth.status === 'born' && <GiftGallery birthId={birth.id} isParent />}
 
         {/* Birth details */}
         <section className="card">
