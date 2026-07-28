@@ -127,22 +127,59 @@ export default function InviteManager({ birthId }) {
 
   return (
     <section className="card">
-      <div className="flex items-center justify-between mb-4">
-        <div>
-          <h3 className="text-lg font-semibold t-ink">
-            Family viewers
-          </h3>
-          <p className="text-sm t-muted">
-            Invite people to follow along. They see public + family posts; not parent-only.
-          </p>
-        </div>
-        <button
-          onClick={() => createInvite()}
-          disabled={creating}
-          className="px-3 py-2 text-sm rounded-lg t-btn-accent font-medium disabled:opacity-50"
+      <div className="mb-4">
+        <h3 className="text-lg font-semibold t-ink">
+          Family viewers
+        </h3>
+        <p className="text-sm t-muted">
+          Invite people to follow along. They see public + family posts; not parent-only.
+        </p>
+      </div>
+
+      {/* Two ways to invite — equal billing, per the product call. The
+          link is the native motion (family group text); direct send is
+          for the relatives you'd rather not make forward things. */}
+      <p className="text-xs font-medium uppercase tracking-wide t-muted mb-2">
+        Two ways to invite
+      </p>
+      <div className="grid sm:grid-cols-2 gap-3 mb-4">
+        <div
+          className="p-3 rounded-lg border flex flex-col gap-2"
+          style={{ borderColor: 'var(--t-soft-ring)' }}
         >
-          {creating ? 'Creating…' : 'New invite link'}
-        </button>
+          <div>
+            <p className="text-sm font-medium t-ink">Share a link</p>
+            <p className="text-xs t-muted">
+              Drop it in the family group text — anyone with it can join.
+            </p>
+          </div>
+          <button
+            onClick={() => { setShowForm(false); createInvite(); }}
+            disabled={creating}
+            className="mt-auto self-start px-3 py-2 text-sm rounded-lg t-btn-accent font-medium disabled:opacity-50"
+          >
+            {creating && !showForm ? 'Creating…' : 'Create invite link'}
+          </button>
+        </div>
+        <div
+          className="p-3 rounded-lg border flex flex-col gap-2"
+          style={{ borderColor: 'var(--t-soft-ring)' }}
+        >
+          <div>
+            <p className="text-sm font-medium t-ink">Enter contacts &amp; we&rsquo;ll send</p>
+            <p className="text-xs t-muted">
+              Paste emails or phone numbers — each gets an invite from us.
+            </p>
+          </div>
+          <button
+            onClick={() => { setShowForm(true); setSentSummary(null); setLastCreated(null); }}
+            disabled={showForm}
+            className="mt-auto self-start px-3 py-2 text-sm rounded-lg font-medium disabled:opacity-60"
+            style={{ backgroundColor: 'var(--t-soft-bg)', color: 'var(--t-soft-text)' }}
+          >
+            Enter contacts
+          </button>
+        </div>
       </div>
 
       {error && (
@@ -151,20 +188,12 @@ export default function InviteManager({ birthId }) {
         </div>
       )}
 
-      {showForm ? (
+      {showForm && (
         <ContactPillForm
           creating={creating}
           onSend={sendInvites}
           onCancel={() => setShowForm(false)}
         />
-      ) : (
-        <button
-          type="button"
-          onClick={() => { setShowForm(true); setSentSummary(null); }}
-          className="mb-4 text-xs t-muted hover:opacity-80"
-        >
-          Want us to send it? Paste emails or phone numbers →
-        </button>
       )}
 
       {sentSummary && (
