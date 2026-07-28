@@ -45,17 +45,17 @@ export default function InviteManager({ birthId }) {
     refresh();
   }, [refresh]);
 
-  const handleCreate = async (e) => {
-    e?.preventDefault();
+  // The primary action: one tap → a share-it-yourself link. This is the
+  // whole invite model (drop it in the family group text); sending on
+  // someone's behalf is the fallback form below.
+  const createInvite = async ({ nameHint = '', contactHint = '' } = {}) => {
     setCreating(true);
     setError('');
     try {
-      // A single contact field — route it by shape, same as the
-      // co-parent invite form. Both are optional: leave it blank for a
-      // plain share-it-yourself link.
-      const norm = contact.trim() ? normalizeIdentifier(contact) : null;
+      // Contact routed by shape, same as the co-parent invite form.
+      const norm = contactHint.trim() ? normalizeIdentifier(contactHint) : null;
       const created = await api.createInvitation(birthId, {
-        displayNameHint: name.trim() || undefined,
+        displayNameHint: nameHint.trim() || undefined,
         emailHint: norm?.kind === 'email' ? norm.value : undefined,
         phoneHint: norm && norm.kind !== 'email' ? norm.value : undefined,
       });
@@ -69,6 +69,11 @@ export default function InviteManager({ birthId }) {
     } finally {
       setCreating(false);
     }
+  };
+
+  const handleFormSubmit = async (e) => {
+    e.preventDefault();
+    await createInvite({ nameHint: name, contactHint: contact });
   };
 
   const handleRevoke = async (invitationId) => {
@@ -118,14 +123,13 @@ export default function InviteManager({ birthId }) {
             Invite people to follow along. They see public + family posts; not parent-only.
           </p>
         </div>
-        {!showForm && (
-          <button
-            onClick={() => setShowForm(true)}
-            className="px-3 py-2 text-sm rounded-lg t-btn-accent font-medium"
-          >
-            New invite link
-          </button>
-        )}
+        <button
+          onClick={() => createInvite()}
+          disabled={creating}
+          className="px-3 py-2 text-sm rounded-lg t-btn-accent font-medium disabled:opacity-50"
+        >
+          {creating ? 'Creating…' : 'New invite link'}
+        </button>
       </div>
 
       {error && (
@@ -134,8 +138,8 @@ export default function InviteManager({ birthId }) {
         </div>
       )}
 
-      {showForm && (
-        <form onSubmit={handleCreate} className="mb-4 space-y-3 p-3 rounded-lg border" style={{ borderColor: 'var(--t-soft-ring)' }}>
+      {showForm ? (
+        <form onSubmit={handleFormSubmit} className="mb-4 space-y-3 p-3 rounded-lg border" style={{ borderColor: 'var(--t-soft-ring)' }}>
           <input
             type="text"
             value={name}
@@ -149,7 +153,7 @@ export default function InviteManager({ birthId }) {
             onChange={setContact}
             hintAction="the invite"
             hintClassName="mt-1 text-xs t-muted"
-            placeholder="Their email or phone (optional)"
+            placeholder="Their email or phone"
             className="w-full px-3 py-2 rounded-lg border text-sm t-ink"
             style={{ borderColor: 'var(--t-soft-ring)' }}
           />
@@ -159,7 +163,7 @@ export default function InviteManager({ birthId }) {
               disabled={creating}
               className="px-4 py-2 text-sm rounded-lg t-btn-accent font-medium disabled:opacity-50"
             >
-              {creating ? 'Creating…' : 'Create invite link'}
+              {creating ? 'Sending…' : 'Send invite'}
             </button>
             <button
               type="button"
@@ -169,10 +173,15 @@ export default function InviteManager({ birthId }) {
               Cancel
             </button>
           </div>
-          <p className="text-xs t-muted">
-            Add an email or phone and we&rsquo;ll send the invite for you — or leave it blank and share the link yourself.
-          </p>
         </form>
+      ) : (
+        <button
+          type="button"
+          onClick={() => setShowForm(true)}
+          className="mb-4 text-xs t-muted hover:opacity-80"
+        >
+          Want us to send it for someone? Invite by name →
+        </button>
       )}
 
       {lastCreated && (
