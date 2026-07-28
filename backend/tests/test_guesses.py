@@ -182,11 +182,13 @@ def test_board_date_winner_ties_share(monkeypatch):
 
 
 def test_edits_lock_at_36_weeks():
-    from datetime import date, timedelta
+    from datetime import datetime, timedelta, timezone
 
     from routes import engagement
 
-    today = date.today()
+    # Same clock as the implementation — local date drifts a day from UTC
+    # in the evening and makes the boundary cases flake.
+    today = datetime.now(timezone.utc).date()
     # due 27 days out → inside the 28-day window → locked
     assert engagement.guess_edits_locked(_birth(due_date=today + timedelta(days=27)))
     # due 29 days out → still open
@@ -280,14 +282,15 @@ def test_put_guess_date_closes_at_labor(monkeypatch):
 
 def test_put_guess_edit_locked_at_36w_but_first_guess_open(monkeypatch):
     import pytest
-    from datetime import date, timedelta
+    from datetime import datetime, timedelta, timezone
     from fastapi import HTTPException
 
     from models import BirthStatus
     from schemas import GuessIn
 
     birth = _birth(
-        status=BirthStatus.preparing, due_date=date.today() + timedelta(days=20)
+        status=BirthStatus.preparing,
+        due_date=datetime.now(timezone.utc).date() + timedelta(days=20),
     )
     # an existing guess inside the window → 409
     engagement, user, _ = _put_guess_env(

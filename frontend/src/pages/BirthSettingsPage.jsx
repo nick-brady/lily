@@ -151,7 +151,9 @@ export default function BirthSettingsPage() {
 
         <GiftsReceivedCard birthId={birth.id} />
 
-        <GiftGallery birthId={birth.id} isParent />
+        {/* Gift artwork is generated from the finished story — nothing to
+            manage until the birth is done. */}
+        {birth.status === 'born' && <GiftGallery birthId={birth.id} isParent />}
 
         {/* Birth details */}
         <section className="card">
@@ -462,7 +464,7 @@ function PoolSettingsCard({ birth, onSaved }) {
             type="date"
             value={dueDate}
             onChange={(e) => setDueDate(e.target.value)}
-            className="px-3 py-2 rounded-lg border text-sm bg-white dark:bg-gray-800 t-ink"
+            className="t-date-input px-3 py-2 rounded-lg border text-sm bg-white dark:bg-gray-800 t-ink"
             style={{ borderColor: 'var(--t-soft-ring)' }}
           />
           {lockDate && (

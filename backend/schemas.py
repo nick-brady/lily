@@ -190,6 +190,9 @@ class GuessBoardOut(BaseModel):
     # existing guesses freeze at due_date - 28 days (36 weeks)
     edits_locked: bool = False
     gender_pool_enabled: bool = False
+    # prefills the arrival-day guess ("when do YOU think?" starts at the
+    # official answer)
+    due_date: Optional[date] = None
 
 
 class GiftCheckoutIn(BaseModel):

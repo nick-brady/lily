@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { api } from '../api/client';
 import Predictions from './Predictions';
 
@@ -8,7 +9,7 @@ import Predictions from './Predictions';
  * last-call during labor, results after settle) and opens the pool as a
  * bottom sheet — the timeline itself never shows the pool.
  */
-export default function PoolPill({ slug, birthId, status, isParent }) {
+export default function PoolPill({ slug, birthId, status, isParent, themeStyle }) {
   const [board, setBoard] = useState(null);
   const [open, setOpen] = useState(false);
 
@@ -35,19 +36,19 @@ export default function PoolPill({ slug, birthId, status, isParent }) {
   // Nothing to say: born, nobody ever guessed, and no reveal coming.
   if (born && guesses.length === 0) return null;
 
+  // Before you've guessed, "the pool" means nothing — say what the game
+  // is. After you're in (or it's over), shorthand is earned.
   let label;
   if (settled) {
-    label = '🏆 pool results';
+    label = '🏆 see who guessed best';
   } else if (born) {
-    label = `🎈 ${guesses.length} sealed`;
+    label = `🎈 ${guesses.length} ${guesses.length === 1 ? 'guess' : 'guesses'} sealed`;
   } else if (lastCall) {
-    label = '🎈 last call!';
+    label = '🎈 last call — guess before the baby comes!';
   } else if (mine) {
     label = `🎈 you're in · ${guesses.length}`;
-  } else if (guesses.length > 0) {
-    label = `🎈 ${guesses.length} in — add yours`;
   } else {
-    label = '🎈 start the pool';
+    label = "🎈 guess the baby's size & arrival day";
   }
 
   return (
@@ -67,7 +68,11 @@ export default function PoolPill({ slug, birthId, status, isParent }) {
         {label}
       </button>
 
-      {open && (
+      {/* Portaled to <body>: the pill lives inside the sticky header,
+          whose backdrop-filter makes it the containing block for fixed
+          descendants — without the portal the "full-screen" sheet pins
+          itself inside the header's box. */}
+      {open && createPortal(
         <div
           className="fixed inset-0 z-50 bg-black/40 flex items-end sm:items-center justify-center"
           onClick={() => setOpen(false)}
@@ -75,6 +80,9 @@ export default function PoolPill({ slug, birthId, status, isParent }) {
           <div
             className="animate-slide-up w-full sm:max-w-lg max-h-[85vh] overflow-y-auto
                        bg-white dark:bg-gray-900 rounded-t-2xl sm:rounded-2xl shadow-xl p-2"
+            // The portal escapes the themed page root, so the theme's CSS
+            // variables ride along explicitly.
+            style={themeStyle}
             onClick={(e) => e.stopPropagation()}
           >
             <Predictions
@@ -92,7 +100,8 @@ export default function PoolPill({ slug, birthId, status, isParent }) {
               Close
             </button>
           </div>
-        </div>
+        </div>,
+        document.body,
       )}
     </>
   );
