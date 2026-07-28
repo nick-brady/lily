@@ -1,7 +1,6 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { api } from '../api/client';
-import IdentifierInput from './IdentifierInput';
-import { normalizeIdentifier } from '../utils/identifier';
+import { isValidEmail, normalizeIdentifier } from '../utils/identifier';
 
 function formatRelative(timestamp) {
   const date = new Date(timestamp);
@@ -22,8 +21,7 @@ export default function InviteManager({ birthId }) {
   const [lastCreated, setLastCreated] = useState(null);
   const [copiedId, setCopiedId] = useState(null);
   const [showForm, setShowForm] = useState(false);
-  const [name, setName] = useState('');
-  const [contact, setContact] = useState('');
+  const [sentSummary, setSentSummary] = useState(null);
   // Bumped after a viewer is removed. Removal drops that person across
   // every link, so all rows' cached redemption lists go stale at once —
   // this forces each one to refetch.
@@ -47,22 +45,14 @@ export default function InviteManager({ birthId }) {
 
   // The primary action: one tap → a share-it-yourself link. This is the
   // whole invite model (drop it in the family group text); sending on
-  // someone's behalf is the fallback form below.
-  const createInvite = async ({ nameHint = '', contactHint = '' } = {}) => {
+  // people's behalf is the fallback pill form below.
+  const createInvite = async () => {
     setCreating(true);
     setError('');
+    setSentSummary(null);
     try {
-      // Contact routed by shape, same as the co-parent invite form.
-      const norm = contactHint.trim() ? normalizeIdentifier(contactHint) : null;
-      const created = await api.createInvitation(birthId, {
-        displayNameHint: nameHint.trim() || undefined,
-        emailHint: norm?.kind === 'email' ? norm.value : undefined,
-        phoneHint: norm && norm.kind !== 'email' ? norm.value : undefined,
-      });
+      const created = await api.createInvitation(birthId, {});
       setLastCreated(created);
-      setName('');
-      setContact('');
-      setShowForm(false);
       await refresh();
     } catch (err) {
       setError(err.message || 'Could not create invitation');
@@ -71,9 +61,32 @@ export default function InviteManager({ birthId }) {
     }
   };
 
-  const handleFormSubmit = async (e) => {
-    e.preventDefault();
-    await createInvite({ nameHint: name, contactHint: contact });
+  // One invitation per contact — the backend delivers each (email or SMS).
+  // Names aren't collected here on purpose: people name themselves when
+  // they join.
+  const sendInvites = async (contacts) => {
+    setCreating(true);
+    setError('');
+    setLastCreated(null);
+    const results = await Promise.allSettled(
+      contacts.map((c) =>
+        api.createInvitation(birthId, {
+          emailHint: c.kind === 'email' ? c.value : undefined,
+          phoneHint: c.kind !== 'email' ? c.value : undefined,
+        }),
+      ),
+    );
+    const sent = results.filter((r) => r.status === 'fulfilled').length;
+    const failed = results.length - sent;
+    setSentSummary({ sent, failed });
+    if (failed > 0) {
+      setError('Some invites could not be sent — check the list below.');
+    } else {
+      setShowForm(false);
+    }
+    await refresh();
+    setCreating(false);
+    return failed === 0;
   };
 
   const handleRevoke = async (invitationId) => {
@@ -139,49 +152,31 @@ export default function InviteManager({ birthId }) {
       )}
 
       {showForm ? (
-        <form onSubmit={handleFormSubmit} className="mb-4 space-y-3 p-3 rounded-lg border" style={{ borderColor: 'var(--t-soft-ring)' }}>
-          <input
-            type="text"
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            placeholder="Their name (e.g. Aunt Linda)"
-            className="w-full px-3 py-2 rounded-lg border text-sm t-ink"
-            style={{ borderColor: 'var(--t-soft-ring)' }}
-          />
-          <IdentifierInput
-            value={contact}
-            onChange={setContact}
-            hintAction="the invite"
-            hintClassName="mt-1 text-xs t-muted"
-            placeholder="Their email or phone"
-            className="w-full px-3 py-2 rounded-lg border text-sm t-ink"
-            style={{ borderColor: 'var(--t-soft-ring)' }}
-          />
-          <div className="flex gap-2">
-            <button
-              type="submit"
-              disabled={creating}
-              className="px-4 py-2 text-sm rounded-lg t-btn-accent font-medium disabled:opacity-50"
-            >
-              {creating ? 'Sending…' : 'Send invite'}
-            </button>
-            <button
-              type="button"
-              onClick={() => setShowForm(false)}
-              className="px-4 py-2 text-sm t-muted hover:opacity-80"
-            >
-              Cancel
-            </button>
-          </div>
-        </form>
+        <ContactPillForm
+          creating={creating}
+          onSend={sendInvites}
+          onCancel={() => setShowForm(false)}
+        />
       ) : (
         <button
           type="button"
-          onClick={() => setShowForm(true)}
+          onClick={() => { setShowForm(true); setSentSummary(null); }}
           className="mb-4 text-xs t-muted hover:opacity-80"
         >
-          Want us to send it for someone? Invite by name →
+          Want us to send it? Paste emails or phone numbers →
         </button>
+      )}
+
+      {sentSummary && (
+        <div
+          className="mb-4 p-3 rounded-lg border text-sm"
+          style={{ backgroundColor: 'var(--t-soft-bg)', borderColor: 'var(--t-soft-ring)', color: 'var(--t-soft-text)' }}
+        >
+          {sentSummary.sent > 0
+            ? `Invites sent to ${sentSummary.sent} ${sentSummary.sent === 1 ? 'person' : 'people'} 🤍`
+            : 'No invites went out.'}
+          {sentSummary.failed > 0 && ` (${sentSummary.failed} failed)`}
+        </div>
       )}
 
       {lastCreated && (
@@ -233,6 +228,180 @@ export default function InviteManager({ birthId }) {
         </ul>
       )}
     </section>
+  );
+}
+
+// Paste-friendly contact entry: emails and phones become removable pills.
+// Comma / tab / newline / Enter always commit a pill; space commits only
+// when the buffer is already a valid contact (so "555 123 4567" can still
+// be typed). Pastes are split the same way. Invalid tokens become red
+// pills — visible, removable, never sent.
+function ContactPillForm({ creating, onSend, onCancel }) {
+  const [pills, setPills] = useState([]);
+  const [buffer, setBuffer] = useState('');
+  const inputRef = useRef(null);
+
+  const tokenize = (raw) => {
+    const text = raw.trim();
+    if (!text) return null;
+    const norm = normalizeIdentifier(text);
+    // normalizeIdentifier treats any "@" as an email, so shape-check
+    // emails here; phones are already validated by digit count.
+    const valid =
+      norm.kind === 'phone' || (norm.kind === 'email' && isValidEmail(text));
+    return { raw: text, value: norm.value, kind: norm.kind, valid };
+  };
+
+  const commitBuffer = () => {
+    const pill = tokenize(buffer);
+    if (pill) setPills((prev) => [...prev, pill]);
+    setBuffer('');
+    return Boolean(pill);
+  };
+
+  const handleKeyDown = (e) => {
+    if (e.key === 'Enter' || e.key === 'Tab' || e.key === ',') {
+      if (buffer.trim()) {
+        e.preventDefault();
+        commitBuffer();
+      } else if (e.key !== 'Tab') {
+        e.preventDefault();
+      }
+      return;
+    }
+    if (e.key === ' ') {
+      // Space commits only a complete contact — otherwise it's part of a
+      // phone number still being typed.
+      const pill = tokenize(buffer);
+      if (pill?.valid) {
+        e.preventDefault();
+        commitBuffer();
+      }
+      return;
+    }
+    if (e.key === 'Backspace' && buffer === '' && pills.length > 0) {
+      e.preventDefault();
+      setPills((prev) => prev.slice(0, -1));
+    }
+  };
+
+  const handlePaste = (e) => {
+    const text = e.clipboardData.getData('text');
+    if (!text) return;
+    e.preventDefault();
+    // Split on hard delimiters first; then split space-separated fragments
+    // unless the whole fragment is a single valid contact (a phone with
+    // spaces stays whole).
+    const fragments = (buffer + text)
+      .split(/[,\n\t;]+/)
+      .flatMap((frag) => {
+        const trimmed = frag.trim();
+        if (!trimmed) return [];
+        const whole = tokenize(trimmed);
+        if (whole?.valid) return [trimmed];
+        return trimmed.split(/\s+/);
+      });
+    const next = fragments.map(tokenize).filter(Boolean);
+    setPills((prev) => [...prev, ...next]);
+    setBuffer('');
+  };
+
+  const removePill = (idx) => setPills((prev) => prev.filter((_, i) => i !== idx));
+
+  const validPills = pills.filter((p) => p.valid);
+  const hasInvalid = pills.some((p) => !p.valid);
+
+  const send = async () => {
+    // Whatever's still in the buffer counts too.
+    let all = pills;
+    const tail = tokenize(buffer);
+    if (tail) {
+      all = [...pills, tail];
+      setPills(all);
+      setBuffer('');
+    }
+    const valid = all.filter((p) => p.valid);
+    if (valid.length === 0) return;
+    const ok = await onSend(valid);
+    if (ok) setPills([]);
+  };
+
+  return (
+    <div className="mb-4 space-y-3 p-3 rounded-lg border" style={{ borderColor: 'var(--t-soft-ring)' }}>
+      <div
+        className="flex flex-wrap items-center gap-1.5 px-2 py-1.5 rounded-lg border cursor-text"
+        style={{ borderColor: 'var(--t-soft-ring)', backgroundColor: 'var(--t-card-bg)' }}
+        onClick={() => inputRef.current?.focus()}
+      >
+        {pills.map((p, i) => (
+          <span
+            key={`${p.raw}-${i}`}
+            className={`inline-flex items-center gap-1 pl-2.5 pr-1.5 py-1 rounded-full text-xs font-medium ${
+              p.valid
+                ? ''
+                : 'bg-red-100 dark:bg-red-900/40 text-red-700 dark:text-red-300'
+            }`}
+            style={p.valid
+              ? { backgroundColor: 'var(--t-soft-bg)', color: 'var(--t-soft-text)' }
+              : undefined}
+            title={p.valid ? p.value : 'Not a valid email or phone'}
+          >
+            {p.raw}
+            <button
+              type="button"
+              onClick={() => removePill(i)}
+              className="p-0.5 rounded-full hover:opacity-70"
+              aria-label={`Remove ${p.raw}`}
+            >
+              <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+          </span>
+        ))}
+        <input
+          ref={inputRef}
+          type="text"
+          value={buffer}
+          onChange={(e) => setBuffer(e.target.value)}
+          onKeyDown={handleKeyDown}
+          onPaste={handlePaste}
+          onBlur={() => buffer.trim() && commitBuffer()}
+          autoFocus
+          autoCapitalize="none"
+          autoCorrect="off"
+          placeholder={pills.length === 0 ? 'Paste or type emails and phone numbers' : ''}
+          className="flex-1 min-w-[12ch] px-1 py-1 text-sm bg-transparent t-ink focus:outline-none"
+        />
+      </div>
+      {hasInvalid && (
+        <p className="text-xs text-red-500">
+          Red entries aren&rsquo;t valid emails or phone numbers — they won&rsquo;t be sent.
+        </p>
+      )}
+      <div className="flex items-center gap-2">
+        <button
+          type="button"
+          onClick={send}
+          disabled={creating || (validPills.length === 0 && !tokenize(buffer)?.valid)}
+          className="px-4 py-2 text-sm rounded-lg t-btn-accent font-medium disabled:opacity-50"
+        >
+          {creating
+            ? 'Sending…'
+            : `Send ${validPills.length > 1 ? `${validPills.length} invites` : 'invite'}`}
+        </button>
+        <button
+          type="button"
+          onClick={onCancel}
+          className="px-4 py-2 text-sm t-muted hover:opacity-80"
+        >
+          Cancel
+        </button>
+        <p className="ml-auto text-xs t-faint">
+          They&rsquo;ll add their own name when they join.
+        </p>
+      </div>
+    </div>
   );
 }
 
