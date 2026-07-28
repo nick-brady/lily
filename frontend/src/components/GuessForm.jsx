@@ -192,7 +192,7 @@ export default function GuessForm({
                     type="date"
                     value={dateGuess}
                     onChange={(e) => setDateGuess(e.target.value)}
-                    className="px-2 py-2 rounded-lg border text-sm bg-white dark:bg-gray-800 t-ink"
+                    className="t-date-input px-2 py-2 rounded-lg border text-sm bg-white dark:bg-gray-800 t-ink"
                     style={{ borderColor: 'var(--t-soft-ring)' }}
                   />
                 </div>
