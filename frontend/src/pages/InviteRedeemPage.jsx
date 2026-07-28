@@ -352,6 +352,7 @@ export default function InviteRedeemPage() {
               mine={null}
               status={poolBirth.status}
               genderEnabled={poolBirth.gender_pool_enabled}
+              dueDate={poolBirth.due_date}
               onSaved={goToPage}
               onSkip={goToPage}
               submitLabel="Lock in my guess"

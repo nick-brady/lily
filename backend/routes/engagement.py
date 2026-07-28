@@ -515,6 +515,7 @@ def _guess_board(db: Session, birth: Birth, current_user_id) -> GuessBoardOut:
         settled=settled,
         edits_locked=guess_edits_locked(birth),
         gender_pool_enabled=birth.gender_pool_enabled,
+        due_date=birth.due_date,
     )
 
 

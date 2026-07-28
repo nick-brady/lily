@@ -84,6 +84,7 @@ export default function Predictions({ birthId, slug, status, isParent = false, o
             scope={scope}
             status={status}
             genderEnabled={genderEnabled}
+            dueDate={board?.due_date}
             onSaved={load}
           />
         </div>
@@ -110,7 +111,7 @@ export default function Predictions({ birthId, slug, status, isParent = false, o
 }
 
 // The "your guess is in — change it" collapse around the shared form.
-function PoolFormToggle({ mine, scope, status, genderEnabled, onSaved }) {
+function PoolFormToggle({ mine, scope, status, genderEnabled, dueDate, onSaved }) {
   const [open, setOpen] = useState(!mine);
   if (!open) {
     return (
@@ -129,6 +130,7 @@ function PoolFormToggle({ mine, scope, status, genderEnabled, onSaved }) {
       scope={scope}
       status={status}
       genderEnabled={genderEnabled}
+      dueDate={dueDate}
       onSaved={async () => {
         setOpen(false);
         await onSaved();

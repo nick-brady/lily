@@ -310,6 +310,7 @@ export default function PublicBirthPage() {
                   birthId={canManageThisBirth ? birth.id : undefined}
                   status={birth.status}
                   isParent={canManageThisBirth}
+                  themeStyle={themeVars(theme, effectiveDark)}
                 />
               )}
             </div>

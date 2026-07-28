@@ -18,6 +18,7 @@ export default function GuessForm({
   mine,
   status,
   genderEnabled = false,
+  dueDate = null,
   onSaved,
   onSkip,
   submitLabel,
@@ -34,7 +35,9 @@ export default function GuessForm({
       : '',
   );
   const [inches, setInches] = useState(mine?.length_in != null ? String(mine.length_in) : '');
-  const [dateGuess, setDateGuess] = useState(mine?.date_guess || '');
+  // Start the arrival-day guess at the official due date — most people
+  // nudge from there rather than pick a date cold.
+  const [dateGuess, setDateGuess] = useState(mine?.date_guess || dueDate || '');
   const [sexGuess, setSexGuess] = useState(mine?.sex_guess || null);
   const [saving, setSaving] = useState(false);
   const [needName, setNeedName] = useState(false);
@@ -189,7 +192,7 @@ export default function GuessForm({
                     type="date"
                     value={dateGuess}
                     onChange={(e) => setDateGuess(e.target.value)}
-                    className="px-2 py-2 rounded-lg border text-sm bg-white dark:bg-gray-800 t-ink"
+                    className="t-date-input px-2 py-2 rounded-lg border text-sm bg-white dark:bg-gray-800 t-ink"
                     style={{ borderColor: 'var(--t-soft-ring)' }}
                   />
                 </div>
