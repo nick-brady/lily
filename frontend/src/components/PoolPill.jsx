@@ -35,19 +35,19 @@ export default function PoolPill({ slug, birthId, status, isParent }) {
   // Nothing to say: born, nobody ever guessed, and no reveal coming.
   if (born && guesses.length === 0) return null;
 
+  // Before you've guessed, "the pool" means nothing — say what the game
+  // is. After you're in (or it's over), shorthand is earned.
   let label;
   if (settled) {
-    label = '🏆 pool results';
+    label = '🏆 see who guessed best';
   } else if (born) {
-    label = `🎈 ${guesses.length} sealed`;
+    label = `🎈 ${guesses.length} ${guesses.length === 1 ? 'guess' : 'guesses'} sealed`;
   } else if (lastCall) {
-    label = '🎈 last call!';
+    label = '🎈 last call — guess before the baby comes!';
   } else if (mine) {
     label = `🎈 you're in · ${guesses.length}`;
-  } else if (guesses.length > 0) {
-    label = `🎈 ${guesses.length} in — add yours`;
   } else {
-    label = '🎈 start the pool';
+    label = "🎈 guess the baby's size & arrival day";
   }
 
   return (
