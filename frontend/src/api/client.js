@@ -527,6 +527,11 @@ export const api = {
     return jsonOrThrow(res);
   },
 
+  async deleteBirth(birthId) {
+    const res = await fetch(`${API_URL}/birth/${birthId}`, { method: 'DELETE' });
+    return jsonOrThrow(res);
+  },
+
   async listGuesses({ birthId, slug }) {
     const url = birthId
       ? `${API_URL}/birth/${birthId}/guesses`

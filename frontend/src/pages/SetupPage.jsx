@@ -4,6 +4,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { api } from '../api/client';
 import { THEMES, getTheme, themeVars } from '../utils/themes';
 import ThemeCard from '../components/ThemeCard';
+import GuessForm from '../components/GuessForm';
 
 function toSlug(name) {
   return name
@@ -29,6 +30,12 @@ export default function SetupPage() {
   const isAddingAnother = searchParams.get('new') === '1';
 
   const [step, setStep] = useState('name');
+  // Set once the birth exists — from here the flow is post-create (guess,
+  // invite) and the "existing users go home" redirect must stand down.
+  const [createdBirth, setCreatedBirth] = useState(null);
+  // Whether this run actually passed through the auth step — keeps the
+  // auth progress dot from vanishing mid-flow once sign-in succeeds.
+  const [wentToAuth, setWentToAuth] = useState(false);
   const [babyName, setBabyName] = useState('');
   const [dueDate, setDueDate] = useState('');
   const [slug, setSlug] = useState('');
@@ -62,9 +69,12 @@ export default function SetupPage() {
     if (loading) return;
     if (!isAuthenticated) return;
     if (isAddingAnother) return;
+    // The refreshed `me` now includes the birth we just made — that's the
+    // onboarding steps ahead, not an "existing user" to bounce home.
+    if (createdBirth) return;
     const hasBirth = me?.families?.some((f) => f.births?.length > 0);
     if (hasBirth) navigate('/account', { replace: true });
-  }, [isAuthenticated, loading, me, navigate, isAddingAnother]);
+  }, [isAuthenticated, loading, me, navigate, isAddingAnother, createdBirth]);
 
   // Debounced slug availability check
   useEffect(() => {
@@ -100,16 +110,22 @@ export default function SetupPage() {
         const birth = await api.createBirth({
           babyName, slug, theme: selectedTheme, familyId: familyIdToJoin, dueDate,
         });
+        // Mark the post-create flow BEFORE refreshing `me` — once `me`
+        // carries the new birth, the redirect effect would bounce us to
+        // /account if createdBirth weren't already set.
+        setCreatedBirth(birth);
+        setStep('invite');
+        setAuthLoading(false);
         // The birth page derives parent tooling from `me`; refresh it so
         // we land there already wearing the parent hat.
         await refreshMe();
-        navigate(`/b/${birth.slug}`, { replace: true });
       } catch (err) {
         setError(err.message || 'Something went wrong');
         setAuthLoading(false);
       }
       return;
     }
+    setWentToAuth(true);
     setStep('auth');
     setError('');
   };
@@ -139,10 +155,12 @@ export default function SetupPage() {
       const birth = await api.createBirth({
         babyName, slug, theme: selectedTheme, familyId: familyIdToJoin, dueDate,
       });
+      // Mark the post-create flow before refreshing `me` (see goToAuth).
+      setCreatedBirth(birth);
+      setStep('invite');
       // completeSignIn fetched /me before the birth existed; refresh so
       // the birth page recognizes us as its parent on arrival.
       await refreshMe();
-      navigate(`/b/${birth.slug}`, { replace: true });
     } catch (err) {
       setError(err.message || 'Something went wrong');
     } finally { setAuthLoading(false); }
@@ -160,10 +178,14 @@ export default function SetupPage() {
         Arrival Story
       </div>
 
-      {/* Progress dots */}
+      {/* Progress dots — auth only appears for signed-out runs */}
       <div className="flex items-center gap-2 mb-8">
-        <div className={`h-2 w-2 rounded-full transition-colors ${step === 'name' ? 'bg-primary-500' : 'bg-primary-200 dark:bg-primary-700'}`} />
-        <div className={`h-2 w-2 rounded-full transition-colors ${step === 'auth' ? 'bg-primary-500' : 'bg-primary-200 dark:bg-primary-700'}`} />
+        {['name', ...(wentToAuth || !isAuthenticated ? ['auth'] : []), 'invite', 'guess'].map((s) => (
+          <div
+            key={s}
+            className={`h-2 w-2 rounded-full transition-colors ${step === s ? 'bg-primary-500' : 'bg-primary-200 dark:bg-primary-700'}`}
+          />
+        ))}
       </div>
 
       <div className="w-full max-w-md">
@@ -448,7 +470,171 @@ export default function SetupPage() {
             )}
           </div>
         )}
+
+        {/* ── Step 3: The page is live — share it ── */}
+        {step === 'invite' && createdBirth && (
+          <InviteStep
+            birth={createdBirth}
+            theme={theme}
+            displayName={displayName}
+            onDone={() => setStep('guess')}
+          />
+        )}
+
+        {/* ── Step 4: The closer — the parents' own pool guess ── */}
+        {step === 'guess' && createdBirth && (
+          <div className="space-y-6">
+            <div className="text-center">
+              <h1 className="text-xl font-semibold text-gray-800 dark:text-white mb-1">
+                One more thing — the family pool 🎈
+              </h1>
+              <p className="text-sm text-gray-500 dark:text-gray-400">
+                How big will {displayName || 'the baby'} be, and when? Everyone's
+                guess stays sealed until the arrival — closest wins bragging
+                rights.
+              </p>
+            </div>
+            <GuessForm
+              scope={{ slug: createdBirth.slug }}
+              mine={null}
+              status={createdBirth.status}
+              genderEnabled={createdBirth.gender_pool_enabled}
+              dueDate={createdBirth.due_date}
+              onSaved={() => navigate(`/b/${createdBirth.slug}`, { replace: true })}
+              onSkip={() => navigate(`/b/${createdBirth.slug}`, { replace: true })}
+              submitLabel="Lock in my guess"
+            />
+          </div>
+        )}
       </div>
+    </div>
+  );
+}
+
+// The celebration step: the page they just made, in their theme, plus the
+// fastest path to the family group text — one tap → a shareable link. The
+// full invite tooling (contact sending, revoking, viewer management) lives
+// in Birth settings.
+function InviteStep({ birth, theme, displayName, onDone }) {
+  const [creating, setCreating] = useState(false);
+  const [invite, setInvite] = useState(null);
+  const [copied, setCopied] = useState(false);
+  const [error, setError] = useState('');
+
+  const createLink = async () => {
+    setCreating(true);
+    setError('');
+    try {
+      setInvite(await api.createInvitation(birth.id, {}));
+    } catch (err) {
+      setError(err.message || 'Could not create the link');
+    } finally {
+      setCreating(false);
+    }
+  };
+
+  const copy = async () => {
+    try {
+      await navigator.clipboard.writeText(invite.invite_url);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      // Clipboard unavailable on insecure origins — same fallback as
+      // InviteManager.
+      window.prompt('Copy this link', invite.invite_url);
+    }
+  };
+
+  return (
+    <div className="space-y-6">
+      <div className="text-center">
+        <h1 className="text-xl font-semibold text-gray-800 dark:text-white mb-1">
+          {displayName ? `${displayName}'s page is live 🎉` : 'Your page is live 🎉'}
+        </h1>
+        <p className="text-sm text-gray-500 dark:text-gray-400">
+          Now share it — grab a link and drop it in the family group text.
+          Anyone with it can follow along and join the pool.
+        </p>
+      </div>
+
+      <PagePreview
+        theme={theme}
+        displayName={displayName || birth.child_name || 'Baby'}
+      />
+
+      {error && (
+        <div className="p-3 rounded-lg bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-300 text-sm">
+          {error}
+        </div>
+      )}
+
+      {invite ? (
+        <div
+          className="p-3 rounded-xl border border-gray-300 dark:border-gray-600
+                     bg-white dark:bg-gray-800 space-y-2"
+        >
+          <p className="text-sm font-medium text-gray-800 dark:text-gray-100">
+            Your invite link is ready
+          </p>
+          <div className="flex gap-2">
+            <input
+              readOnly
+              value={invite.invite_url}
+              onFocus={(e) => e.target.select()}
+              className="flex-1 min-w-0 px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600
+                         bg-gray-50 dark:bg-gray-900 text-sm text-gray-900 dark:text-white"
+            />
+            <button
+              type="button"
+              onClick={copy}
+              className="px-3 py-2 rounded-lg text-sm font-medium text-white"
+              style={{ backgroundColor: theme.modes.light.accent }}
+            >
+              {copied ? 'Copied' : 'Copy'}
+            </button>
+          </div>
+        </div>
+      ) : (
+        <button
+          type="button"
+          onClick={createLink}
+          disabled={creating}
+          className="w-full py-3.5 rounded-xl text-white font-medium transition-colors
+                     disabled:opacity-50 disabled:cursor-not-allowed"
+          style={{ backgroundColor: theme.modes.light.accent }}
+        >
+          {creating ? 'Creating…' : 'Create invite link'}
+        </button>
+      )}
+
+      {/* Forward motion on the right; the quiet escape hatch only before
+          a link exists (once it does, Next is the natural continue). */}
+      <div className="flex items-center justify-end">
+        {invite ? (
+          <button
+            type="button"
+            onClick={onDone}
+            className="px-5 py-2.5 rounded-xl text-white font-medium transition-colors"
+            style={{
+              background: `linear-gradient(135deg, ${theme.modes.light.accent}, ${theme.modes.light.accentHover})`,
+            }}
+          >
+            Next →
+          </button>
+        ) : (
+          <button
+            type="button"
+            onClick={onDone}
+            className="text-sm text-gray-500 dark:text-gray-400
+                       hover:text-primary-600 dark:hover:text-primary-400"
+          >
+            Skip for now
+          </button>
+        )}
+      </div>
+      <p className="text-xs text-gray-400 dark:text-gray-500 text-center">
+        You can invite people anytime from Birth settings.
+      </p>
     </div>
   );
 }

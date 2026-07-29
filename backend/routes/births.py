@@ -2,10 +2,15 @@
 the authed (`/birth/{id}`) and public (`/b/{slug}`) surfaces."""
 from __future__ import annotations
 
+import logging
 import re
+from datetime import datetime, timezone
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Response
 from sqlalchemy.orm import Session
+
+import storage
+from account_deletion import erase_birth
 
 from auth import get_current_user
 from db import get_db
@@ -28,6 +33,8 @@ from schemas import (
     SlugAvailableOut,
     TimelineEventOut,
 )
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -137,6 +144,41 @@ def update_birth(
     db.commit()
     db.refresh(access.birth)
     return BirthOut.model_validate(access.birth)
+
+
+@router.delete("/birth/{birth_id}", status_code=204)
+def delete_birth(
+    access: BirthAccess = Depends(require_parent_access),
+    db: Session = Depends(get_db),
+) -> Response:
+    """The settings danger zone: erase this page and everything on it.
+
+    Owner-only — a co-parent shouldn't be able to take the page away from
+    the person who made it. Reuses the account-deletion erase (same
+    commerce guard: births with gift orders soft-delete + scrub so Stripe
+    payment records survive), and follows the same commit-before-S3
+    ordering — the failure mode is orphaned-but-logged S3 objects, never
+    DB rows pointing at deleted files."""
+    if access.role is not FamilyRole.owner:
+        raise HTTPException(
+            status_code=403, detail="Only the page owner can delete it"
+        )
+    # After a hard delete + commit the ORM object is unloadable — grab the
+    # id while the row still exists.
+    birth_id = access.birth.id
+    now = datetime.now(timezone.utc)
+    s3_keys, _hard_deleted = erase_birth(db, access.birth, now)
+    db.commit()
+
+    failed = storage.delete_objects(s3_keys)
+    if failed:
+        logger.error(
+            "birth-deletion: %d S3 objects not deleted for birth %s: %s",
+            len(failed),
+            birth_id,
+            failed,
+        )
+    return Response(status_code=204)
 
 
 @router.get("/birth/{birth_id}/timeline", response_model=list[TimelineEventOut])

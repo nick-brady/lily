@@ -158,89 +158,105 @@ def split_renderings(
     return soft, hard, keys
 
 
+def erase_birth(db: Session, birth: Birth, now: datetime) -> tuple[list[str], bool]:
+    """Erase one birth's content: timeline, comments/reactions, guesses,
+    invitations, media rows, gift renderings. Returns (S3 keys to delete
+    after commit, whether the birth row itself was hard-deleted — births
+    with commerce rows are soft-deleted + scrubbed so Stripe payment
+    records survive). Uses Core deletes so DB-level ON DELETE CASCADE
+    fires (the ORM has no cascade config for these).
+
+    Shared by account deletion (sole-parent erase) and the parent-facing
+    delete-this-page route."""
+    s3_keys: list[str] = []
+    assets = list(
+        db.scalars(
+            select(MediaAsset).where(MediaAsset.birth_id == birth.id)
+        ).all()
+    )
+    s3_keys += collect_media_keys(assets)
+
+    renderings = list(
+        db.scalars(
+            select(GiftRendering).where(GiftRendering.birth_id == birth.id)
+        ).all()
+    )
+    rendering_ids = [r.id for r in renderings]
+    referenced_ids = set()
+    mockup_rows = []
+    if rendering_ids:
+        referenced_ids = set(
+            db.scalars(
+                select(GiftOrder.gift_rendering_id).where(
+                    GiftOrder.gift_rendering_id.in_(rendering_ids)
+                )
+            ).all()
+        )
+        mockup_rows = list(
+            db.scalars(
+                select(GiftRenderingMockup).where(
+                    GiftRenderingMockup.gift_rendering_id.in_(rendering_ids)
+                )
+            ).all()
+        )
+    s3_keys += [m.mockup_s3_key for m in mockup_rows if m.mockup_s3_key]
+    soft, hard, rendering_keys = split_renderings(renderings, referenced_ids)
+    s3_keys += rendering_keys
+    if mockup_rows:
+        db.execute(
+            delete(GiftRenderingMockup).where(
+                GiftRenderingMockup.gift_rendering_id.in_(rendering_ids)
+            )
+        )
+    for rendering in soft:
+        rendering.deleted_at = now
+        rendering.artwork_s3_key = None
+        rendering.mockup_s3_key = None
+    if hard:
+        db.execute(
+            delete(GiftRendering).where(
+                GiftRendering.id.in_([r.id for r in hard])
+            )
+        )
+
+    # Content: leaves before parents. Comments/reactions CASCADE off
+    # events; redemptions CASCADE off invitations.
+    db.execute(delete(MediaAsset).where(MediaAsset.birth_id == birth.id))
+    db.execute(delete(TimelineEvent).where(TimelineEvent.birth_id == birth.id))
+    db.execute(delete(BirthGuess).where(BirthGuess.birth_id == birth.id))
+    db.execute(
+        delete(ViewerInvitation).where(ViewerInvitation.birth_id == birth.id)
+    )
+
+    has_commerce = db.scalar(
+        select(exists().where(GiftOrder.birth_id == birth.id))
+    )
+    if has_commerce:
+        # Hard delete would CASCADE away Stripe payment records; keep
+        # the shell, scrub everything personal, free the slug.
+        birth.deleted_at = now
+        birth.child_name = None
+        birth.child_dob = None
+        birth.child_weight_lbs = None
+        birth.child_length_in = None
+        birth.shipping_address = None
+        birth.slug = f"deleted-{birth.id}"
+        return s3_keys, False
+    db.execute(delete(Birth).where(Birth.id == birth.id))
+    return s3_keys, True
+
+
 def _erase_family(db: Session, family_id: uuid.UUID, now: datetime) -> list[str]:
     """Erase every birth's content in a sole-parent family; returns S3 keys
-    to delete after commit. Uses Core deletes so DB-level ON DELETE
-    CASCADE fires (the ORM has no cascade config for these)."""
+    to delete after commit."""
     s3_keys: list[str] = []
     births = list(db.scalars(select(Birth).where(Birth.family_id == family_id)).all())
     all_hard = True
     for birth in births:
-        assets = list(
-            db.scalars(
-                select(MediaAsset).where(MediaAsset.birth_id == birth.id)
-            ).all()
-        )
-        s3_keys += collect_media_keys(assets)
-
-        renderings = list(
-            db.scalars(
-                select(GiftRendering).where(GiftRendering.birth_id == birth.id)
-            ).all()
-        )
-        rendering_ids = [r.id for r in renderings]
-        referenced_ids = set()
-        mockup_rows = []
-        if rendering_ids:
-            referenced_ids = set(
-                db.scalars(
-                    select(GiftOrder.gift_rendering_id).where(
-                        GiftOrder.gift_rendering_id.in_(rendering_ids)
-                    )
-                ).all()
-            )
-            mockup_rows = list(
-                db.scalars(
-                    select(GiftRenderingMockup).where(
-                        GiftRenderingMockup.gift_rendering_id.in_(rendering_ids)
-                    )
-                ).all()
-            )
-        s3_keys += [m.mockup_s3_key for m in mockup_rows if m.mockup_s3_key]
-        soft, hard, rendering_keys = split_renderings(renderings, referenced_ids)
-        s3_keys += rendering_keys
-        if mockup_rows:
-            db.execute(
-                delete(GiftRenderingMockup).where(
-                    GiftRenderingMockup.gift_rendering_id.in_(rendering_ids)
-                )
-            )
-        for rendering in soft:
-            rendering.deleted_at = now
-            rendering.artwork_s3_key = None
-            rendering.mockup_s3_key = None
-        if hard:
-            db.execute(
-                delete(GiftRendering).where(
-                    GiftRendering.id.in_([r.id for r in hard])
-                )
-            )
-
-        # Content: leaves before parents. Comments/reactions CASCADE off
-        # events; redemptions CASCADE off invitations.
-        db.execute(delete(MediaAsset).where(MediaAsset.birth_id == birth.id))
-        db.execute(delete(TimelineEvent).where(TimelineEvent.birth_id == birth.id))
-        db.execute(delete(BirthGuess).where(BirthGuess.birth_id == birth.id))
-        db.execute(
-            delete(ViewerInvitation).where(ViewerInvitation.birth_id == birth.id)
-        )
-
-        has_commerce = db.scalar(
-            select(exists().where(GiftOrder.birth_id == birth.id))
-        )
-        if has_commerce:
-            # Hard delete would CASCADE away Stripe payment records; keep
-            # the shell, scrub everything personal, free the slug.
-            birth.deleted_at = now
-            birth.child_name = None
-            birth.child_dob = None
-            birth.child_weight_lbs = None
-            birth.child_length_in = None
-            birth.shipping_address = None
-            birth.slug = f"deleted-{birth.id}"
+        birth_keys, hard_deleted = erase_birth(db, birth, now)
+        s3_keys += birth_keys
+        if not hard_deleted:
             all_hard = False
-        else:
-            db.execute(delete(Birth).where(Birth.id == birth.id))
 
     if all_hard:
         db.execute(delete(Family).where(Family.id == family_id))  # memberships CASCADE

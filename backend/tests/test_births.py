@@ -119,3 +119,46 @@ def test_family_id_attaches_existing_family_for_parent(monkeypatch, role):
     # joining an existing family creates nothing new
     assert db.added == []
     assert db.flushes == 0
+
+
+# ── delete_birth: the settings danger zone ──
+
+
+def test_delete_birth_rejects_co_parent():
+    from routes import births as births_routes
+
+    access = SimpleNamespace(
+        role=FamilyRole.co_parent, birth=SimpleNamespace(id=uuid.uuid4())
+    )
+
+    with pytest.raises(HTTPException) as exc_info:
+        births_routes.delete_birth(access=access, db=SimpleNamespace())
+    assert exc_info.value.status_code == 403
+
+
+def test_delete_birth_erases_commits_then_clears_s3(monkeypatch):
+    """The commit-before-external ordering is the contract: rows go first,
+    S3 objects only after the transaction holds."""
+    from routes import births as births_routes
+
+    birth = SimpleNamespace(id=uuid.uuid4())
+    access = SimpleNamespace(role=FamilyRole.owner, birth=birth)
+    calls: list = []
+
+    def fake_erase(db, b, now):
+        assert b is birth
+        calls.append("erase")
+        return ["key-a", "key-b"], True
+
+    monkeypatch.setattr(births_routes, "erase_birth", fake_erase)
+    monkeypatch.setattr(
+        births_routes.storage,
+        "delete_objects",
+        lambda keys: calls.append(("s3", tuple(keys))) or [],
+    )
+    db = SimpleNamespace(commit=lambda: calls.append("commit"))
+
+    response = births_routes.delete_birth(access=access, db=db)
+
+    assert response.status_code == 204
+    assert calls == ["erase", "commit", ("s3", ("key-a", "key-b"))]
