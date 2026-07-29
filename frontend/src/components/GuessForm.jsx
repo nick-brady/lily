@@ -228,9 +228,9 @@ export default function GuessForm({
             </div>
           )}
 
-          {/* Wizard convention: forward motion on the right, the escape
-              hatch quiet and to its left. */}
-          <div className={`flex items-center gap-3 ${onSkip ? 'justify-end' : ''}`}>
+          {/* Wizard convention: forward motion on the right of the pair,
+              the escape hatch quiet to its left — centered in the card. */}
+          <div className={`flex items-center gap-3 ${onSkip ? 'justify-center' : ''}`}>
             {onSkip && (
               <button
                 type="button"
