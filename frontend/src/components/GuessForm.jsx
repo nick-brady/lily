@@ -228,7 +228,18 @@ export default function GuessForm({
             </div>
           )}
 
-          <div className="flex items-center gap-3">
+          {/* Wizard convention: forward motion on the right, the escape
+              hatch quiet and to its left. */}
+          <div className={`flex items-center gap-3 ${onSkip ? 'justify-end' : ''}`}>
+            {onSkip && (
+              <button
+                type="button"
+                onClick={onSkip}
+                className="text-sm t-muted hover:opacity-80"
+              >
+                Skip for now
+              </button>
+            )}
             <button
               type="button"
               onClick={submit}
@@ -239,15 +250,6 @@ export default function GuessForm({
               {submitLabel
                 || (mine ? 'Update my guess' : isAuthenticated ? 'Add my guess' : 'Sign in to guess')}
             </button>
-            {onSkip && (
-              <button
-                type="button"
-                onClick={onSkip}
-                className="text-sm t-muted hover:opacity-80"
-              >
-                Skip for now
-              </button>
-            )}
           </div>
           {formError && <p className="text-xs text-red-500">{formError}</p>}
         </>
