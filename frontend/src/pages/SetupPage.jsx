@@ -114,7 +114,7 @@ export default function SetupPage() {
         // carries the new birth, the redirect effect would bounce us to
         // /account if createdBirth weren't already set.
         setCreatedBirth(birth);
-        setStep('guess');
+        setStep('invite');
         setAuthLoading(false);
         // The birth page derives parent tooling from `me`; refresh it so
         // we land there already wearing the parent hat.
@@ -157,7 +157,7 @@ export default function SetupPage() {
       });
       // Mark the post-create flow before refreshing `me` (see goToAuth).
       setCreatedBirth(birth);
-      setStep('guess');
+      setStep('invite');
       // completeSignIn fetched /me before the birth existed; refresh so
       // the birth page recognizes us as its parent on arrival.
       await refreshMe();
@@ -180,7 +180,7 @@ export default function SetupPage() {
 
       {/* Progress dots — auth only appears for signed-out runs */}
       <div className="flex items-center gap-2 mb-8">
-        {['name', ...(wentToAuth || !isAuthenticated ? ['auth'] : []), 'guess', 'invite'].map((s) => (
+        {['name', ...(wentToAuth || !isAuthenticated ? ['auth'] : []), 'invite', 'guess'].map((s) => (
           <div
             key={s}
             className={`h-2 w-2 rounded-full transition-colors ${step === s ? 'bg-primary-500' : 'bg-primary-200 dark:bg-primary-700'}`}
@@ -471,17 +471,27 @@ export default function SetupPage() {
           </div>
         )}
 
-        {/* ── Step 3: The parents' own pool guess ── */}
+        {/* ── Step 3: The page is live — share it ── */}
+        {step === 'invite' && createdBirth && (
+          <InviteStep
+            birth={createdBirth}
+            theme={theme}
+            displayName={displayName}
+            onDone={() => setStep('guess')}
+          />
+        )}
+
+        {/* ── Step 4: The closer — the parents' own pool guess ── */}
         {step === 'guess' && createdBirth && (
           <div className="space-y-6">
             <div className="text-center">
               <h1 className="text-xl font-semibold text-gray-800 dark:text-white mb-1">
-                {displayName ? `${displayName}'s page is live 🎉` : 'Your page is live 🎉'}
+                One more thing — the family pool 🎈
               </h1>
               <p className="text-sm text-gray-500 dark:text-gray-400">
-                Start the family pool with your own guess — how big will{' '}
-                {displayName || 'the baby'} be, and when? Everyone's guess stays
-                sealed until the arrival.
+                How big will {displayName || 'the baby'} be, and when? Everyone's
+                guess stays sealed until the arrival — closest wins bragging
+                rights.
               </p>
             </div>
             <GuessForm
@@ -490,33 +500,21 @@ export default function SetupPage() {
               status={createdBirth.status}
               genderEnabled={createdBirth.gender_pool_enabled}
               dueDate={createdBirth.due_date}
-              onSaved={() => setStep('invite')}
-              onSkip={() => setStep('invite')}
+              onSaved={() => navigate(`/b/${createdBirth.slug}`, { replace: true })}
+              onSkip={() => navigate(`/b/${createdBirth.slug}`, { replace: true })}
               submitLabel="Lock in my guess"
             />
-            <p className="text-xs text-gray-400 dark:text-gray-500 text-center">
-              No pressure — you can add your guess anytime from the pool on the page.
-            </p>
           </div>
-        )}
-
-        {/* ── Step 4: First invite ── */}
-        {step === 'invite' && createdBirth && (
-          <InviteStep
-            birth={createdBirth}
-            theme={theme}
-            displayName={displayName}
-            onDone={() => navigate(`/b/${createdBirth.slug}`, { replace: true })}
-          />
         )}
       </div>
     </div>
   );
 }
 
-// The onboarding-sized invite step: one tap → a shareable link. The full
-// invite tooling (contact sending, revoking, viewer management) lives in
-// Birth settings; this is just the fastest path to the family group text.
+// The celebration step: the page they just made, in their theme, plus the
+// fastest path to the family group text — one tap → a shareable link. The
+// full invite tooling (contact sending, revoking, viewer management) lives
+// in Birth settings.
 function InviteStep({ birth, theme, displayName, onDone }) {
   const [creating, setCreating] = useState(false);
   const [invite, setInvite] = useState(null);
@@ -551,13 +549,18 @@ function InviteStep({ birth, theme, displayName, onDone }) {
     <div className="space-y-6">
       <div className="text-center">
         <h1 className="text-xl font-semibold text-gray-800 dark:text-white mb-1">
-          Invite the family
+          {displayName ? `${displayName}'s page is live 🎉` : 'Your page is live 🎉'}
         </h1>
         <p className="text-sm text-gray-500 dark:text-gray-400">
-          Grab a link and drop it in the family group text — anyone with it can
-          follow along and join the pool.
+          Now share it — grab a link and drop it in the family group text.
+          Anyone with it can follow along and join the pool.
         </p>
       </div>
+
+      <PagePreview
+        theme={theme}
+        displayName={displayName || birth.child_name || 'Baby'}
+      />
 
       {error && (
         <div className="p-3 rounded-lg bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-300 text-sm">
@@ -604,27 +607,31 @@ function InviteStep({ birth, theme, displayName, onDone }) {
         </button>
       )}
 
-      {invite ? (
-        <button
-          type="button"
-          onClick={onDone}
-          className="w-full py-3.5 rounded-xl text-white font-medium transition-colors"
-          style={{
-            background: `linear-gradient(135deg, ${theme.modes.light.accent}, ${theme.modes.light.accentHover})`,
-          }}
-        >
-          Take me to {displayName ? `${displayName}'s` : 'the'} page →
-        </button>
-      ) : (
-        <button
-          type="button"
-          onClick={onDone}
-          className="w-full text-sm text-gray-500 dark:text-gray-400
-                     hover:text-primary-600 dark:hover:text-primary-400"
-        >
-          Skip for now
-        </button>
-      )}
+      {/* Forward motion on the right; the quiet escape hatch only before
+          a link exists (once it does, Next is the natural continue). */}
+      <div className="flex items-center justify-end">
+        {invite ? (
+          <button
+            type="button"
+            onClick={onDone}
+            className="px-5 py-2.5 rounded-xl text-white font-medium transition-colors"
+            style={{
+              background: `linear-gradient(135deg, ${theme.modes.light.accent}, ${theme.modes.light.accentHover})`,
+            }}
+          >
+            Next →
+          </button>
+        ) : (
+          <button
+            type="button"
+            onClick={onDone}
+            className="text-sm text-gray-500 dark:text-gray-400
+                       hover:text-primary-600 dark:hover:text-primary-400"
+          >
+            Skip for now
+          </button>
+        )}
+      </div>
       <p className="text-xs text-gray-400 dark:text-gray-500 text-center">
         You can invite people anytime from Birth settings.
       </p>
