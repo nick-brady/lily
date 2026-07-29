@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Link, Navigate, useParams } from 'react-router-dom';
+import { Link, Navigate, useNavigate, useParams } from 'react-router-dom';
 import { api } from '../api/client';
 import { useAuth } from '../contexts/AuthContext';
 import { getTheme, themeVars } from '../utils/themes';
@@ -45,6 +45,15 @@ export default function BirthSettingsPage() {
       (f) =>
         ['owner', 'co_parent'].includes(f.role)
         && f.births.some((b) => b.slug === slug),
+    );
+  }, [me, slug]);
+
+  // Deletion is owner-only (the backend enforces it too) — a co-parent
+  // shouldn't see a button that would 403.
+  const isOwner = useMemo(() => {
+    if (!me) return false;
+    return me.families.some(
+      (f) => f.role === 'owner' && f.births.some((b) => b.slug === slug),
     );
   }, [me, slug]);
 
@@ -185,6 +194,8 @@ export default function BirthSettingsPage() {
         </section>
 
         <DownloadDataCard birthId={birth.id} />
+
+        {isOwner && <DangerZoneCard birth={birth} />}
       </main>
 
       {showThemePicker && (
@@ -195,6 +206,105 @@ export default function BirthSettingsPage() {
         />
       )}
     </div>
+  );
+}
+
+// The danger zone: delete the whole page. Two-stage confirm — expand,
+// then type the baby's name — because there is no undo on the other side.
+function DangerZoneCard({ birth }) {
+  const navigate = useNavigate();
+  const { refreshMe } = useAuth();
+  const [expanded, setExpanded] = useState(false);
+  const [confirmText, setConfirmText] = useState('');
+  const [deleting, setDeleting] = useState(false);
+  const [error, setError] = useState('');
+
+  const confirmPhrase = birth.child_name || birth.slug;
+  const matches =
+    confirmText.trim().toLowerCase() === confirmPhrase.trim().toLowerCase();
+
+  async function destroy() {
+    if (!matches || deleting) return;
+    setDeleting(true);
+    setError('');
+    try {
+      await api.deleteBirth(birth.id);
+      navigate('/account', { replace: true });
+      refreshMe();
+    } catch (err) {
+      setError(err.message || 'Could not delete the page');
+      setDeleting(false);
+    }
+  }
+
+  return (
+    <section
+      className="card"
+      style={{ border: '1px solid rgba(239, 68, 68, 0.45)' }}
+    >
+      <h3 className="text-lg font-semibold text-red-600 dark:text-red-400">
+        Danger zone
+      </h3>
+      <p className="text-sm t-muted mt-1 mb-4">
+        Deleting {birth.child_name ? `${birth.child_name}'s` : 'this'} page
+        permanently erases the timeline, every photo and video, comments,
+        guesses, and invites — for you and everyone following along. There is
+        no undo. Download everything first if you want to keep it.
+      </p>
+
+      {!expanded ? (
+        <button
+          type="button"
+          onClick={() => setExpanded(true)}
+          className="px-4 py-2 rounded-lg text-sm font-medium border border-red-400
+                     text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20"
+        >
+          Delete this page…
+        </button>
+      ) : (
+        <div className="space-y-3">
+          <label className="block text-sm">
+            <span className="t-muted">
+              Type <span className="font-semibold t-ink">{confirmPhrase}</span> to
+              confirm:
+            </span>
+            <input
+              type="text"
+              value={confirmText}
+              onChange={(e) => setConfirmText(e.target.value)}
+              autoFocus
+              autoComplete="off"
+              className="mt-1 w-full max-w-xs px-3 py-2 rounded-lg border text-sm
+                         bg-white dark:bg-gray-800 t-ink"
+              style={{ borderColor: 'rgba(239, 68, 68, 0.45)' }}
+            />
+          </label>
+          {error && <p className="text-xs text-red-500">{error}</p>}
+          <div className="flex items-center gap-3">
+            <button
+              type="button"
+              onClick={destroy}
+              disabled={!matches || deleting}
+              className="px-4 py-2 rounded-lg text-sm font-medium text-white bg-red-600
+                         hover:bg-red-700 disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              {deleting ? 'Deleting…' : 'Delete this page forever'}
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setExpanded(false);
+                setConfirmText('');
+                setError('');
+              }}
+              className="text-sm t-muted hover:opacity-80"
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
+    </section>
   );
 }
 
