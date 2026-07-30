@@ -231,14 +231,43 @@ async def edit_event(
         raise HTTPException(status_code=410, detail="Event has been deleted")
 
     patch = payload.model_dump(exclude_none=True)
-    if not patch:
+    new_time = patch.pop("occurred_at", None)
+    if not patch and new_time is None:
         return serialize_event_with_engagement(
             db, event, requester_user_id=current_user.id
         )
-    timeline_repo.update_payload(db, event, patch)
+
+    # occurred_at is a column, not payload. Contraction times stay fixed —
+    # their durations and gap markers are derived from them.
+    birth_clocks_moved = False
+    if new_time is not None:
+        if event.event_type is TimelineEventType.contraction:
+            raise HTTPException(
+                status_code=400, detail="Contraction times can't be edited"
+            )
+        event.occurred_at = new_time
+        # The Born milestone IS the arrival time — keep the birth's own
+        # clocks telling the same story.
+        if (
+            event.event_type is TimelineEventType.milestone
+            and (event.payload or {}).get("kind") == "born"
+        ):
+            access.birth.birth_completed_at = new_time
+            if (
+                access.birth.birth_started_at is not None
+                and access.birth.birth_started_at > new_time
+            ):
+                access.birth.birth_started_at = new_time
+            birth_clocks_moved = True
+
+    if patch:
+        timeline_repo.update_payload(db, event, patch)
     db.commit()
     db.refresh(event)
     await publish_event_change(access.birth.id, "updated", event)
+    if birth_clocks_moved:
+        db.refresh(access.birth)
+        await publish_birth_update(access.birth.id, access.birth)
     return serialize_event_with_engagement(
         db, event, requester_user_id=current_user.id
     )
