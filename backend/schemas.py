@@ -515,17 +515,22 @@ class InvitationRedeemIn(BaseModel):
 
 
 class EditEventIn(BaseModel):
-    """Patch the editable parts of a timeline event's payload.
+    """Patch the editable parts of a timeline event.
 
     For text_note: `body`. For milestone: `title` / `body`. For photo /
     video / voice_memo: `caption`. Unknown keys are ignored; the
     repository merges the patch into the existing payload.
+
+    `occurred_at` is the event's own column, not payload — posts are often
+    logged after the fact mid-labor, so the time can be corrected on any
+    event except contractions (their durations and gaps derive from it).
     """
 
     body: Optional[str] = None
     title: Optional[str] = None
     caption: Optional[str] = None
     transcript_optional: Optional[str] = None
+    occurred_at: Optional[datetime] = None
 
 
 # Keep in sync with frontend/src/utils/themes.js THEMES (current ids only,

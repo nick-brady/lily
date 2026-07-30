@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { api } from '../api/client';
 import { MILESTONES } from './Timeline';
+import { toLocalInputValue } from '../utils/relativeTime';
 
 const AUDIENCE_OPTIONS = [
   { value: 'public', label: 'Public', hint: 'Anyone with the link can see' },
@@ -13,6 +14,9 @@ export default function UpdateForm({ birthId, onSuccess }) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [audienceScope, setAudienceScope] = useState('public');
+  // '' = happening now (server stamps the time); otherwise a local
+  // datetime the parent picked because they're logging after the fact
+  const [backdate, setBackdate] = useState('');
 
   const [noteText, setNoteText] = useState('');
   const [selectedMilestone, setSelectedMilestone] = useState('');
@@ -52,6 +56,7 @@ export default function UpdateForm({ birthId, onSuccess }) {
   const resetForm = () => {
     setMode(null);
     setError('');
+    setBackdate('');
     setNoteText('');
     setSelectedMilestone('');
     setMilestoneNote('');
@@ -72,6 +77,8 @@ export default function UpdateForm({ birthId, onSuccess }) {
     setIsRecording(false);
     if (timerRef.current) clearInterval(timerRef.current);
   };
+
+  const occurredAt = () => (backdate ? new Date(backdate).toISOString() : null);
 
   const handleFileSelect = (e) => {
     const file = e.target.files[0];
@@ -107,6 +114,7 @@ export default function UpdateForm({ birthId, onSuccess }) {
         kind: 'photo',
         caption: photoCaption,
         audienceScope,
+        occurredAt: occurredAt(),
       });
       resetForm();
       onSuccess?.();
@@ -122,7 +130,7 @@ export default function UpdateForm({ birthId, onSuccess }) {
     setLoading(true);
     setError('');
     try {
-      await api.createTextNote(birthId, noteText, { audienceScope });
+      await api.createTextNote(birthId, noteText, { audienceScope, occurredAt: occurredAt() });
       resetForm();
       onSuccess?.();
     } catch (err) {
@@ -142,6 +150,7 @@ export default function UpdateForm({ birthId, onSuccess }) {
         title: MILESTONES[selectedMilestone]?.label,
         body: milestoneNote || null,
         audienceScope,
+        occurredAt: occurredAt(),
       });
       resetForm();
       onSuccess?.();
@@ -213,6 +222,7 @@ export default function UpdateForm({ birthId, onSuccess }) {
         kind: 'voice_memo',
         caption: audioCaption,
         audienceScope,
+        occurredAt: occurredAt(),
       });
       resetForm();
       onSuccess?.();
@@ -233,6 +243,7 @@ export default function UpdateForm({ birthId, onSuccess }) {
         kind: 'video',
         caption: videoCaption,
         audienceScope,
+        occurredAt: occurredAt(),
       });
       resetForm();
       onSuccess?.();
@@ -473,6 +484,36 @@ export default function UpdateForm({ birthId, onSuccess }) {
       )}
 
       <AudiencePicker value={audienceScope} onChange={setAudienceScope} />
+
+      <div className="mt-3">
+        {backdate ? (
+          <div className="flex items-center gap-2">
+            <input
+              type="datetime-local"
+              value={backdate}
+              onChange={(e) => setBackdate(e.target.value)}
+              max={toLocalInputValue()}
+              className="flex-1 px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-700
+                         bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 text-sm"
+            />
+            <button
+              type="button"
+              onClick={() => setBackdate('')}
+              className="text-xs text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
+            >
+              Just now
+            </button>
+          </div>
+        ) : (
+          <button
+            type="button"
+            onClick={() => setBackdate(toLocalInputValue())}
+            className="text-xs text-gray-400 hover:text-primary-500"
+          >
+            Happened earlier? Set the time
+          </button>
+        )}
+      </div>
 
       <div className="flex gap-3 mt-4">
         <button

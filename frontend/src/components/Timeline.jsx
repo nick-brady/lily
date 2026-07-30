@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { api } from '../api/client';
 import { formatDuration } from '../utils/statistics';
+import { toLocalInputValue } from '../utils/relativeTime';
 import ReactionBar from './ReactionBar';
 import CommentThread from './CommentThread';
 
@@ -321,6 +322,7 @@ export default function Timeline({
   const [deleteConfirm, setDeleteConfirm] = useState(null);
   const [editModal, setEditModal] = useState(null);
   const [editValue, setEditValue] = useState('');
+  const [editTime, setEditTime] = useState('');
   const [busy, setBusy] = useState(false);
 
   const openLightbox = (url, caption) => setLightbox({ open: true, url, caption: caption || '' });
@@ -331,7 +333,9 @@ export default function Timeline({
     const editable = editableFieldFor(event);
     if (!editable) return;
     setEditValue(editable.value);
-    setEditModal({ event, field: editable.field });
+    const initialTime = toLocalInputValue(event.occurred_at);
+    setEditTime(initialTime);
+    setEditModal({ event, field: editable.field, initialTime });
   };
 
   const confirmDelete = async () => {
@@ -349,7 +353,11 @@ export default function Timeline({
     if (!editModal || !birthId) return;
     setBusy(true);
     try {
-      await api.editEvent(birthId, editModal.event.id, { [editModal.field]: editValue });
+      const patch = { [editModal.field]: editValue };
+      if (editTime && editTime !== editModal.initialTime) {
+        patch.occurred_at = new Date(editTime).toISOString();
+      }
+      await api.editEvent(birthId, editModal.event.id, patch);
     } finally {
       setBusy(false);
       setEditModal(null);
@@ -421,6 +429,16 @@ export default function Timeline({
                        bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 resize-none"
             rows={3}
           />
+          <label className="block mt-3">
+            <span className="text-xs text-gray-500 dark:text-gray-400">When it happened</span>
+            <input
+              type="datetime-local"
+              value={editTime}
+              onChange={(e) => setEditTime(e.target.value)}
+              className="mt-1 w-full px-4 py-2 rounded-xl border border-gray-200 dark:border-gray-700
+                         bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 text-sm"
+            />
+          </label>
           <div className="flex gap-3 mt-4">
             <button
               onClick={() => setEditModal(null)}

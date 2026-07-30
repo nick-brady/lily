@@ -179,7 +179,7 @@ export const api = {
     return jsonOrThrow(res);
   },
 
-  async createTextNote(birthId, body, { audienceScope = 'public' } = {}) {
+  async createTextNote(birthId, body, { audienceScope = 'public', occurredAt = null } = {}) {
     const res = await fetch(`${API_URL}/birth/${birthId}/event`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -187,12 +187,13 @@ export const api = {
         type: 'text_note',
         body,
         audience_scope: audienceScope,
+        ...(occurredAt ? { occurred_at: occurredAt } : {}),
       }),
     });
     return jsonOrThrow(res);
   },
 
-  async createMilestone(birthId, { kind, title, body, audienceScope = 'public' }) {
+  async createMilestone(birthId, { kind, title, body, audienceScope = 'public', occurredAt = null }) {
     const res = await fetch(`${API_URL}/birth/${birthId}/event`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -202,17 +203,19 @@ export const api = {
         title,
         body,
         audience_scope: audienceScope,
+        ...(occurredAt ? { occurred_at: occurredAt } : {}),
       }),
     });
     return jsonOrThrow(res);
   },
 
-  async uploadMedia(birthId, { file, kind, caption, audienceScope = 'public' }) {
+  async uploadMedia(birthId, { file, kind, caption, audienceScope = 'public', occurredAt = null }) {
     const form = new FormData();
     form.append('file', file);
     form.append('kind', kind);
     form.append('audience_scope', audienceScope);
     if (caption) form.append('caption', caption);
+    if (occurredAt) form.append('occurred_at', occurredAt);
     const res = await fetch(`${API_URL}/birth/${birthId}/media`, {
       method: 'POST',
       body: form,
