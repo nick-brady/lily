@@ -373,23 +373,13 @@ export default function AccountPage() {
               <span> · {user.email || user.phone}</span>
             )}
           </p>
-        </div>
-
-        {/* Danger zone */}
-        <div className="mt-8 pt-6 border-t border-red-200 dark:border-red-900/40">
-          <h2 className="text-sm font-semibold text-red-600 dark:text-red-400">
-            Delete account
-          </h2>
-          <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-            Permanently erases your sign-in details and any birth pages only you
-            manage. This cannot be undone.
-          </p>
           <button
             type="button"
             onClick={() => setShowDelete(true)}
-            className="mt-3 px-4 py-2 text-sm rounded-lg bg-red-500 hover:bg-red-600 text-white font-medium"
+            className="mt-2 text-xs text-gray-400 dark:text-gray-500 underline underline-offset-2
+                       hover:text-red-600 dark:hover:text-red-400 transition-colors"
           >
-            Delete my account…
+            Delete account…
           </button>
         </div>
       </div>

@@ -3,7 +3,6 @@ import { Link, Navigate, useNavigate, useParams } from 'react-router-dom';
 import { api } from '../api/client';
 import { useAuth } from '../contexts/AuthContext';
 import { getTheme, themeVars } from '../utils/themes';
-import GiftGallery from '../components/GiftGallery';
 import HeaderMenu from '../components/HeaderMenu';
 import InviteManager from '../components/InviteManager';
 import ThemePickerSheet from '../components/ThemePickerSheet';
@@ -156,13 +155,9 @@ export default function BirthSettingsPage() {
         <PoolSettingsCard birth={birth} onSaved={refreshMe} />
 
         {/* Keepsake gifts */}
-        <ShippingAddressCard birthId={birth.id} />
+        <ShippingAddressCard birthId={birth.id} childName={birth.child_name} />
 
         <GiftsReceivedCard birthId={birth.id} />
-
-        {/* Gift artwork is generated from the finished story — nothing to
-            manage until the birth is done. */}
-        {birth.status === 'born' && <GiftGallery birthId={birth.id} isParent />}
 
         {/* Birth details */}
         <section className="card">
@@ -356,7 +351,7 @@ function DownloadDataCard({ birthId }) {
 }
 
 
-function ShippingAddressCard({ birthId }) {
+function ShippingAddressCard({ birthId, childName }) {
   const empty = { name: '', line1: '', line2: '', city: '', state: '', postal_code: '', country: 'US' };
   const [addr, setAddr] = useState(empty);
   const [saved, setSaved] = useState(false);
@@ -404,10 +399,14 @@ function ShippingAddressCard({ birthId }) {
 
   return (
     <section className="card">
-      <h3 className="text-lg font-semibold t-ink">Shipping address</h3>
+      <h3 className="text-lg font-semibold t-ink">
+        Gift deliveries <span className="font-normal t-muted">(optional)</span>
+      </h3>
       <p className="text-sm t-muted mb-3">
-        Where gifts sent "to the family" ship. Family members never see this —
-        their gift options just say it ships to your saved address.
+        Once {childName || 'the baby'} arrives, this page offers keepsake
+        gifts — mugs and prints designed from the birth story. Save an address
+        now, while you have a free hand, and gifts ship straight to you without
+        senders ever needing to ask for your address.
       </p>
       {error && (
         <div className="mb-3 p-3 rounded-lg bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-300 text-sm">
@@ -590,21 +589,41 @@ function PoolSettingsCard({ birth, onSaved }) {
         )}
       </label>
 
-      <label className="flex items-start gap-3 text-sm cursor-pointer">
-        <input
-          type="checkbox"
-          checked={genderPool}
-          onChange={(e) => setGenderPool(e.target.checked)}
-          className="mt-0.5 h-4 w-4 accent-primary-600"
-        />
-        <span>
-          <span className="t-ink font-medium">Keeping the gender a surprise?</span>
-          <span className="block text-xs t-muted">
-            Let family guess boy or girl in the pool. Leave this off if
-            everyone already knows.
-          </span>
-        </span>
-      </label>
+      <fieldset className="text-sm">
+        <legend className="t-ink font-medium">Boy or girl?</legend>
+        <div className="mt-2 space-y-2">
+          <label className="flex items-start gap-3 cursor-pointer">
+            <input
+              type="radio"
+              name="gender-pool"
+              checked={genderPool}
+              onChange={() => setGenderPool(true)}
+              className="mt-0.5 h-4 w-4 accent-primary-600"
+            />
+            <span>
+              <span className="t-ink">It's a surprise 🎁</span>
+              <span className="block text-xs t-muted">
+                Family can guess boy or girl in the pool.
+              </span>
+            </span>
+          </label>
+          <label className="flex items-start gap-3 cursor-pointer">
+            <input
+              type="radio"
+              name="gender-pool"
+              checked={!genderPool}
+              onChange={() => setGenderPool(false)}
+              className="mt-0.5 h-4 w-4 accent-primary-600"
+            />
+            <span>
+              <span className="t-ink">We already know</span>
+              <span className="block text-xs t-muted">
+                No boy/girl guessing on the page.
+              </span>
+            </span>
+          </label>
+        </div>
+      </fieldset>
 
       {error && <p className="text-xs text-red-500">{error}</p>}
       <button
