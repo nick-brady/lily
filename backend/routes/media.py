@@ -5,6 +5,7 @@ import mimetypes
 import os
 import re
 import uuid
+from datetime import datetime
 from pathlib import Path
 from time import monotonic
 
@@ -66,6 +67,8 @@ async def upload_media(
     caption: str | None = Form(None),
     kind: MediaKind = Form(...),
     audience_scope: AudienceScope = Form(AudienceScope.public),
+    # photos especially get uploaded well after the moment they capture
+    occurred_at: datetime | None = Form(None),
     access: BirthAccess = Depends(require_parent_access),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
@@ -111,6 +114,7 @@ async def upload_media(
         event_type=event_type,
         payload=event_payload,
         posted_by_user_id=current_user.id,
+        occurred_at=occurred_at,
         audience_scope=audience_scope,
     )
     db.commit()

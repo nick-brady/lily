@@ -15,6 +15,7 @@ import StatsTab from '../components/StatsTab';
 import Timeline from '../components/Timeline';
 import UpdateForm from '../components/UpdateForm';
 import { bumpCommentCount, updateReaction } from '../utils/engagement';
+import { toLocalInputValue } from '../utils/relativeTime';
 import { getTheme, themeVars } from '../utils/themes';
 
 // THE birth page — one page for every role. Anonymous visitors get the
@@ -35,6 +36,7 @@ export default function PublicBirthPage() {
   const [celebration, setCelebration] = useState(null);
   const [activeTab, setActiveTab] = useState('timeline');
   const [confirmingBorn, setConfirmingBorn] = useState(false);
+  const [bornTime, setBornTime] = useState('');
   const [markingBorn, setMarkingBorn] = useState(false);
 
   const theme = getTheme(birth?.theme);
@@ -218,7 +220,10 @@ export default function PublicBirthPage() {
     setMarkingBorn(true);
     setError('');
     try {
-      const updated = await api.markBorn(birth.id);
+      const updated = await api.markBorn(
+        birth.id,
+        bornTime ? { occurred_at: new Date(bornTime).toISOString() } : {},
+      );
       // Celebrate immediately for the parent who tapped — don't rely on
       // our own SSE echo. Viewers get the moment via birth_update.
       setBirth((prev) => (prev ? { ...prev, ...updated } : prev));
@@ -407,6 +412,17 @@ export default function PublicBirthPage() {
                   <p className="text-sm t-ink text-center">
                     Announce the arrival to everyone watching?
                   </p>
+                  <label className="text-xs t-muted flex items-center gap-2">
+                    Arrived at
+                    <input
+                      type="datetime-local"
+                      value={bornTime}
+                      onChange={(e) => setBornTime(e.target.value)}
+                      max={toLocalInputValue()}
+                      className="px-2 py-1.5 rounded-lg border text-sm bg-white dark:bg-gray-800 t-ink"
+                      style={{ borderColor: 'var(--t-soft-ring)' }}
+                    />
+                  </label>
                   <div className="flex gap-2">
                     <button
                       onClick={handleBorn}
@@ -426,7 +442,10 @@ export default function PublicBirthPage() {
                 </>
               ) : (
                 <button
-                  onClick={() => setConfirmingBorn(true)}
+                  onClick={() => {
+                    setBornTime(toLocalInputValue());
+                    setConfirmingBorn(true);
+                  }}
                   className="px-6 py-3 rounded-full font-semibold text-base transition-opacity hover:opacity-90"
                   style={{ backgroundColor: 'var(--t-accent)', color: '#fff' }}
                 >

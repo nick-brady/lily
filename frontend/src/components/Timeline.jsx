@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { api } from '../api/client';
 import { formatDuration } from '../utils/statistics';
+import { toLocalInputValue } from '../utils/relativeTime';
 import ReactionBar from './ReactionBar';
 import CommentThread from './CommentThread';
 
@@ -36,13 +37,6 @@ const MILESTONES = {
 
 function formatTime(timestamp) {
   return new Date(timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-}
-
-// value for <input type="datetime-local"> — local time, minute precision
-function toLocalInputValue(timestamp) {
-  const d = new Date(timestamp);
-  const pad = (n) => String(n).padStart(2, '0');
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
 function formatDate(timestamp) {
