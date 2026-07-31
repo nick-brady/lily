@@ -253,11 +253,15 @@ async def edit_event(
             and (event.payload or {}).get("kind") == "born"
         ):
             access.birth.birth_completed_at = new_time
-            if (
-                access.birth.birth_started_at is not None
-                and access.birth.birth_started_at > new_time
-            ):
-                access.birth.birth_started_at = new_time
+            # birth_started_at is deliberately left alone. It's the first
+            # contraction — a real recorded observation — and it used to get
+            # dragged back to equal the new arrival time, which silently
+            # destroyed it and reported a 0-minute labor. A born time earlier
+            # than labor began is only reachable by entering a wrong time, and
+            # the honest consequence of a wrong time is a wrong-looking record
+            # (labor duration reads as unknown, since the negative interval is
+            # already filtered out downstream) — not the loss of a correct
+            # value with no undo.
             birth_clocks_moved = True
 
     if patch:

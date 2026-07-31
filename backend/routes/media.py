@@ -44,7 +44,7 @@ from routes.deps import (
     require_parent_access_stream,
 )
 from routes.serializers import serialize_event_out
-from schemas import TimelineEventOut
+from schemas import PastDatetime, TimelineEventOut
 from storage import presigned_get_url, put_object
 
 router = APIRouter()
@@ -68,7 +68,7 @@ async def upload_media(
     kind: MediaKind = Form(...),
     audience_scope: AudienceScope = Form(AudienceScope.public),
     # photos especially get uploaded well after the moment they capture
-    occurred_at: datetime | None = Form(None),
+    occurred_at: PastDatetime | None = Form(None),
     access: BirthAccess = Depends(require_parent_access),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),

@@ -7,10 +7,17 @@ code can trust the types without further checks (parse, don't validate).
 from __future__ import annotations
 
 import uuid
-from datetime import date, datetime
+from datetime import date, datetime, timedelta, timezone
 from typing import Annotated, Literal, Optional, Union
 
-from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
+from pydantic import (
+    AfterValidator,
+    BaseModel,
+    ConfigDict,
+    EmailStr,
+    Field,
+    field_validator,
+)
 
 from models import (
     AudienceScope,
@@ -270,6 +277,30 @@ class ReactionCountOut(BaseModel):
     mine: bool
 
 
+# Backdating is the point — posts get logged after the fact all day ("water
+# broke at 2am", typed at 7am), and the arrival itself is almost always
+# recorded once someone has a free hand. Forward-dating is never legitimate:
+# nothing on a birth timeline has happened yet in the future, and a
+# future-stamped event pins itself above the whole story permanently.
+#
+# The skew allowance is for client clocks, not for intent. Phones and laptops
+# drift by seconds, and rejecting someone's own "now" would be a worse failure
+# than accepting a stamp a minute early.
+_CLOCK_SKEW_ALLOWANCE = timedelta(minutes=2)
+
+
+def _already_happened(value: datetime) -> datetime:
+    # Naive input is treated as UTC — the API is UTC everywhere, and comparing
+    # a naive datetime against an aware one raises instead of rejecting.
+    when = value if value.tzinfo is not None else value.replace(tzinfo=timezone.utc)
+    if when > datetime.now(timezone.utc) + _CLOCK_SKEW_ALLOWANCE:
+        raise ValueError("that time is in the future — pick a time that's already happened")
+    return value
+
+
+PastDatetime = Annotated[datetime, AfterValidator(_already_happened)]
+
+
 class TimelineEventOut(BaseModel):
     id: uuid.UUID
     birth_id: uuid.UUID
@@ -374,7 +405,7 @@ class TokenOut(BaseModel):
 
 class CreateTextNoteIn(BaseModel):
     body: str
-    occurred_at: Optional[datetime] = None
+    occurred_at: Optional[PastDatetime] = None
     audience_scope: AudienceScope = AudienceScope.public
 
 
@@ -382,17 +413,19 @@ class CreateMilestoneIn(BaseModel):
     kind: str
     title: Optional[str] = None
     body: Optional[str] = None
-    occurred_at: Optional[datetime] = None
+    occurred_at: Optional[PastDatetime] = None
     audience_scope: AudienceScope = AudienceScope.public
 
 
 class StartContractionIn(BaseModel):
-    occurred_at: Optional[datetime] = None
+    occurred_at: Optional[PastDatetime] = None
     audience_scope: AudienceScope = AudienceScope.public
 
 
 class StopContractionIn(BaseModel):
-    end_time: datetime
+    # A contraction that ends in the future would report a duration longer
+    # than it lasted, so this gets the same bound.
+    end_time: PastDatetime
 
 
 class InvitationCreateIn(BaseModel):
@@ -473,7 +506,7 @@ class BabyBornIn(BaseModel):
     optional note that rides along on the milestone (e.g. weight, time).
     """
 
-    occurred_at: Optional[datetime] = None
+    occurred_at: Optional[PastDatetime] = None
     body: Optional[str] = None
 
 
@@ -534,7 +567,7 @@ class EditEventIn(BaseModel):
     title: Optional[str] = None
     caption: Optional[str] = None
     transcript_optional: Optional[str] = None
-    occurred_at: Optional[datetime] = None
+    occurred_at: Optional[PastDatetime] = None
 
 
 # Keep in sync with frontend/src/utils/themes.js THEMES (current ids only,
