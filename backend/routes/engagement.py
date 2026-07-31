@@ -4,8 +4,6 @@ and `/b/{slug}/...` for anyone authed who found the page (Aunt Linda via
 QR card); both funnel into the same `_do_*` helpers."""
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
-
 import uuid
 
 from fastapi import APIRouter, Body, Depends, HTTPException, Response
@@ -448,13 +446,16 @@ async def public_delete_event_comment(
 # ============ The family pool (guesses) ============
 
 
-def guess_edits_locked(birth: Birth) -> bool:
-    """Existing guesses freeze at 36 weeks (due_date - 28 days) so the pool
-    can't be gamed once inductions get scheduled. No due date → no early
-    lock; guesses stay editable until the birth."""
-    if birth.due_date is None:
-        return False
-    return datetime.now(timezone.utc).date() >= birth.due_date - timedelta(days=28)
+# There is deliberately no calendar lock on edits. A due date tells nobody
+# what the baby will weigh, and the only date that IS knowable early — a
+# booked induction — was never protected by freezing edits at 36 weeks: new
+# guesses stay open until the birth, so anyone who hadn't guessed yet simply
+# guessed after the booking. The freeze bound only the people who guessed
+# early and honestly, which is backwards for a pool that wants everyone in
+# from 20 weeks. Guesses now stay editable until `born`, `updated_at` rides
+# out on the board, and the family can see for itself who changed their mind
+# late. The one lock that stays is `date_guess` at labor start — there the
+# page itself is broadcasting the answer.
 
 
 def _guess_board(db: Session, birth: Birth, current_user_id) -> GuessBoardOut:
@@ -513,7 +514,6 @@ def _guess_board(db: Session, birth: Birth, current_user_id) -> GuessBoardOut:
         actual_sex=birth.child_sex if settled else None,
         actual_date=actual_date,
         settled=settled,
-        edits_locked=guess_edits_locked(birth),
         gender_pool_enabled=birth.gender_pool_enabled,
         due_date=birth.due_date,
     )
@@ -521,10 +521,11 @@ def _guess_board(db: Session, birth: Birth, current_user_id) -> GuessBoardOut:
 
 def _do_put_guess(db: Session, *, birth: Birth, user: User, payload: GuessIn) -> GuessOut:
     """Upsert the caller's guess. Free engagement, like reactions and
-    comments. Lock ladder: new guesses close at born; edits to an existing
-    guess close at 36 weeks (when a due date is set); the date field alone
-    closes at labor start — calling "today" from the live contraction
-    timeline is cheating, not fun."""
+    comments. Two locks, both tied to something that actually happened:
+    the whole pool closes at born, and the date field alone closes at labor
+    start — calling "today" from the live contraction timeline is cheating,
+    not fun. Sizes stay editable right up to the birth (see the note above
+    `_guess_board` for why there's no calendar freeze)."""
     if birth.status is BirthStatus.born:
         raise HTTPException(
             status_code=409, detail="The baby is here — the pool is settled"
@@ -556,12 +557,6 @@ def _do_put_guess(db: Session, *, birth: Birth, user: User, payload: GuessIn) ->
                 "code": "name_required",
                 "message": "Add your name so the family knows whose guess this is",
             },
-        )
-    existing = guesses_repo.get_own_guess(db, birth_id=birth.id, user_id=user.id)
-    if existing is not None and guess_edits_locked(birth):
-        raise HTTPException(
-            status_code=409,
-            detail="Guesses are locked in — the arrival is close",
         )
     row = guesses_repo.upsert_guess(
         db,
