@@ -409,20 +409,28 @@ export default function PublicBirthPage() {
             <section className="card flex flex-col items-center gap-3 py-5">
               {confirmingBorn ? (
                 <>
-                  <p className="text-sm t-ink text-center">
-                    Announce the arrival to everyone watching?
-                  </p>
-                  <label className="text-xs t-muted flex items-center gap-2">
-                    Arrived at
+                  {/* Lead with the time, not the confirmation. Nobody taps
+                      this while it's happening — you post once you have a free
+                      hand, so the prefilled "now" is nearly always late by
+                      15-40 minutes. Asking the question outright gets the real
+                      time on the record; burying it under a confirm button got
+                      it corrected afterwards, if at all. */}
+                  <label className="flex flex-col items-center gap-2">
+                    <span className="text-base font-medium t-ink text-center">
+                      When did they arrive?
+                    </span>
                     <input
                       type="datetime-local"
                       value={bornTime}
                       onChange={(e) => setBornTime(e.target.value)}
                       max={toLocalInputValue()}
-                      className="px-2 py-1.5 rounded-lg border text-sm bg-white dark:bg-gray-800 t-ink"
+                      className="px-3 py-2 rounded-lg border text-base bg-white dark:bg-gray-800 t-ink"
                       style={{ borderColor: 'var(--t-soft-ring)' }}
                     />
                   </label>
+                  <p className="text-xs t-muted text-center">
+                    Set to now — nudge it back if the moment has already passed.
+                  </p>
                   <div className="flex gap-2">
                     <button
                       onClick={handleBorn}
@@ -591,24 +599,33 @@ function TimelinePreview({ slug, childName }) {
 // the gallery only for family members with actual artwork to show — a
 // birth whose gifts haven't rendered yet gets no empty shop, and
 // Aunt-Linda-before-joining sees nothing rather than an error.
+//
+// The exception is the settling window: artwork deliberately waits a few
+// hours after the arrival, so during it there's nothing to show but there IS
+// something to say — and the parent's "make them now" escape hatch lives
+// inside the gallery, so hiding the section would lock it away too.
 function MemberGifts({ birthId, isParent }) {
-  const [hasGifts, setHasGifts] = useState(null);
+  const [show, setShow] = useState(null);
   useEffect(() => {
     let cancelled = false;
     api
       .listGifts(birthId)
       .then((gallery) => {
         if (cancelled) return;
-        setHasGifts(
-          (gallery.items || []).some((it) => (it.renderings || []).length > 0),
+        const hasArtwork = (gallery.items || []).some(
+          (it) => (it.renderings || []).length > 0,
         );
+        const settling =
+          gallery.artwork_ready_at != null
+          && new Date(gallery.artwork_ready_at) > new Date();
+        setShow(hasArtwork || settling);
       })
-      .catch(() => !cancelled && setHasGifts(false));
+      .catch(() => !cancelled && setShow(false));
     return () => {
       cancelled = true;
     };
   }, [birthId]);
-  if (!hasGifts) return null;
+  if (!show) return null;
   return (
     <>
       {/* a quiet seam where the story ends and the keepsakes begin */}

@@ -22,6 +22,7 @@ from models import (
     User,
 )
 from repositories import births as births_repo
+from repositories import gifts as gifts_repo
 from repositories import timeline as timeline_repo
 from routes.deps import BirthAccess, require_parent_access
 from routes.serializers import serialize_event_out, serialize_event_with_engagement
@@ -83,6 +84,7 @@ async def create_event(
         occurred_at=payload.occurred_at,
         audience_scope=payload.audience_scope,
     )
+    gifts_repo.mark_stale(db, birth_id=access.birth.id)
     db.commit()
     db.refresh(event)
     await publish_event_change(access.birth.id, "appended", event)
@@ -131,6 +133,7 @@ async def start_contraction(
     # The first contraction is what tips a birth into labor — the gentle
     # "something's happening" signal family viewers see.
     labor_began = births_repo.begin_labor(db, birth=access.birth, when=occurred_at)
+    gifts_repo.mark_stale(db, birth_id=access.birth.id)
     db.commit()
     db.refresh(event)
     await publish_event_change(access.birth.id, "appended", event)
@@ -208,6 +211,7 @@ async def stop_contraction(
             "duration_seconds": duration,
         },
     )
+    gifts_repo.mark_stale(db, birth_id=access.birth.id)
     db.commit()
     db.refresh(event)
     await publish_event_change(access.birth.id, "updated", event)
@@ -266,6 +270,9 @@ async def edit_event(
 
     if patch:
         timeline_repo.update_payload(db, event, patch)
+    # The keepsake draws from this event — a corrected arrival time or caption
+    # has to reach the artwork, not just the page.
+    gifts_repo.mark_stale(db, birth_id=access.birth.id)
     db.commit()
     db.refresh(event)
     await publish_event_change(access.birth.id, "updated", event)
@@ -289,6 +296,7 @@ async def delete_event(
     if event.deleted_at is not None:
         return Response(status_code=204)
     event.deleted_at = datetime.now(timezone.utc)
+    gifts_repo.mark_stale(db, birth_id=access.birth.id)
     db.commit()
     await publish_event_deleted(access.birth.id, event.sequence_id, event.id)
     return Response(status_code=204)
@@ -311,6 +319,7 @@ async def toggle_ignore_interval(
         raise HTTPException(status_code=400, detail="Only contractions support ignore-interval")
     current = bool(event.payload.get("ignore_interval_before", False))
     timeline_repo.update_payload(db, event, {"ignore_interval_before": not current})
+    gifts_repo.mark_stale(db, birth_id=access.birth.id)
     db.commit()
     db.refresh(event)
     await publish_event_change(access.birth.id, "updated", event)

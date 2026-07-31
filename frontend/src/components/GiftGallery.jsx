@@ -9,11 +9,19 @@ function formatDate(timestamp) {
   return new Date(timestamp).toLocaleDateString([], { dateStyle: 'long' });
 }
 
+function formatTime(timestamp) {
+  return new Date(timestamp).toLocaleTimeString([], {
+    hour: 'numeric',
+    minute: '2-digit',
+  });
+}
+
 export default function GiftGallery({ birthId, isParent = true }) {
   const [items, setItems] = useState(null);
   const [familyHasAddress, setFamilyHasAddress] = useState(false);
   const [storagePaidUntil, setStoragePaidUntil] = useState(null);
   const [storageLifetime, setStorageLifetime] = useState(false);
+  const [artworkReadyAt, setArtworkReadyAt] = useState(null);
   const [error, setError] = useState('');
   const [regenerating, setRegenerating] = useState(false);
   const pollRef = useRef(null);
@@ -25,6 +33,7 @@ export default function GiftGallery({ birthId, isParent = true }) {
       setFamilyHasAddress(gallery.family_has_shipping_address);
       setStoragePaidUntil(gallery.storage_paid_until);
       setStorageLifetime(gallery.storage_lifetime ?? false);
+      setArtworkReadyAt(gallery.artwork_ready_at ?? null);
       setError('');
       return gallery.items;
     } catch (err) {
@@ -48,6 +57,13 @@ export default function GiftGallery({ birthId, isParent = true }) {
     return () => clearTimeout(pollRef.current);
   }, [items, load]);
 
+  // Artwork waits a few hours after the arrival; during that window there are
+  // no renderings to show, only an explanation.
+  const settling =
+    artworkReadyAt != null
+    && new Date(artworkReadyAt) > new Date()
+    && !(items || []).some((it) => (it.renderings || []).length > 0);
+
   const handleRegenerate = async () => {
     setRegenerating(true);
     try {
@@ -56,6 +72,7 @@ export default function GiftGallery({ birthId, isParent = true }) {
       setFamilyHasAddress(gallery.family_has_shipping_address);
       setStoragePaidUntil(gallery.storage_paid_until);
       setStorageLifetime(gallery.storage_lifetime ?? false);
+      setArtworkReadyAt(gallery.artwork_ready_at ?? null);
     } catch (err) {
       setError(err.message || 'Could not regenerate');
     } finally {
@@ -101,6 +118,18 @@ export default function GiftGallery({ birthId, isParent = true }) {
 
       {items === null ? (
         <p className="text-sm t-muted">Loading gifts…</p>
+      ) : settling ? (
+        // Not a spinner: nothing is being worked on yet, and saying "loading"
+        // for four hours would read as broken. The wait is the feature —
+        // the arrival time and the measurements are usually still being
+        // corrected in the first hour or two.
+        <p className="text-sm t-muted">
+          Your keepsake designs will be ready around{' '}
+          <span className="font-medium t-ink">{formatTime(artworkReadyAt)}</span> — we
+          give the birth time and the measurements a few hours to settle so the
+          artwork matches the story.
+          {isParent && ' Want them sooner? Tap Regenerate.'}
+        </p>
       ) : (
         <div className="space-y-6">
           <HeroArtwork items={items} />
