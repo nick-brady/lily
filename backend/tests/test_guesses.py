@@ -181,24 +181,11 @@ def test_board_date_winner_ties_share(monkeypatch):
     assert all(g.date_winner for g in board.guesses)
 
 
-def test_edits_lock_at_36_weeks():
-    from datetime import datetime, timedelta, timezone
-
-    from routes import engagement
-
-    # Same clock as the implementation — local date drifts a day from UTC
-    # in the evening and makes the boundary cases flake.
-    today = datetime.now(timezone.utc).date()
-    # due 27 days out → inside the 28-day window → locked
-    assert engagement.guess_edits_locked(_birth(due_date=today + timedelta(days=27)))
-    # due 29 days out → still open
-    assert not engagement.guess_edits_locked(_birth(due_date=today + timedelta(days=29)))
-    # no due date → never locks early
-    assert not engagement.guess_edits_locked(_birth())
-
-
-def _put_guess_env(monkeypatch, *, birth, existing=None):
-    """Shared harness for _do_put_guess: fake user, recorded upsert."""
+def _put_guess_env(monkeypatch, *, birth):
+    """Shared harness for _do_put_guess: fake user, recorded upsert. The route
+    no longer reads the caller's existing row (the 36-week freeze was the only
+    thing that needed it), so first guess and edit take the same path — upsert
+    resolves either against the unique (birth, user) row."""
     from routes import engagement
 
     calls = {}
@@ -214,9 +201,6 @@ def _put_guess_env(monkeypatch, *, birth, existing=None):
         return row
 
     monkeypatch.setattr(engagement.guesses_repo, "upsert_guess", fake_upsert)
-    monkeypatch.setattr(
-        engagement.guesses_repo, "get_own_guess", lambda db, birth_id, user_id: existing
-    )
     user = SimpleNamespace(id=uuid.uuid4(), display_name="Janet")
     return engagement, user, calls
 
@@ -280,31 +264,51 @@ def test_put_guess_date_closes_at_labor(monkeypatch):
     assert calls["date_guess"] is engagement.guesses_repo.UNSET
 
 
-def test_put_guess_edit_locked_at_36w_but_first_guess_open(monkeypatch):
-    import pytest
+def test_put_guess_reaches_upsert_inside_36_weeks(monkeypatch):
+    """No calendar freeze. The 36-week lock used to 409 before ever reaching
+    the upsert, which only bound the people who guessed early — anyone who
+    hadn't guessed yet could still open a fresh one after the induction was
+    booked. Both cases below used to be dead on arrival."""
     from datetime import datetime, timedelta, timezone
+
+    from models import BirthStatus
+    from schemas import GuessIn
+
+    # 20 days out — well inside the old 28-day window
+    birth = _birth(
+        status=BirthStatus.preparing,
+        due_date=datetime.now(timezone.utc).date() + timedelta(days=20),
+    )
+    engagement, user, calls = _put_guess_env(monkeypatch, birth=birth)
+    out = engagement._do_put_guess(
+        None, birth=birth, user=user, payload=GuessIn(weight_lbs=8.0)
+    )
+    assert out.is_mine and calls["weight_lbs"] == 8.0
+
+    # ...and a page whose due date has already come and gone
+    overdue = _birth(
+        status=BirthStatus.preparing,
+        due_date=datetime.now(timezone.utc).date() - timedelta(days=3),
+    )
+    engagement2, user2, calls2 = _put_guess_env(monkeypatch, birth=overdue)
+    engagement2._do_put_guess(
+        None, birth=overdue, user=user2, payload=GuessIn(weight_lbs=9.0)
+    )
+    assert calls2["weight_lbs"] == 9.0
+
+
+def test_put_guess_closed_once_born(monkeypatch):
+    """The one lock on the whole pool: it closes at born."""
+    import pytest
     from fastapi import HTTPException
 
     from models import BirthStatus
     from schemas import GuessIn
 
-    birth = _birth(
-        status=BirthStatus.preparing,
-        due_date=datetime.now(timezone.utc).date() + timedelta(days=20),
-    )
-    # an existing guess inside the window → 409
-    engagement, user, _ = _put_guess_env(
-        monkeypatch, birth=birth, existing=_guess_row("Janet", 7.0, None)
-    )
+    birth = _birth(status=BirthStatus.born)
+    engagement, user, _ = _put_guess_env(monkeypatch, birth=birth)
     with pytest.raises(HTTPException) as exc:
         engagement._do_put_guess(
             None, birth=birth, user=user, payload=GuessIn(weight_lbs=8.0)
         )
     assert exc.value.status_code == 409
-
-    # a first-time guesser in the same window → accepted
-    engagement2, user2, calls2 = _put_guess_env(monkeypatch, birth=birth, existing=None)
-    out = engagement2._do_put_guess(
-        None, birth=birth, user=user2, payload=GuessIn(weight_lbs=8.0)
-    )
-    assert out.is_mine and calls2["weight_lbs"] == 8.0

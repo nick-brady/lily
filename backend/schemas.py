@@ -173,6 +173,12 @@ class GuessOut(BaseModel):
     rank: Optional[int] = None
     # closest arrival-date call (ties share); separate from the size score
     date_winner: bool = False
+    # Guesses stay editable until the birth, so the board shows its own
+    # provenance instead of locking: a settled row whose updated_at drifted
+    # from created_at reads "guessed Jul 12 · updated Aug 14". Visibility is
+    # the deterrent; there is no calendar freeze.
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
 
 
 class GuessBoardOut(BaseModel):
@@ -187,8 +193,6 @@ class GuessBoardOut(BaseModel):
     actual_sex: Optional[str] = None
     actual_date: Optional[date] = None
     settled: bool = False
-    # existing guesses freeze at due_date - 28 days (36 weeks)
-    edits_locked: bool = False
     gender_pool_enabled: bool = False
     # prefills the arrival-day guess ("when do YOU think?" starts at the
     # official answer)

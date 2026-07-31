@@ -8,9 +8,11 @@ import GuessForm from './GuessForm';
  * actuals — the server withholds other people's values pre-settle, so the
  * table shows who's in without spoiling the reveal or anchoring anyone.
  *
- * Existing guesses freeze at 36 weeks (when a due date is set); first-time
- * guesses stay open until the birth. Settling crowns two winners: closest
- * size (🏆, the score) and closest date (📅, its own crown).
+ * Guesses stay editable until the birth — no calendar freeze, because a due
+ * date tells nobody what the baby will weigh. The settled board shows each
+ * row's own provenance instead ("guessed Jul 12 · updated Aug 14"), so a
+ * late change is visible rather than prevented. Settling crowns two winners:
+ * closest size (🏆, the score) and closest date (📅, its own crown).
  *
  * Lives in the pool sheet (all roles) and on the parent stats tab — never
  * on the timeline. Pass `birthId` (parents) or `slug`, plus `status` and
@@ -49,9 +51,8 @@ export default function Predictions({ birthId, slug, status, isParent = false, o
 
   const mine = guesses.find((g) => g.is_mine) || null;
   const scope = birthId ? { birthId } : { slug };
-  const editLocked = Boolean(board?.edits_locked);
   const genderEnabled = Boolean(board?.gender_pool_enabled);
-  const canWrite = !born && !(mine && editLocked);
+  const canWrite = !born;
 
   return (
     <div className="card">
@@ -65,9 +66,7 @@ export default function Predictions({ birthId, slug, status, isParent = false, o
             : 'The baby is here! The board settles once the measurements are in.'
           : inLabor && !mine
             ? 'Last call — the arrival is underway! Get your guess in before the baby does. 🎈'
-            : mine && editLocked
-              ? 'Guesses are locked in — sealed until the arrival. 🎈'
-              : 'How big will the baby be? When? Everyone gets one guess, sealed until the arrival.'}
+            : 'How big will the baby be? When? Everyone gets one guess, sealed until the arrival.'}
       </p>
 
       {error && (
@@ -253,6 +252,32 @@ function Sealed() {
   return <span title="Sealed until the arrival">🎈</span>;
 }
 
+function formatStamp(iso) {
+  if (!iso) return null;
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return null;
+  // Non-breaking space: the provenance line wraps inside a narrow modal, and
+  // "Jul / 30" split across two lines reads as a typo.
+  return d
+    .toLocaleDateString([], { month: 'short', day: 'numeric' })
+    .replace(' ', ' ');
+}
+
+// Guesses are editable until the birth, so the reveal carries its own
+// provenance: when the guess went in, and whether it moved afterwards. A
+// late change is shown rather than blocked — the family can do the ribbing.
+function provenance(g) {
+  const made = formatStamp(g.created_at);
+  if (!made) return null;
+  // Only a change on a LATER DAY is worth calling out. Same-day tweaks are
+  // just finishing the form (and the upsert stamps both columns in one
+  // transaction anyway), so they'd render a pointless duplicate date.
+  const edited = formatStamp(g.updated_at);
+  return edited && edited !== made
+    ? `guessed ${made} · updated ${edited}`
+    : `guessed ${made}`;
+}
+
 function GuessTable({ guesses, board, settled, genderEnabled }) {
   const sealedOr = (g, formatted) => {
     if (formatted != null) return formatted;
@@ -291,6 +316,9 @@ function GuessTable({ guesses, board, settled, genderEnabled }) {
               <td className="py-2 px-2 font-medium text-gray-800 dark:text-gray-200">
                 {g.display_name}
                 {g.is_mine && <span className="text-xs t-muted"> (you)</span>}
+                {settled && provenance(g) && (
+                  <div className="text-xs t-faint font-normal">{provenance(g)}</div>
+                )}
               </td>
               <td className="py-2 px-2 text-right text-gray-600 dark:text-gray-400">
                 {sealedOr(g, formatWeight(g.weight_lbs))}

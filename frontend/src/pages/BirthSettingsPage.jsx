@@ -526,15 +526,6 @@ function PoolSettingsCard({ birth, onSaved }) {
   const [savedTick, setSavedTick] = useState(false);
   const [error, setError] = useState('');
 
-  const lockDate = dueDate
-    ? (() => {
-        const [y, m, d] = dueDate.split('-').map(Number);
-        const dt = new Date(y, m - 1, d);
-        dt.setDate(dt.getDate() - 28);
-        return dt.toLocaleDateString([], { month: 'long', day: 'numeric' });
-      })()
-    : null;
-
   const dirty =
     (dueDate || '') !== (birth.due_date || '')
     || genderPool !== Boolean(birth.gender_pool_enabled);
@@ -576,17 +567,14 @@ function PoolSettingsCard({ birth, onSaved }) {
             className="t-date-input px-3 py-2 rounded-lg border text-sm bg-white dark:bg-gray-800 t-ink"
             style={{ borderColor: 'var(--t-soft-ring)' }}
           />
-          {lockDate && (
-            <span className="text-xs t-muted">
-              guesses lock {lockDate} (36 weeks)
-            </span>
-          )}
+          <span className="text-xs t-muted">
+            where everyone's arrival-day guess starts
+          </span>
         </div>
-        {!dueDate && (
-          <p className="text-xs t-faint mt-1">
-            Without a due date, guesses stay editable until the birth.
-          </p>
-        )}
+        <p className="text-xs t-faint mt-1">
+          Guesses stay open until the baby arrives — the arrival-day call
+          closes once labor begins, since the page gives it away by then.
+        </p>
       </label>
 
       <fieldset className="text-sm">
