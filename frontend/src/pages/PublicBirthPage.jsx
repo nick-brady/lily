@@ -164,7 +164,7 @@ export default function PublicBirthPage() {
     // role; the server filters events by the viewer's audience scopes.
     return new URL(`${api.apiUrl}/b/${slug}/stream`, window.location.origin).toString();
   }, [birth, slug, isAuthenticated]);
-  const { isConnected } = useSSE(streamUrl, handleSSE);
+  const { status: syncStatus } = useSSE(streamUrl, handleSSE);
 
   const sortedEvents = useMemo(
     () => [...events.values()].sort((a, b) => a.sequence_id - b.sequence_id),
@@ -308,7 +308,7 @@ export default function PublicBirthPage() {
           </div>
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
-              <ConnectionStatus isConnected={isConnected} />
+              <ConnectionStatus status={syncStatus} />
               {!loading && birth && isAuthenticated && (
                 <PoolPill
                   slug={slug}
