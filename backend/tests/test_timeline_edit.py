@@ -117,6 +117,9 @@ async def _edit(monkeypatch, *, birth, event, new_time):
 
     monkeypatch.setattr(timeline.timeline_repo, "get_event", lambda db, _id: event)
     monkeypatch.setattr(timeline, "serialize_event_with_engagement", lambda *a, **k: None)
+    # Editing marks the birth's gift artwork stale; that's covered in
+    # test_gift_artwork_staleness, and it needs a real session.
+    monkeypatch.setattr(timeline.gifts_repo, "mark_stale", lambda db, **kw: 0)
 
     async def noop(*args, **kwargs):
         return None

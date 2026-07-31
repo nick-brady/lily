@@ -658,6 +658,11 @@ class GiftGalleryOut(BaseModel):
     family_has_shipping_address: bool = False
     storage_paid_until: Optional[datetime] = None
     storage_lifetime: bool = False
+    # When artwork may first be generated: the arrival plus a few hours for
+    # the birth time and measurements to settle. None before the birth. In
+    # the future, `items` is empty on purpose and the gallery says so rather
+    # than rendering a story that's still being corrected.
+    artwork_ready_at: Optional[datetime] = None
 
 
 class GiftRenderingPatchIn(BaseModel):

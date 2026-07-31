@@ -84,6 +84,7 @@ def _gift_gallery_out(db, birth, *, is_parent: bool) -> GiftGalleryOut:
         family_has_shipping_address=birth.shipping_address is not None,
         storage_paid_until=birth.storage_paid_until,
         storage_lifetime=birth.storage_lifetime,
+        artwork_ready_at=gifts_repo.artwork_ready_at(birth),
     )
 
 
@@ -138,14 +139,20 @@ def list_gifts(
     db: Session = Depends(get_db),
 ) -> GiftGalleryOut:
     """The gift gallery. Lazily ensures a rendering exists per (physical item
-    × template) and schedules a background render for newly-created ones —
-    but only once the birth is complete: gifts are made FROM the story
+    × template) and schedules a background render for anything pending — but
+    only once the story has had time to settle: gifts are made FROM the story
     (Day Two is the moment), and a pre-birth page has no story to render.
     Merely browsing the page must never generate artwork from an empty
-    timeline."""
-    if access.birth.status is BirthStatus.born:
-        _, new_ids = gifts_repo.ensure_renderings(db, birth=access.birth)
-        for rendering_id in new_ids:
+    timeline.
+
+    This is also the only thing that turns a stale row back into artwork, so a
+    correction made to the birth time or the measurements reaches the keepsake
+    the next time anyone opens the gallery.
+    """
+    if gifts_repo.artwork_window_open(access.birth):
+        gifts_repo.ensure_renderings(db, birth=access.birth)
+        pending = gifts_repo.ids_needing_render(db, birth_id=access.birth.id)
+        for rendering_id in gifts_repo.claim_renders(pending):
             background_tasks.add_task(gifts_repo.render_rendering, rendering_id)
     return _gift_gallery_out(
         db, access.birth, is_parent=births_repo.is_parent(access.role)
@@ -160,12 +167,17 @@ def generate_gifts(
     db: Session = Depends(get_db),
 ) -> GiftGalleryOut:
     """Force a (re)render — all of the birth's gift artwork, or a single
-    rendering when `rendering_id` is given. Parents only."""
+    rendering when `rendering_id` is given. Parents only.
+
+    Deliberately not gated on the grace period: this is the escape hatch for a
+    parent who wants their keepsake now, and asking for it is consent to
+    whatever the story currently says.
+    """
     gifts_repo.ensure_renderings(db, birth=access.birth)
     ids = gifts_repo.reset_to_pending(
         db, birth_id=access.birth.id, rendering_id=rendering_id
     )
-    for rid in ids:
+    for rid in gifts_repo.claim_renders(ids):
         background_tasks.add_task(gifts_repo.render_rendering, rid)
     return _gift_gallery_out(db, access.birth, is_parent=True)
 

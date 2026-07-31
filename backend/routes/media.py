@@ -36,6 +36,7 @@ from models import (
     User,
 )
 from repositories import births as births_repo
+from repositories import gifts as gifts_repo
 from repositories import media as media_repo
 from repositories import timeline as timeline_repo
 from routes.deps import (
@@ -117,6 +118,9 @@ async def upload_media(
         occurred_at=occurred_at,
         audience_scope=audience_scope,
     )
+    # Photos are the artwork's hero image — a new one after the birth means
+    # the keepsake designs are out of date.
+    gifts_repo.mark_stale(db, birth_id=access.birth.id)
     db.commit()
     db.refresh(event)
     await publish_event_change(access.birth.id, "appended", event)

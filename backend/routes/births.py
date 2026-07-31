@@ -17,6 +17,7 @@ from db import get_db
 from models import Family, FamilyMembership, FamilyRole, User
 from repositories import births as births_repo
 from repositories import families as families_repo
+from repositories import gifts as gifts_repo
 from repositories import timeline as timeline_repo
 from routes.deps import (
     BirthAccess,
@@ -141,6 +142,15 @@ def update_birth(
         gender_pool_enabled=payload.gender_pool_enabled,
         child_sex=payload.child_sex,
     )
+    # The measurements are drawn on the keepsake, and they're usually recorded
+    # hours after the birth — so settling the pool is one of the likeliest
+    # reasons existing artwork is now out of date.
+    if (
+        payload.child_weight_lbs is not None
+        or payload.child_length_in is not None
+        or payload.child_sex is not None
+    ):
+        gifts_repo.mark_stale(db, birth_id=access.birth.id)
     db.commit()
     db.refresh(access.birth)
     return BirthOut.model_validate(access.birth)

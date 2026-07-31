@@ -2,12 +2,26 @@
 
 Renderings are created lazily: opening a birth's gift gallery ensures a
 `pending` row exists per (active physical catalog item × its templates), and
-the route schedules a background render for the newly-created ones. Storage
+the route schedules a background render for any row that needs one. Storage
 gifts have no artwork and never get a rendering row.
+
+Two rules keep the artwork honest about a story that is still settling:
+
+* Nothing renders until `ARTWORK_GRACE_PERIOD` after the arrival. The birth
+  time is posted once someone has a free hand, so it is nearly always
+  corrected afterwards — and the measurements usually arrive later still.
+  Rendering at the Baby Born tap meant the keepsake captured the provisional
+  version of both.
+* Anything that changes what the artwork draws marks the rows stale
+  (`mark_stale`), and the next gallery view re-renders them. Deferring the
+  work to the view rather than the edit collapses a flurry of Day-One posts
+  into one render.
 """
 from __future__ import annotations
 
+import threading
 import uuid
+from datetime import datetime, timedelta, timezone
 
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
@@ -20,6 +34,7 @@ from db import SessionLocal
 from fulfillment import products as fulfillment_products
 from models import (
     Birth,
+    BirthStatus,
     GiftCatalogItem,
     GiftKind,
     GiftRendering,
@@ -28,6 +43,49 @@ from models import (
 )
 from artwork_links import signed_artwork_url
 from storage import object_key, presigned_get_url, put_object
+
+# How long the story is allowed to settle before any artwork is generated.
+# Long enough to cover the usual "posted at 10:54, actually arrived 10:38"
+# correction and the measurements being written up; short enough that a
+# family looking for a keepsake on day one still finds one waiting.
+ARTWORK_GRACE_PERIOD = timedelta(hours=4)
+
+
+def artwork_ready_at(birth: Birth) -> datetime | None:
+    """When this birth's artwork may first be generated, or None if it never
+    can yet (still expecting, or born without a recorded arrival time)."""
+    if birth.status is not BirthStatus.born or birth.birth_completed_at is None:
+        return None
+    return birth.birth_completed_at + ARTWORK_GRACE_PERIOD
+
+
+def artwork_window_open(birth: Birth) -> bool:
+    ready_at = artwork_ready_at(birth)
+    return ready_at is not None and datetime.now(timezone.utc) >= ready_at
+
+
+# Renders are claimed in-process before being scheduled, so a gallery poll
+# arriving mid-render doesn't start a second one for the same row. A single
+# uvicorn worker is a deliberate constraint of this app (see the SSE broker in
+# events.py), which is what makes a process-local set sufficient. Background
+# tasks run in a threadpool, hence the lock. Losing the set on restart is the
+# right failure: whatever was mid-flight is gone too, and the row is still
+# `pending` for the next view to pick up.
+_in_flight: set[uuid.UUID] = set()
+_in_flight_lock = threading.Lock()
+
+
+def claim_renders(rendering_ids: list[uuid.UUID]) -> list[uuid.UUID]:
+    """Take ownership of the ids that aren't already rendering."""
+    with _in_flight_lock:
+        claimed = [rid for rid in rendering_ids if rid not in _in_flight]
+        _in_flight.update(claimed)
+    return claimed
+
+
+def _release_render(rendering_id: uuid.UUID) -> None:
+    with _in_flight_lock:
+        _in_flight.discard(rendering_id)
 
 
 def list_active_catalog(db: Session) -> list[GiftCatalogItem]:
@@ -112,6 +170,38 @@ def ensure_renderings(
 
     db.commit()
     return list_renderings_for_birth(db, birth_id=birth.id), new_ids
+
+
+def mark_stale(db: Session, *, birth_id: uuid.UUID) -> int:
+    """Flag this birth's artwork as needing a re-render because something it
+    draws from changed. Flips finished rows back to `pending` and leaves the
+    old `artwork_s3_key` in place, so the gallery keeps showing the previous
+    design (and a purchased order keeps a valid print file) until the new one
+    lands. Does NOT commit — it composes into the caller's transaction, and
+    must not half-commit an edit that later fails.
+
+    Returns the number of rows marked, so callers can skip pointless work.
+    Rows already `pending` are left alone: they're either queued or in flight.
+    """
+    rows = [
+        row
+        for row in list_renderings_for_birth(db, birth_id=birth_id)
+        if row.status is not GiftRenderingStatus.pending
+    ]
+    for row in rows:
+        row.status = GiftRenderingStatus.pending
+        row.failure_reason = None
+    return len(rows)
+
+
+def ids_needing_render(db: Session, *, birth_id: uuid.UUID) -> list[uuid.UUID]:
+    """Pending rows for a birth — freshly created, marked stale, or left over
+    from a restart that killed their render."""
+    return [
+        row.id
+        for row in list_renderings_for_birth(db, birth_id=birth_id)
+        if row.status is GiftRenderingStatus.pending
+    ]
 
 
 def reset_to_pending(
@@ -266,6 +356,7 @@ def render_rendering(rendering_id: uuid.UUID) -> None:
             _fail(db, rendering, f"unexpected: {exc}")
     finally:
         db.close()
+        _release_render(rendering_id)
 
 
 def _try_generate_mockup(db: Session, rendering: GiftRendering) -> None:
