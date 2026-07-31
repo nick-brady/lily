@@ -19,12 +19,31 @@ try {
   // storage unavailable (private mode edge cases) — nothing to clean
 }
 
+// FastAPI hands us `detail` in three shapes and only one of them is a string.
+// Passing the other two to `new Error()` renders "[object Object]" at the user,
+// which is how a perfectly good validation message ("that time is in the
+// future") reaches someone as gibberish.
+function detailMessage(body) {
+  const detail = body?.detail;
+  if (typeof detail === 'string') return detail;
+  // Pydantic validation: a list of {loc, msg}. A body checked against a
+  // discriminated union reports one entry per variant, all saying the same
+  // thing, so the first readable msg is the message.
+  if (Array.isArray(detail)) {
+    const first = detail.find((d) => typeof d?.msg === 'string');
+    if (first) return first.msg.replace(/^Value error,\s*/, '');
+  }
+  // Structured app errors, e.g. {code: 'name_required', message: ...}
+  if (detail && typeof detail.message === 'string') return detail.message;
+  return null;
+}
+
 async function jsonOrThrow(res) {
   if (!res.ok) {
     let detail = res.statusText;
     try {
       const body = await res.json();
-      detail = body.detail || JSON.stringify(body);
+      detail = detailMessage(body) || JSON.stringify(body);
     } catch {
       // empty body, keep statusText
     }

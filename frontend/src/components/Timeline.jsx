@@ -323,6 +323,7 @@ export default function Timeline({
   const [editModal, setEditModal] = useState(null);
   const [editValue, setEditValue] = useState('');
   const [editTime, setEditTime] = useState('');
+  const [editError, setEditError] = useState('');
   const [busy, setBusy] = useState(false);
 
   const openLightbox = (url, caption) => setLightbox({ open: true, url, caption: caption || '' });
@@ -335,6 +336,7 @@ export default function Timeline({
     setEditValue(editable.value);
     const initialTime = toLocalInputValue(event.occurred_at);
     setEditTime(initialTime);
+    setEditError('');
     setEditModal({ event, field: editable.field, initialTime });
   };
 
@@ -352,15 +354,21 @@ export default function Timeline({
   const submitEdit = async () => {
     if (!editModal || !birthId) return;
     setBusy(true);
+    setEditError('');
     try {
       const patch = { [editModal.field]: editValue };
       if (editTime && editTime !== editModal.initialTime) {
         patch.occurred_at = new Date(editTime).toISOString();
       }
       await api.editEvent(birthId, editModal.event.id, patch);
+      setEditModal(null);
+    } catch (err) {
+      // Stay open and say why. This used to close on `finally` regardless, so
+      // a rejected correction looked exactly like a saved one — the worst
+      // possible outcome for someone fixing their baby's arrival time.
+      setEditError(err.message || 'Could not save that change');
     } finally {
       setBusy(false);
-      setEditModal(null);
     }
   };
 
@@ -431,14 +439,20 @@ export default function Timeline({
           />
           <label className="block mt-3">
             <span className="text-xs text-gray-500 dark:text-gray-400">When it happened</span>
+            {/* Same bound as the composer and the Baby Born field: nothing on
+                a birth timeline has happened yet in the future. */}
             <input
               type="datetime-local"
               value={editTime}
               onChange={(e) => setEditTime(e.target.value)}
+              max={toLocalInputValue()}
               className="mt-1 w-full px-4 py-2 rounded-xl border border-gray-200 dark:border-gray-700
                          bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 text-sm"
             />
           </label>
+          {editError && (
+            <p className="mt-3 text-sm text-red-600 dark:text-red-400">{editError}</p>
+          )}
           <div className="flex gap-3 mt-4">
             <button
               onClick={() => setEditModal(null)}
