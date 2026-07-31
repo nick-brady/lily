@@ -6,9 +6,16 @@ import { useEffect, useRef, useState } from 'react';
  * own, so we just track the highest sequence_id we've seen for debugging.
  *
  * `onEvent` is called with `(kind, data, sequenceId)` for every event.
+ *
+ * `status` distinguishes four states, because a boolean can't:
+ *   idle          no url — we never subscribed (anonymous preview)
+ *   connecting    opening, or retrying before we've ever been live
+ *   live          open
+ *   reconnecting  dropped after having been live — the only alarming one
+ * Callers render nothing for `idle`: "not subscribed" is not an outage.
  */
 export function useSSE(url, onEvent) {
-  const [isConnected, setIsConnected] = useState(false);
+  const [status, setStatus] = useState('idle');
   const onEventRef = useRef(onEvent);
   const lastSequenceIdRef = useRef(null);
 
@@ -17,8 +24,13 @@ export function useSSE(url, onEvent) {
   }, [onEvent]);
 
   useEffect(() => {
-    if (!url) return undefined;
+    if (!url) {
+      setStatus('idle');
+      return undefined;
+    }
     const source = new EventSource(url);
+    let everOpened = false;
+    setStatus('connecting');
 
     const handle = (kind) => (evt) => {
       if (evt.lastEventId) lastSequenceIdRef.current = Number(evt.lastEventId);
@@ -31,7 +43,10 @@ export function useSSE(url, onEvent) {
       onEventRef.current?.(kind, data, evt.lastEventId ? Number(evt.lastEventId) : null);
     };
 
-    source.addEventListener('open', () => setIsConnected(true));
+    source.addEventListener('open', () => {
+      everOpened = true;
+      setStatus('live');
+    });
     // birth_update carries no id: line (negative sequence id server-side),
     // so evt.lastEventId is empty — the guard in handle() tolerates that.
     // This listener is what makes labor-start and "baby born" appear live
@@ -46,14 +61,17 @@ export function useSSE(url, onEvent) {
     source.addEventListener('comment_updated', handle('comment_updated'));
     source.addEventListener('comment_deleted', handle('comment_deleted'));
     source.onerror = () => {
-      setIsConnected(false);
+      // EventSource retries on its own. Before the first successful open this
+      // is still the opening handshake, not a dropped stream — saying
+      // "Reconnecting" then would be crying wolf on every first paint.
+      setStatus(everOpened ? 'reconnecting' : 'connecting');
     };
 
     return () => {
       source.close();
-      setIsConnected(false);
+      setStatus('idle');
     };
   }, [url]);
 
-  return { isConnected, lastSequenceId: lastSequenceIdRef.current };
+  return { status, lastSequenceId: lastSequenceIdRef.current };
 }
