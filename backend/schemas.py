@@ -175,11 +175,19 @@ class GuessOut(BaseModel):
     sex_guess: Optional[str] = None
     date_guess: Optional[date] = None
     is_mine: bool = False
-    # set only once the actual measurements are recorded
-    score: Optional[float] = None
-    rank: Optional[int] = None
-    # closest arrival-date call (ties share); separate from the size score
-    date_winner: bool = False
+    # Everything below is set only once the actual measurements are recorded.
+    # Three medals, one per dimension — pounds, inches and days have no
+    # exchange rate, so they're never combined into one number. Ties share.
+    rank: Optional[int] = None  # weight order; gold is rank 1
+    weight_winner: bool = False  # 🏆
+    length_winner: bool = False  # 🥈
+    date_winner: bool = False  # 🥉
+    # How close each guess actually was. Shown on the board so a medal
+    # explains itself — most of the "that's not fair" comes from the numbers
+    # being invisible.
+    weight_delta_lbs: Optional[float] = None
+    length_delta_in: Optional[float] = None
+    date_delta_days: Optional[int] = None
     # Guesses stay editable until the birth, so the board shows its own
     # provenance instead of locking: a settled row whose updated_at drifted
     # from created_at reads "guessed Jul 12 · updated Aug 14". Visibility is

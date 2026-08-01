@@ -5,6 +5,8 @@ import { useAuth } from '../contexts/AuthContext';
 import { getTheme, themeVars } from '../utils/themes';
 import HeaderMenu from '../components/HeaderMenu';
 import InviteManager from '../components/InviteManager';
+import PoolPill from '../components/PoolPill';
+import { formatDate, formatLength, formatWeight } from '../components/Predictions';
 import ThemePickerSheet from '../components/ThemePickerSheet';
 
 const STATUS_LABELS = {
@@ -152,7 +154,11 @@ export default function BirthSettingsPage() {
         <InviteManager birthId={birth.id} />
 
         {/* The guess pool */}
-        <PoolSettingsCard birth={birth} onSaved={refreshMe} />
+        <PoolSettingsCard
+          birth={birth}
+          onSaved={refreshMe}
+          themeStyle={themeVars(theme, effectiveDark)}
+        />
 
         {/* Keepsake gifts */}
         <ShippingAddressCard birthId={birth.id} childName={birth.child_name} />
@@ -519,7 +525,42 @@ function GiftsReceivedCard({ birthId }) {
 // Pool controls: the due date (drives the 36-week guess-edit lock) and the
 // gender-surprise toggle (opens boy/girl guessing — only sensible for
 // families keeping it a surprise).
-function PoolSettingsCard({ birth, onSaved }) {
+// The parent's own guess, spelled out. A settings card is where you come to
+// check a fact, so it states the fact — "7 lbs 6 oz, 20", Aug 15" — rather
+// than the header's ambient "you're in · 1". Formatters are the board's own,
+// so the sentence and the table can't render the same guess differently.
+function YourGuessLine({ board, onOpen }) {
+  const mine = (board?.guesses || []).find((g) => g.is_mine);
+  const parts = mine
+    ? [
+        formatWeight(mine.weight_lbs),
+        formatLength(mine.length_in),
+        mine.date_guess ? `on ${formatDate(mine.date_guess)}` : null,
+      ].filter(Boolean)
+    : [];
+
+  return (
+    <button
+      type="button"
+      onClick={onOpen}
+      className="text-sm t-muted hover:t-ink text-left transition-colors"
+    >
+      {parts.length > 0 ? (
+        <>
+          Your guess — <span className="t-ink">{parts.join(', ')}</span>.{' '}
+          <span className="underline">Update</span>
+        </>
+      ) : (
+        <>
+          You haven&rsquo;t left your guess yet!{' '}
+          <span className="underline">Make it now</span>
+        </>
+      )}
+    </button>
+  );
+}
+
+function PoolSettingsCard({ birth, onSaved, themeStyle }) {
   const [dueDate, setDueDate] = useState(birth.due_date || '');
   const [genderPool, setGenderPool] = useState(Boolean(birth.gender_pool_enabled));
   const [saving, setSaving] = useState(false);
@@ -556,6 +597,22 @@ function PoolSettingsCard({ birth, onSaved }) {
           Everyone's guesses at the big stats — sealed until the arrival.
         </p>
       </div>
+
+      {/* The parents run the pool from here but had no way into it — the only
+          door was the pill on the birth page. Same component, so it's the same
+          board and the same sheet; only the trigger differs, because the
+          header's "you're in · 1" shorthand tells a parent nothing they came
+          here to find out. */}
+      <PoolPill
+        slug={birth.slug}
+        birthId={birth.id}
+        status={birth.status}
+        isParent
+        themeStyle={themeStyle}
+        renderTrigger={(board, open) => (
+          <YourGuessLine board={board} onOpen={open} />
+        )}
+      />
 
       <label className="block text-sm">
         <span className="t-muted">Due date</span>

@@ -41,14 +41,19 @@ function detailMessage(body) {
 async function jsonOrThrow(res) {
   if (!res.ok) {
     let detail = res.statusText;
+    let code;
     try {
       const body = await res.json();
       detail = detailMessage(body) || JSON.stringify(body);
+      // Machine-readable half of a structured detail, e.g. 'name_required'.
+      // Callers that need to branch shouldn't have to match on prose.
+      if (typeof body?.detail?.code === 'string') code = body.detail.code;
     } catch {
       // empty body, keep statusText
     }
     const err = new Error(detail);
     err.status = res.status;
+    if (code) err.code = code;
     throw err;
   }
   if (res.status === 204) return null;

@@ -225,7 +225,7 @@ function ActualsForm({ birthId, genderEnabled, onSaved }) {
   );
 }
 
-function formatWeight(lbs) {
+export function formatWeight(lbs) {
   if (!lbs) return null;
   let pounds = Math.floor(lbs);
   let oz = Math.round((lbs - pounds) * 16);
@@ -236,11 +236,48 @@ function formatWeight(lbs) {
   return oz > 0 ? `${pounds} lbs ${oz} oz` : `${pounds} lbs`;
 }
 
-function formatLength(inches) {
+export function formatLength(inches) {
   return inches ? `${inches}"` : null;
 }
 
-function formatDate(iso) {
+// Three medals, one per dimension, because pounds, inches and days have no
+// exchange rate. The labels live in a legend under the table rather than in
+// each row — a medal on its own reads as 1st/2nd/3rd place, and then a silver
+// sitting next to a worse weight than the bronze looks like a bug.
+const MEDALS = [
+  { flag: 'weight_winner', icon: '🏆', label: 'closest weight' },
+  { flag: 'length_winner', icon: '🥈', label: 'closest length' },
+  { flag: 'date_winner', icon: '🥉', label: 'closest day' },
+];
+
+// How far off, in the units people actually say. Absolute values: the board is
+// about closeness, and "2 oz over" invites an argument about the rounding.
+function offBy(value, render) {
+  if (value == null) return null;
+  return value === 0 ? 'exact' : render(value);
+}
+
+function weightOffBy(lbs) {
+  return offBy(lbs, (v) => {
+    const oz = Math.round(v * 16);
+    return oz < 16 ? `${oz} oz off` : `${(v).toFixed(2).replace(/\.?0+$/, '')} lbs off`;
+  });
+}
+
+function lengthOffBy(inches) {
+  return offBy(inches, (v) => `${Number(v.toFixed(2))}" off`);
+}
+
+function dateOffBy(days) {
+  return offBy(days, (v) => `${v} day${v === 1 ? '' : 's'} off`);
+}
+
+function OffBy({ text }) {
+  if (!text) return null;
+  return <div className="text-xs t-faint font-normal">{text}</div>;
+}
+
+export function formatDate(iso) {
   if (!iso) return null;
   const [y, m, d] = iso.split('-').map(Number);
   return new Date(y, m - 1, d).toLocaleDateString([], { month: 'short', day: 'numeric' });
@@ -305,13 +342,16 @@ function GuessTable({ guesses, board, settled, genderEnabled }) {
             <tr
               key={g.id}
               className={`border-b border-gray-100 dark:border-gray-700/50 ${
-                settled && g.rank === 1 ? 'bg-amber-50 dark:bg-amber-900/20' : ''
+                settled && g.weight_winner ? 'bg-amber-50 dark:bg-amber-900/20' : ''
               }`}
             >
-              <td className="py-2 px-2">
-                {settled && g.rank === 1 && <span className="text-xl">🏆</span>}
-                {settled && g.rank === 2 && <span className="text-lg">🥈</span>}
-                {settled && g.rank === 3 && <span className="text-lg">🥉</span>}
+              <td className="py-2 px-2 whitespace-nowrap">
+                {settled
+                  && MEDALS.filter((m) => g[m.flag]).map((m) => (
+                    <span key={m.flag} className="text-lg" title={m.label}>
+                      {m.icon}
+                    </span>
+                  ))}
               </td>
               <td className="py-2 px-2 font-medium text-gray-800 dark:text-gray-200">
                 {g.display_name}
@@ -322,13 +362,15 @@ function GuessTable({ guesses, board, settled, genderEnabled }) {
               </td>
               <td className="py-2 px-2 text-right text-gray-600 dark:text-gray-400">
                 {sealedOr(g, formatWeight(g.weight_lbs))}
+                {settled && <OffBy text={weightOffBy(g.weight_delta_lbs)} />}
               </td>
               <td className="py-2 px-2 text-right text-gray-600 dark:text-gray-400">
                 {sealedOr(g, formatLength(g.length_in))}
+                {settled && <OffBy text={lengthOffBy(g.length_delta_in)} />}
               </td>
               <td className="py-2 px-2 text-right text-gray-600 dark:text-gray-400 whitespace-nowrap">
-                {g.date_winner && <span className="mr-1">📅</span>}
                 {sealedOr(g, formatDate(g.date_guess))}
+                {settled && <OffBy text={dateOffBy(g.date_delta_days)} />}
               </td>
               {genderEnabled && (
                 <td className="py-2 px-2 text-right text-gray-600 dark:text-gray-400 whitespace-nowrap">
@@ -366,6 +408,15 @@ function GuessTable({ guesses, board, settled, genderEnabled }) {
           </tfoot>
         )}
       </table>
+      {settled && (
+        <p className="mt-3 text-xs t-faint flex flex-wrap gap-x-3 gap-y-1">
+          {MEDALS.map((m) => (
+            <span key={m.flag}>
+              {m.icon} {m.label}
+            </span>
+          ))}
+        </p>
+      )}
     </div>
   );
 }

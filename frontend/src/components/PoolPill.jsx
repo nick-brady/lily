@@ -8,8 +8,21 @@ import Predictions from './Predictions';
  * header. It carries the state a visitor needs ("add yours", "you're in",
  * last-call during labor, results after settle) and opens the pool as a
  * bottom sheet — the timeline itself never shows the pool.
+ *
+ * `renderTrigger(board, open)` replaces the chip where that shorthand doesn't
+ * carry its weight. In a header "you're in · 1" is enough because the pool is
+ * ambient; on the settings page, where the parent came specifically to manage
+ * it, the trigger has room to say what the guess actually is. Both keep the
+ * same board fetch and the same sheet.
  */
-export default function PoolPill({ slug, birthId, status, isParent, themeStyle }) {
+export default function PoolPill({
+  slug,
+  birthId,
+  status,
+  isParent,
+  themeStyle,
+  renderTrigger,
+}) {
   const [board, setBoard] = useState(null);
   const [open, setOpen] = useState(false);
 
@@ -33,8 +46,10 @@ export default function PoolPill({ slug, birthId, status, isParent, themeStyle }
   const born = status === 'born';
   const lastCall = status === 'in_labor' && !mine && !settled;
 
-  // Nothing to say: born, nobody ever guessed, and no reveal coming.
-  if (born && guesses.length === 0) return null;
+  // Nothing to say: born, nobody ever guessed, and no reveal coming. A custom
+  // trigger owns its own empty state — the settings card still wants to tell a
+  // parent the pool is there.
+  if (born && guesses.length === 0 && !renderTrigger) return null;
 
   // Before you've guessed, "the pool" means nothing — say what the game
   // is. After you're in (or it's over), shorthand is earned.
@@ -53,6 +68,7 @@ export default function PoolPill({ slug, birthId, status, isParent, themeStyle }
 
   return (
     <>
+      {renderTrigger ? renderTrigger(board, () => setOpen(true)) : (
       <button
         type="button"
         onClick={() => setOpen(true)}
@@ -67,6 +83,7 @@ export default function PoolPill({ slug, birthId, status, isParent, themeStyle }
         )}
         {label}
       </button>
+      )}
 
       {/* Portaled to <body>: the pill lives inside the sticky header,
           whose backdrop-filter makes it the containing block for fixed

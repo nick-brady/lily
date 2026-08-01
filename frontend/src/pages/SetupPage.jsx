@@ -169,10 +169,10 @@ export default function SetupPage() {
   if (loading) return null;
 
   return (
-    <div className="min-h-screen flex flex-col items-center justify-start bg-gradient-to-b from-primary-50 to-white dark:from-gray-900 dark:to-gray-950 px-4 py-12">
+    <div className="min-h-screen flex flex-col items-center justify-start bg-gradient-to-b from-primary-50 to-white dark:from-gray-900 dark:to-gray-950 px-4 py-12 lg:py-8">
       {/* Logo */}
       <div
-        className="text-4xl text-primary-600 dark:text-primary-400 mb-8"
+        className="text-4xl lg:text-3xl text-primary-600 dark:text-primary-400 mb-8 lg:mb-6"
         style={{ fontFamily: "'Great Vibes', cursive" }}
       >
         Arrival Story
@@ -188,137 +188,165 @@ export default function SetupPage() {
         ))}
       </div>
 
-      <div className="w-full max-w-md">
+      {/* Every step is a narrow centred column except the first, which has the
+          most in it — name, due date, six theme cards and a live preview. On a
+          desktop window that stack ran past the fold the moment you typed a
+          name (the preview mounts), pushing the primary button out of sight at
+          exactly the moment you're ready to press it. Widening only step one
+          lets the preview sit beside the form instead of below it. */}
+      <div
+        className={`w-full ${step === 'name' ? 'max-w-md lg:max-w-4xl' : 'max-w-md'}`}
+      >
 
         {/* ── Step 1: Name + Theme ── */}
         {step === 'name' && (
-          <form onSubmit={goToAuth} className="space-y-8">
+          <form onSubmit={goToAuth} className="space-y-8 lg:space-y-6">
 
-            {/* Family chooser — only when the user already parents a family */}
-            {parentFamilies.length > 0 && (
-              <div className="space-y-2">
-                <p className="text-sm font-medium text-gray-700 dark:text-gray-300 text-center">
-                  Add this baby to
-                </p>
+            {/* Below lg this is a plain block, so everything keeps its current
+                phone ordering: fields, preview, then the button. 28rem keeps
+                the form exactly the width it is on a phone, so the six theme
+                cards don't reflow and grow taller. */}
+            <div className="lg:grid lg:grid-cols-[28rem_minmax(0,1fr)] lg:gap-10 lg:items-start">
+              <div className="space-y-8 lg:space-y-6">
+
+                {/* Family chooser — only when the user already parents a family */}
+                {parentFamilies.length > 0 && (
+                  <div className="space-y-2">
+                    <p className="text-sm font-medium text-gray-700 dark:text-gray-300 text-center">
+                      Add this baby to
+                    </p>
+                    <div className="space-y-2">
+                      {parentFamilies.map((f) => (
+                        <label
+                          key={f.id}
+                          className="flex items-center gap-3 p-3 rounded-xl border border-gray-300 dark:border-gray-600
+                                     bg-white dark:bg-gray-800 cursor-pointer"
+                        >
+                          <input
+                            type="radio"
+                            name="family"
+                            checked={selectedFamilyId === f.id}
+                            onChange={() => setSelectedFamilyId(f.id)}
+                          />
+                          <span className="text-sm text-gray-800 dark:text-gray-100">
+                            {f.display_name}
+                            <span className="block text-xs text-gray-400 dark:text-gray-500">
+                              Co-parents and viewers from this family carry over
+                            </span>
+                          </span>
+                        </label>
+                      ))}
+                      <label
+                        className="flex items-center gap-3 p-3 rounded-xl border border-gray-300 dark:border-gray-600
+                                   bg-white dark:bg-gray-800 cursor-pointer"
+                      >
+                        <input
+                          type="radio"
+                          name="family"
+                          checked={selectedFamilyId === 'new'}
+                          onChange={() => setSelectedFamilyId('new')}
+                        />
+                        <span className="text-sm text-gray-800 dark:text-gray-100">A new family</span>
+                      </label>
+                    </div>
+                  </div>
+                )}
+
+                {/* Name input */}
                 <div className="space-y-2">
-                  {parentFamilies.map((f) => (
-                    <label
-                      key={f.id}
-                      className="flex items-center gap-3 p-3 rounded-xl border border-gray-300 dark:border-gray-600
-                                 bg-white dark:bg-gray-800 cursor-pointer"
-                    >
-                      <input
-                        type="radio"
-                        name="family"
-                        checked={selectedFamilyId === f.id}
-                        onChange={() => setSelectedFamilyId(f.id)}
-                      />
-                      <span className="text-sm text-gray-800 dark:text-gray-100">
-                        {f.display_name}
-                        <span className="block text-xs text-gray-400 dark:text-gray-500">
-                          Co-parents and viewers from this family carry over
-                        </span>
-                      </span>
-                    </label>
-                  ))}
-                  <label
-                    className="flex items-center gap-3 p-3 rounded-xl border border-gray-300 dark:border-gray-600
-                               bg-white dark:bg-gray-800 cursor-pointer"
-                  >
-                    <input
-                      type="radio"
-                      name="family"
-                      checked={selectedFamilyId === 'new'}
-                      onChange={() => setSelectedFamilyId('new')}
-                    />
-                    <span className="text-sm text-gray-800 dark:text-gray-100">A new family</span>
-                  </label>
-                </div>
-              </div>
-            )}
-
-            {/* Name input */}
-            <div className="space-y-2">
-              <div className="text-center">
-                <h1 className="text-xl font-semibold text-gray-800 dark:text-white mb-1">
-                  What's your baby's name?
-                </h1>
-                <p className="text-sm text-gray-500 dark:text-gray-400">
-                  You can always change this later.
-                </p>
-              </div>
-              <input
-                type="text"
-                value={babyName}
-                onChange={(e) => setBabyName(e.target.value)}
-                placeholder="Lily Wren"
-                autoFocus
-                autoComplete="off"
-                className="w-full px-4 py-4 text-xl rounded-xl border border-gray-300 dark:border-gray-600
-                           bg-white dark:bg-gray-800 text-gray-900 dark:text-white text-center
-                           focus:ring-2 focus:ring-primary-500 focus:border-transparent
-                           focus:outline-none transition-colors placeholder-gray-300 dark:placeholder-gray-600"
-              />
-              {slug && (
-                <div className="flex items-center justify-between px-1">
-                  <span className="text-xs text-gray-400 font-mono">/b/{slug}</span>
-                  {slugStatus === 'checking' && <span className="text-xs text-gray-400">Checking…</span>}
-                  {slugStatus === 'available' && <span className="text-xs text-emerald-600 dark:text-emerald-400 font-medium">Available ✓</span>}
-                  {slugStatus === 'taken' && <span className="text-xs text-red-500 dark:text-red-400 font-medium">Taken</span>}
-                </div>
-              )}
-              {slugStatus === 'taken' && slugSuggestion && (
-                <button
-                  type="button"
-                  onClick={adoptSuggestion}
-                  className="text-xs text-primary-600 dark:text-primary-400 hover:underline px-1"
-                >
-                  Use /b/{slugSuggestion} instead →
-                </button>
-              )}
-            </div>
-
-            {/* Due date — optional, skippable; drives the family pool's
-                36-week guess lock and can be set later in Birth settings */}
-            <label className="block">
-              <span className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                When are they due? <span className="font-normal text-gray-400">(optional)</span>
-              </span>
-              <input
-                type="date"
-                value={dueDate}
-                onChange={(e) => setDueDate(e.target.value)}
-                className="t-date-input px-4 py-3 rounded-xl border border-gray-300 dark:border-gray-600
-                           bg-white dark:bg-gray-800 text-gray-900 dark:text-white
-                           focus:ring-2 focus:ring-primary-500 focus:border-transparent
-                           focus:outline-none transition-colors"
-              />
-            </label>
-
-            {/* Theme picker */}
-            <div className="space-y-4">
-              <div className="text-center">
-                <h2 className="text-base font-semibold text-gray-800 dark:text-white">
-                  Pick a look for your page
-                </h2>
-              </div>
-
-              {/* Theme cards — all 6 in a 3-column grid */}
-              <div className="grid grid-cols-3 gap-2.5">
-                {Object.values(THEMES).map((t) => (
-                  <ThemeCard
-                    key={t.id}
-                    theme={t}
-                    displayName={displayName || 'Baby'}
-                    selected={selectedTheme === t.id}
-                    onSelect={() => setSelectedTheme(t.id)}
+                  <div className="text-center">
+                    <h1 className="text-xl lg:text-lg font-semibold text-gray-800 dark:text-white mb-1">
+                      What's your baby's name?
+                    </h1>
+                    <p className="text-sm text-gray-500 dark:text-gray-400">
+                      You can always change this later.
+                    </p>
+                  </div>
+                  {/* Every control here is sized as a phone tap target — 52-54px
+                      tall. That reads as oversized on a desktop, where inputs
+                      and buttons sit around 44px, so they all step down at lg.
+                      Phones keep the big targets. */}
+                  <input
+                    type="text"
+                    value={babyName}
+                    onChange={(e) => setBabyName(e.target.value)}
+                    placeholder="Lily Wren"
+                    autoFocus
+                    autoComplete="off"
+                    className="w-full px-4 py-4 text-xl lg:py-2.5 lg:text-base rounded-xl
+                               border border-gray-300 dark:border-gray-600
+                               bg-white dark:bg-gray-800 text-gray-900 dark:text-white text-center
+                               focus:ring-2 focus:ring-primary-500 focus:border-transparent
+                               focus:outline-none transition-colors placeholder-gray-300 dark:placeholder-gray-600"
                   />
-                ))}
+                  {slug && (
+                    <div className="flex items-center justify-between px-1">
+                      <span className="text-xs text-gray-400 font-mono">/b/{slug}</span>
+                      {slugStatus === 'checking' && <span className="text-xs text-gray-400">Checking…</span>}
+                      {slugStatus === 'available' && <span className="text-xs text-emerald-600 dark:text-emerald-400 font-medium">Available ✓</span>}
+                      {slugStatus === 'taken' && <span className="text-xs text-red-500 dark:text-red-400 font-medium">Taken</span>}
+                    </div>
+                  )}
+                  {slugStatus === 'taken' && slugSuggestion && (
+                    <button
+                      type="button"
+                      onClick={adoptSuggestion}
+                      className="text-xs text-primary-600 dark:text-primary-400 hover:underline px-1"
+                    >
+                      Use /b/{slugSuggestion} instead →
+                    </button>
+                  )}
+                </div>
+
+                {/* Due date — optional, skippable; drives the family pool's
+                    36-week guess lock and can be set later in Birth settings */}
+                <label className="block">
+                  <span className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                    When are they due? <span className="font-normal text-gray-400">(optional)</span>
+                  </span>
+                  <input
+                    type="date"
+                    value={dueDate}
+                    onChange={(e) => setDueDate(e.target.value)}
+                    className="t-date-input px-4 py-3 lg:py-2.5 rounded-xl border border-gray-300 dark:border-gray-600
+                               bg-white dark:bg-gray-800 text-gray-900 dark:text-white
+                               focus:ring-2 focus:ring-primary-500 focus:border-transparent
+                               focus:outline-none transition-colors"
+                  />
+                </label>
+
+                {/* Theme picker */}
+                <div className="space-y-4">
+                  <div className="text-center">
+                    <h2 className="text-base lg:text-sm font-semibold text-gray-800 dark:text-white">
+                      Pick a look for your page
+                    </h2>
+                  </div>
+
+                  {/* Theme cards — all 6 in a 3-column grid */}
+                  <div className="grid grid-cols-3 gap-2.5">
+                    {Object.values(THEMES).map((t) => (
+                      <ThemeCard
+                        key={t.id}
+                        theme={t}
+                        displayName={displayName || 'Baby'}
+                        selected={selectedTheme === t.id}
+                        onSelect={() => setSelectedTheme(t.id)}
+                      />
+                    ))}
+                  </div>
+
+                </div>
               </div>
 
-              {/* Live preview */}
+              {/* Live preview — under the form on a phone, beside it on a wide
+                  screen, where it sticks so it stays in view while you try
+                  themes on. Pulling its ~230px out of the vertical stack is what
+                  brings the button back above the fold. */}
               {displayName && (
-                <PagePreview theme={theme} displayName={displayName} />
+                <div className="mt-8 lg:mt-0 lg:sticky lg:top-12">
+                  <PagePreview theme={theme} displayName={displayName} />
+                </div>
               )}
             </div>
 
@@ -331,7 +359,8 @@ export default function SetupPage() {
             <button
               type="submit"
               disabled={!slug || slugStatus !== 'available' || authLoading}
-              className="w-full py-3.5 rounded-xl font-medium transition-colors text-white
+              className="w-full lg:max-w-md lg:mx-auto lg:block py-3.5 lg:py-2.5 lg:text-sm rounded-xl font-medium
+                         transition-colors text-white
                          disabled:opacity-40 disabled:cursor-not-allowed"
               style={{
                 background: slugStatus === 'available'
@@ -485,8 +514,13 @@ export default function SetupPage() {
         {step === 'guess' && createdBirth && (
           <div className="space-y-6">
             <div className="text-center">
+              {/* Addressed to the parent who just made the page — usually the
+                  mother. Names the faculty being consulted rather than the
+                  mechanic, which turns a betting pool into a folk tradition.
+                  The invite step gets its own line, since a viewer hasn't got
+                  a mother's intuition about this baby. */}
               <h1 className="text-xl font-semibold text-gray-800 dark:text-white mb-1">
-                One more thing — the family pool 🎈
+                One more thing — what&rsquo;s your mother&rsquo;s intuition telling you? 🎈
               </h1>
               <p className="text-sm text-gray-500 dark:text-gray-400">
                 How big will {displayName || 'the baby'} be, and when? Everyone's
@@ -502,7 +536,6 @@ export default function SetupPage() {
               dueDate={createdBirth.due_date}
               onSaved={() => navigate(`/b/${createdBirth.slug}`, { replace: true })}
               onSkip={() => navigate(`/b/${createdBirth.slug}`, { replace: true })}
-              submitLabel="Lock in my guess"
             />
           </div>
         )}

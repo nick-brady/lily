@@ -458,6 +458,27 @@ async def public_delete_event_comment(
 # page itself is broadcasting the answer.
 
 
+def _award(items, delta_field: str, winner_field: str) -> None:
+    """Crown the closest guess in one dimension. Ties share the medal.
+
+    A medal needs at least two contenders — "closest length" is a hollow
+    prize when one person was the only one to name a length, and the same
+    used to hand out the date crown for a 16-day miss simply because nobody
+    else had guessed a day.
+    """
+    contenders = [
+        (getattr(item, delta_field), item)
+        for _, item in items
+        if getattr(item, delta_field) is not None
+    ]
+    if len(contenders) < 2:
+        return
+    best = min(delta for delta, _ in contenders)
+    for delta, item in contenders:
+        if delta == best:
+            setattr(item, winner_field, True)
+
+
 def _guess_board(db: Session, birth: Birth, current_user_id) -> GuessBoardOut:
     """Everyone's guesses; once the parents record the actual measurements
     the board is settled — scored and ranked server-side (the one scoring
@@ -480,33 +501,37 @@ def _guess_board(db: Session, birth: Birth, current_user_id) -> GuessBoardOut:
         items.append((g, item))
     actual_date = None
     if settled:
+        actual_date = (
+            birth.birth_completed_at.date()
+            if birth.birth_completed_at is not None
+            else None
+        )
         for g, item in items:
-            item.score = guesses_repo.score(
-                g.weight_lbs,
-                g.length_in,
-                actual_weight_lbs=birth.child_weight_lbs,
-                actual_length_in=birth.child_length_in,
+            item.weight_delta_lbs = guesses_repo.weight_delta(
+                g.weight_lbs, actual_weight_lbs=birth.child_weight_lbs
             )
-        items.sort(key=lambda pair: (pair[1].score is None, pair[1].score or 0))
+            item.length_delta_in = guesses_repo.length_delta(
+                g.length_in, actual_length_in=birth.child_length_in
+            )
+            item.date_delta_days = guesses_repo.date_delta(
+                g.date_guess, actual_date=actual_date
+            )
+        # Weight is the ranking: it's the number families ask about, and gold
+        # is the top row so the board reads top-down.
+        items.sort(
+            key=lambda pair: (
+                pair[1].weight_delta_lbs is None,
+                pair[1].weight_delta_lbs or 0,
+            )
+        )
         rank = 0
         for _, item in items:
-            if item.score is not None:
+            if item.weight_delta_lbs is not None:
                 rank += 1
                 item.rank = rank
-        # The date pool crowns its own winner (ties share) — days and
-        # ounces don't share a currency, so it never touches the score.
-        if birth.birth_completed_at is not None:
-            actual_date = birth.birth_completed_at.date()
-            deltas = [
-                (abs((g.date_guess - actual_date).days), item)
-                for g, item in items
-                if g.date_guess is not None
-            ]
-            if deltas:
-                best = min(d for d, _ in deltas)
-                for d, item in deltas:
-                    if d == best:
-                        item.date_winner = True
+        _award(items, "weight_delta_lbs", "weight_winner")
+        _award(items, "length_delta_in", "length_winner")
+        _award(items, "date_delta_days", "date_winner")
     return GuessBoardOut(
         guesses=[item for _, item in items],
         actual_weight_lbs=birth.child_weight_lbs,

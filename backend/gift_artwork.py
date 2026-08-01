@@ -1068,18 +1068,15 @@ def _fmt_guess(weight_lbs: float | None, length_in: float | None) -> str:
     return " · ".join(parts) or "—"
 
 
-def _pool_score(
-    prediction: dict, actual_weight: float, actual_length: float
-) -> float | None:
-    """Thin wrapper over the one true scoring fn (repositories/guesses.py)
-    so the pool card and the leaderboard can't drift apart."""
+def _pool_score(prediction: dict, actual_weight: float) -> float | None:
+    """Thin wrapper over the one true ranking fn (repositories/guesses.py) so
+    the pool card and the leaderboard can't drift apart. Weight only: it's the
+    gold medal and the board's ordering, and the card has no room to explain a
+    combined score anyway."""
     from repositories import guesses as guesses_repo
 
-    return guesses_repo.score(
-        prediction.get("weight_lbs"),
-        prediction.get("length_in"),
-        actual_weight_lbs=actual_weight,
-        actual_length_in=actual_length,
+    return guesses_repo.weight_delta(
+        prediction.get("weight_lbs"), actual_weight_lbs=actual_weight
     )
 
 
@@ -1106,7 +1103,7 @@ def build_pool_scene(
                 "name": name,
                 "weight_lbs": p.get("weight_lbs"),
                 "length_in": p.get("length_in"),
-                "score": _pool_score(p, actual_weight_lbs, actual_length_in),
+                "score": _pool_score(p, actual_weight_lbs),
             }
         )
     scored.sort(key=lambda r: (r["score"] is None, r["score"]))
