@@ -355,7 +355,6 @@ export default function InviteRedeemPage() {
               dueDate={poolBirth.due_date}
               onSaved={goToPage}
               onSkip={goToPage}
-              submitLabel="Lock in my guess"
             />
           </div>
         )}

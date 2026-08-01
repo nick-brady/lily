@@ -204,26 +204,45 @@ def contractions_csv(
 
 
 def guesses_csv(guesses: list, birth: Birth) -> str:
+    """One row per guess. The three per-dimension distances replace the old
+    single `closeness_score`, which combined pounds and inches at a made-up
+    exchange rate and so couldn't be interpreted from the file alone."""
+    actual_date = (
+        birth.birth_completed_at.date()
+        if birth.birth_completed_at is not None
+        else None
+    )
+
+    def _fmt(value, places=2):
+        return "" if value is None else f"{value:.{places}f}"
+
     rows = []
     for guess in guesses:
-        score = ""
-        if birth.child_weight_lbs is not None:
-            value = guesses_repo.score(
-                guess.weight_lbs,
-                guess.length_in,
-                actual_weight_lbs=birth.child_weight_lbs,
-                actual_length_in=birth.child_length_in,
-            )
-            if value is not None:
-                score = f"{value:.2f}"
         rows.append(
             [
                 guess.display_name or FALLBACK_AUTHOR,
                 "" if guess.weight_lbs is None else guess.weight_lbs,
                 "" if guess.length_in is None else guess.length_in,
+                "" if guess.date_guess is None else guess.date_guess.isoformat(),
                 _iso(guess.created_at),
                 _iso(guess.updated_at),
-                score,
+                _fmt(
+                    guesses_repo.weight_delta(
+                        guess.weight_lbs, actual_weight_lbs=birth.child_weight_lbs
+                    )
+                ),
+                _fmt(
+                    guesses_repo.length_delta(
+                        guess.length_in, actual_length_in=birth.child_length_in
+                    )
+                ),
+                (
+                    ""
+                    if (d := guesses_repo.date_delta(
+                        guess.date_guess, actual_date=actual_date
+                    )) is None
+                    else str(d)
+                ),
             ]
         )
     return _csv_text(
@@ -231,9 +250,12 @@ def guesses_csv(guesses: list, birth: Birth) -> str:
             "display_name",
             "weight_lbs",
             "length_in",
+            "date_guess",
             "guessed_at_utc",
             "updated_at_utc",
-            "closeness_score",
+            "weight_off_by_lbs",
+            "length_off_by_in",
+            "date_off_by_days",
         ],
         rows,
     )

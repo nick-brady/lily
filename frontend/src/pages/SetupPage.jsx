@@ -502,7 +502,6 @@ export default function SetupPage() {
               dueDate={createdBirth.due_date}
               onSaved={() => navigate(`/b/${createdBirth.slug}`, { replace: true })}
               onSkip={() => navigate(`/b/${createdBirth.slug}`, { replace: true })}
-              submitLabel="Lock in my guess"
             />
           </div>
         )}

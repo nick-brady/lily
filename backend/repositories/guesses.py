@@ -6,8 +6,8 @@ born. Name-only rows (user_id NULL) come from imports or parent-entered
 guesses for relatives without accounts.
 
 This module also owns the ONE scoring implementation — the leaderboard
-routes and the pool gift artwork both call `score()`, so the ranking on the
-card and the ranking on the page can't drift apart.
+routes and the pool gift artwork both call `weight_delta()`, so the ranking
+on the card and the ranking on the page can't drift apart.
 """
 from __future__ import annotations
 
@@ -22,25 +22,49 @@ from sqlalchemy.orm import Session
 from models import Birth, BirthGuess, User
 
 
-def score(
-    weight_lbs: float | None,
-    length_in: float | None,
-    *,
-    actual_weight_lbs: float,
-    actual_length_in: float | None,
+# Three prizes, one per dimension, because pounds, inches and days have no
+# exchange rate between them. The old single score was
+# |Δlbs| + 0.5 × |Δin|, which priced one inch at half a pound — eight ounces —
+# so length quietly outweighed the number families actually ask about, and an
+# exactly-right weight guess could lose to one 2 oz out. Any constant there
+# was going to be arbitrary, so there is no constant now:
+#
+#   🏆 gold   closest weight — the headline number, and the whole ranking
+#   🥈 silver closest length
+#   🥉 bronze closest day
+#
+# Splitting them also means a missing dimension costs you only that medal
+# rather than your standing, which is what makes it fair to invite someone
+# mid-labor after the date guess has already closed.
+
+
+def weight_delta(
+    weight_lbs: float | None, *, actual_weight_lbs: float | None
 ) -> float | None:
-    """Closeness score — lower wins. Mirrors the original Predictions.jsx:
-    |weight diff in lbs| + 0.5 × |length diff in inches|. A guess that named
-    nothing scores None (sinks to the bottom, never disappears)."""
-    total = 0.0
-    scored = False
-    if weight_lbs:
-        total += abs(weight_lbs - actual_weight_lbs)
-        scored = True
-    if length_in and actual_length_in:
-        total += abs(length_in - actual_length_in) * 0.5
-        scored = True
-    return total if scored else None
+    """Pounds away from the real weight — lower wins gold. None when either
+    side is missing: an unguessed dimension sinks to the bottom of the board
+    rather than winning it by having no error to accumulate."""
+    if not weight_lbs or not actual_weight_lbs:
+        return None
+    return abs(weight_lbs - actual_weight_lbs)
+
+
+def length_delta(
+    length_in: float | None, *, actual_length_in: float | None
+) -> float | None:
+    """Inches away from the real length — lower wins silver."""
+    if not length_in or not actual_length_in:
+        return None
+    return abs(length_in - actual_length_in)
+
+
+def date_delta(
+    date_guess: dt.date | None, *, actual_date: dt.date | None
+) -> int | None:
+    """Days away from the real arrival day — lower wins bronze."""
+    if date_guess is None or actual_date is None:
+        return None
+    return abs((date_guess - actual_date).days)
 
 
 def list_guesses(db: Session, *, birth_id: uuid.UUID) -> list[BirthGuess]:

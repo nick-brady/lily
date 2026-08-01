@@ -183,20 +183,27 @@ def _birth(**overrides):
     return SimpleNamespace(**base)
 
 
-def test_guess_scores_only_when_actuals_known():
+def test_guess_distances_only_when_actuals_known():
+    """One column per dimension. The old single `closeness_score` blended
+    pounds and inches at a made-up rate, so a reader of the CSV couldn't tell
+    what 0.38 meant."""
     guess = SimpleNamespace(
         display_name="Janet",
         weight_lbs=7.5,
         length_in=None,
+        date_guess=None,
         created_at=T0,
         updated_at=T0,
     )
     header, rows = _csv_rows(export.guesses_csv([guess], _birth()))
-    assert rows[0][header.index("closeness_score")] == "0.38"
+    assert rows[0][header.index("weight_off_by_lbs")] == "0.38"
+    # nothing to measure against → blank, not zero
+    assert rows[0][header.index("length_off_by_in")] == ""
+    assert rows[0][header.index("date_off_by_days")] == ""
     header, rows = _csv_rows(
         export.guesses_csv([guess], _birth(child_weight_lbs=None))
     )
-    assert rows[0][header.index("closeness_score")] == ""
+    assert rows[0][header.index("weight_off_by_lbs")] == ""
 
 
 # ---- the sensitive-data invariant ----
