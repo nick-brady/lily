@@ -225,7 +225,7 @@ function ActualsForm({ birthId, genderEnabled, onSaved }) {
   );
 }
 
-function formatWeight(lbs) {
+export function formatWeight(lbs) {
   if (!lbs) return null;
   let pounds = Math.floor(lbs);
   let oz = Math.round((lbs - pounds) * 16);
@@ -236,7 +236,7 @@ function formatWeight(lbs) {
   return oz > 0 ? `${pounds} lbs ${oz} oz` : `${pounds} lbs`;
 }
 
-function formatLength(inches) {
+export function formatLength(inches) {
   return inches ? `${inches}"` : null;
 }
 
@@ -277,7 +277,7 @@ function OffBy({ text }) {
   return <div className="text-xs t-faint font-normal">{text}</div>;
 }
 
-function formatDate(iso) {
+export function formatDate(iso) {
   if (!iso) return null;
   const [y, m, d] = iso.split('-').map(Number);
   return new Date(y, m - 1, d).toLocaleDateString([], { month: 'short', day: 'numeric' });
