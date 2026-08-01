@@ -339,8 +339,11 @@ export default function InviteRedeemPage() {
         {step === 'guess' && poolBirth && (
           <div className="space-y-4">
             <div>
+              {/* The viewer's counterpart to the setup step's "mother's
+                  intuition" — grandma, aunts and friends are guessing at
+                  someone they haven't met either. */}
               <h2 className="text-lg font-semibold text-gray-900 dark:text-white mb-1">
-                One last thing — join the pool 🎈
+                One last thing — hunches before hellos 🎈
               </h2>
               <p className="text-sm text-gray-600 dark:text-gray-400">
                 How big will {context.birth_child_name || 'the baby'} be? When?
