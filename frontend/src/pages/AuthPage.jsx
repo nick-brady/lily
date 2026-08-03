@@ -25,6 +25,14 @@ export default function AuthPage() {
   //    (e.g. opening a birth page while anonymous).
   // 2. The account page if they have any births.
   // 3. Setup for brand-new users.
+  //
+  // This is why /account no longer redirects the empty case to /setup — the
+  // wizard is already the sign-in destination for anyone without a page, so
+  // that redirect only ever caught people who had just left or deleted their
+  // last one. One edge survives on purpose: a viewer who stopped following
+  // everything and then signs back in has no births either, so they land in
+  // the wizard. Optimising for the new parent is the right call on the main
+  // path, and that's an edge of an edge.
   const finish = (loadedProfile) => {
     if (nextPath) {
       navigate(nextPath, { replace: true });

@@ -352,7 +352,16 @@ export default function AccountPage() {
     (f) => !PARENT_ROLES.includes(f.role) && (f.births || []).length > 0,
   );
 
-  if (births.length === 0) return <Navigate to="/setup" replace />;
+  // No redirect to /setup here on purpose. New parents never reach this page
+  // empty — AuthPage and LandingPage both route `hasBirth ? '/account' :
+  // '/setup'`, so the wizard is already the sign-in destination for anyone
+  // without a page. The only people who arrive here with nothing are a viewer
+  // who just stopped following their last page and a parent who just deleted
+  // theirs, and shoving either into "name your baby" is the wrong ending —
+  // especially seconds after a destructive confirm. After leaving, a viewer's
+  // data is indistinguishable from a new signup's, so there's no intent to
+  // detect: say what's true and let them choose.
+  const isEmpty = births.length === 0;
 
   const signOut = () => {
     logout();
@@ -401,22 +410,41 @@ export default function AccountPage() {
           </div>
         )}
 
-        {/* Birth cards */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          {births.map((birth) => (
-            <BirthCard key={birth.id} birth={birth} />
-          ))}
+        {/* Birth cards, or an explanation of why there aren't any. Doubles as
+            the confirmation that leaving worked: the section you just used is
+            replaced by the reason the page is empty. */}
+        {isEmpty ? (
+          <div className="rounded-2xl border border-gray-200 dark:border-gray-700 p-6 text-center">
+            <p className="text-sm text-gray-600 dark:text-gray-300">
+              You&rsquo;re not following any pages right now.
+            </p>
+            <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
+              When someone shares a page with you, it&rsquo;ll show up here.
+            </p>
+            <Link
+              to="/setup?new=1"
+              className="mt-4 inline-block text-sm font-medium text-primary-600 dark:text-primary-400 hover:underline"
+            >
+              Create a page for your own baby →
+            </Link>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            {births.map((birth) => (
+              <BirthCard key={birth.id} birth={birth} />
+            ))}
 
-          <Link
-            to="/setup?new=1"
-            className="rounded-2xl border-2 border-dashed border-primary-200 dark:border-primary-800
-                       flex items-center justify-center min-h-[10rem] text-primary-600 dark:text-primary-400
-                       font-medium text-sm hover:border-primary-400 dark:hover:border-primary-600
-                       hover:bg-primary-50/50 dark:hover:bg-primary-900/10 transition-colors"
-          >
-            + Add another birth
-          </Link>
-        </div>
+            <Link
+              to="/setup?new=1"
+              className="rounded-2xl border-2 border-dashed border-primary-200 dark:border-primary-800
+                         flex items-center justify-center min-h-[10rem] text-primary-600 dark:text-primary-400
+                         font-medium text-sm hover:border-primary-400 dark:hover:border-primary-600
+                         hover:bg-primary-50/50 dark:hover:bg-primary-900/10 transition-colors"
+            >
+              + Add another birth
+            </Link>
+          </div>
+        )}
 
         {/* Pages you follow — with a way out */}
         {followedFamilies.length > 0 && (
