@@ -14,7 +14,14 @@ __all__ = [
     "MockupResult",
     "PrintfulAdapter",
     "get_adapter",
+    "is_configured",
 ]
+
+
+def is_configured() -> bool:
+    """Whether a partner is configured, without building an adapter — for
+    hot paths (a polling gallery view) that only need to know."""
+    return bool(os.getenv("PRINTFUL_API_KEY"))
 
 
 def get_adapter() -> FulfillmentAdapter | None:

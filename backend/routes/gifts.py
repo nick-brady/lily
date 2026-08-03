@@ -147,13 +147,19 @@ def list_gifts(
 
     This is also the only thing that turns a stale row back into artwork, so a
     correction made to the birth time or the measurements reaches the keepsake
-    the next time anyone opens the gallery.
+    the next time anyone opens the gallery — and the only thing that retries a
+    product mockup the fulfillment partner refused (rate limits mean a
+    re-render of the whole gallery routinely loses one), so a design doesn't
+    stay stuck showing its flat artwork.
     """
     if gifts_repo.artwork_window_open(access.birth):
         gifts_repo.ensure_renderings(db, birth=access.birth)
         pending = gifts_repo.ids_needing_render(db, birth_id=access.birth.id)
         for rendering_id in gifts_repo.claim_renders(pending):
             background_tasks.add_task(gifts_repo.render_rendering, rendering_id)
+    retryable = gifts_repo.ids_needing_mockup_retry(db, birth_id=access.birth.id)
+    for rendering_id in gifts_repo.claim_renders(retryable):
+        background_tasks.add_task(gifts_repo.retry_mockup, rendering_id)
     return _gift_gallery_out(
         db, access.birth, is_parent=births_repo.is_parent(access.role)
     )

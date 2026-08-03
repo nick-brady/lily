@@ -19,7 +19,9 @@ Two rules keep the artwork honest about a story that is still settling:
 """
 from __future__ import annotations
 
+import logging
 import threading
+import time
 import uuid
 from datetime import datetime, timedelta, timezone
 
@@ -43,6 +45,8 @@ from models import (
 )
 from artwork_links import signed_artwork_url
 from storage import object_key, presigned_get_url, put_object
+
+logger = logging.getLogger(__name__)
 
 # How long the story is allowed to settle before any artwork is generated.
 # Long enough to cover the usual "posted at 10:54, actually arrived 10:38"
@@ -86,6 +90,42 @@ def claim_renders(rendering_ids: list[uuid.UUID]) -> list[uuid.UUID]:
 def _release_render(rendering_id: uuid.UUID) -> None:
     with _in_flight_lock:
         _in_flight.discard(rendering_id)
+
+
+# A hero mockup that the partner refused (a rate limit, usually) is retried
+# the next time anyone opens the gallery. The gallery polls every few seconds
+# while a render is in flight, so the retries are spaced by a cooldown that
+# widens with each failure — otherwise one permanently-broken design would
+# knock on the partner's door forever. Process-local for the same reason
+# `_in_flight` is: one uvicorn worker, and losing it on restart just means the
+# next view gets a fresh attempt.
+_MOCKUP_RETRY_BACKOFF = timedelta(minutes=5)
+_MOCKUP_RETRY_BACKOFF_MAX = timedelta(hours=1)
+_mockup_retries: dict[uuid.UUID, tuple[int, float]] = {}  # id -> (failures, not_before)
+
+
+def _mockup_retry_due(rendering_id: uuid.UUID) -> bool:
+    """True when this rendering's hero mockup may be attempted again. A row
+    we've never retried is due immediately — the failure has already happened
+    and the family is looking at the flat artwork right now."""
+    with _in_flight_lock:
+        entry = _mockup_retries.get(rendering_id)
+    return entry is None or time.monotonic() >= entry[1]
+
+
+def _record_mockup_retry(rendering_id: uuid.UUID, *, succeeded: bool) -> None:
+    with _in_flight_lock:
+        if succeeded:
+            _mockup_retries.pop(rendering_id, None)
+            return
+        failures = _mockup_retries.get(rendering_id, (0, 0.0))[0] + 1
+        backoff = min(
+            _MOCKUP_RETRY_BACKOFF * (2 ** (failures - 1)), _MOCKUP_RETRY_BACKOFF_MAX
+        )
+        _mockup_retries[rendering_id] = (
+            failures,
+            time.monotonic() + backoff.total_seconds(),
+        )
 
 
 def list_active_catalog(db: Session) -> list[GiftCatalogItem]:
@@ -201,6 +241,25 @@ def ids_needing_render(db: Session, *, birth_id: uuid.UUID) -> list[uuid.UUID]:
         row.id
         for row in list_renderings_for_birth(db, birth_id=birth_id)
         if row.status is GiftRenderingStatus.pending
+    ]
+
+
+def ids_needing_mockup_retry(db: Session, *, birth_id: uuid.UUID) -> list[uuid.UUID]:
+    """Renderings whose artwork is ready but whose product mockup never
+    landed — the partner refused it, or a restart killed a `pending` one.
+    Without this a failed hero mockup is permanent (only a fresh re-render
+    would try again) and the gallery shows the flat artwork forever, which is
+    exactly the bug this exists to fix. Mirrors the retry that
+    `get_or_create_product_mockup` already does for shortlist mockups."""
+    if not fulfillment.is_configured():
+        return []
+    return [
+        row.id
+        for row in list_renderings_for_birth(db, birth_id=birth_id)
+        if row.status is GiftRenderingStatus.ready
+        and row.artwork_s3_key
+        and row.mockup_status in ("failed", "pending")
+        and _mockup_retry_due(row.id)
     ]
 
 
@@ -374,6 +433,10 @@ def _try_generate_mockup(db: Session, rendering: GiftRendering) -> None:
     template = gift_templates.get(rendering.template_id)
     if product is None or template is None:
         return
+    # Held separately: after a rollback the ORM object is expired, and the
+    # error path still needs to say which design failed.
+    rendering_id = rendering.id
+    template_id = rendering.template_id
 
     rendering.mockup_status = "pending"
     db.commit()
@@ -382,7 +445,7 @@ def _try_generate_mockup(db: Session, rendering: GiftRendering) -> None:
         # reachable (the prod domain — a localhost dev URL won't work). The
         # app serves it via a short signed link: presigned S3 URLs from the
         # instance role exceed Printful's 1000-char URL cap.
-        artwork = signed_artwork_url(rendering.id, expires_in=3600)
+        artwork = signed_artwork_url(rendering_id, expires_in=3600)
         result = adapter.generate_mockup(
             artwork_url=artwork,
             product_id=product.product_id,
@@ -412,12 +475,47 @@ def _try_generate_mockup(db: Session, rendering: GiftRendering) -> None:
         rendering.mockup_extras = extras
         rendering.mockup_status = "ready"
         db.commit()
+        _record_mockup_retry(rendering_id, succeeded=True)
     except Exception:  # MockupError or any transport error
+        # Loud on purpose: this failure is invisible in the gallery (it just
+        # keeps showing the flat artwork), so the log is the only trace.
+        logger.warning(
+            "mockup generation failed for rendering %s (%s) on %s",
+            rendering_id,
+            template_id,
+            product.key,
+            exc_info=True,
+        )
         db.rollback()
-        rendering = db.get(GiftRendering, rendering.id)
+        rendering = db.get(GiftRendering, rendering_id)
         if rendering is not None:
             rendering.mockup_status = "failed"
             db.commit()
+        _record_mockup_retry(rendering_id, succeeded=False)
+
+
+def retry_mockup(rendering_id: uuid.UUID) -> None:
+    """Re-attempt the hero mockup for a rendering whose artwork is already
+    ready — scheduled by the gallery view for rows `ids_needing_mockup_retry`
+    turned up. Runs as a BackgroundTask, so it owns its session, takes the
+    same in-flight claim a render does (a retry must never race a re-render
+    of the same row), and never raises."""
+    db = SessionLocal()
+    try:
+        rendering = db.get(GiftRendering, rendering_id)
+        if (
+            rendering is None
+            or rendering.deleted_at is not None
+            or rendering.status is not GiftRenderingStatus.ready
+        ):
+            return
+        _try_generate_mockup(db, rendering)
+    except Exception:  # never let a background task crash silently
+        logger.warning("mockup retry crashed for %s", rendering_id, exc_info=True)
+        db.rollback()
+    finally:
+        db.close()
+        _release_render(rendering_id)
 
 
 def render_product_mockup(mockup_id: uuid.UUID) -> None:
@@ -471,6 +569,12 @@ def render_product_mockup(mockup_id: uuid.UUID) -> None:
             mockup.status = "ready"
             db.commit()
         except Exception:  # MockupError or any transport error
+            logger.warning(
+                "product mockup failed for rendering %s on %s",
+                mockup.gift_rendering_id,
+                mockup.product_key,
+                exc_info=True,
+            )
             db.rollback()
             mockup = db.get(GiftRenderingMockup, mockup_id)
             if mockup is not None:
