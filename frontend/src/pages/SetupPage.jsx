@@ -16,6 +16,31 @@ function toSlug(name) {
     .replace(/^-|-$/g, '');
 }
 
+/** "Nia Rose's page", "Nia Rose and Theo's pages", then capped — a family
+ *  with several children would otherwise run the label off the card. */
+export function describeBirths(births) {
+  const names = (births || []).map((b) => b.child_name).filter(Boolean);
+  if (names.length === 0) return null;
+  if (names.length === 1) return `${names[0]}'s page`;
+  if (names.length === 2) return `${names[0]} and ${names[1]}'s pages`;
+  const rest = names.length - 2;
+  return `${names[0]}, ${names[1]} and ${rest} other ${rest === 1 ? 'page' : 'pages'}`;
+}
+
+/** Who exactly comes with it — the whole point of the chooser. Named people
+ *  first; the viewer count is the part someone might not expect, since every
+ *  person who ever redeemed an invite is still on the family. */
+export function describeMembers(family) {
+  const parents = (family?.co_parent_names || []).filter(Boolean);
+  const viewers = family?.viewer_count || 0;
+  if (parents.length === 0 && viewers === 0) return 'Just you, so far';
+  const bits = [];
+  if (parents.length > 0) bits.push(parents.join(', '));
+  if (viewers > 0) bits.push(`${viewers} ${viewers === 1 ? 'viewer' : 'viewers'}`);
+  const verb = parents.length + viewers === 1 ? 'comes' : 'come';
+  return `${bits.join(' and ')} ${verb} too`;
+}
+
 function toDisplayName(raw) {
   return raw
     .split(' ')
@@ -43,7 +68,10 @@ export default function SetupPage() {
   const [slugSuggestion, setSlugSuggestion] = useState('');
   const slugCheckTimeout = useRef(null);
 
-  const [selectedTheme, setSelectedTheme] = useState('blossom');
+  // Whatever the picker shows first, so the preview and the highlighted card
+  // agree from the first paint. Read from THEMES rather than hardcoded, or
+  // reordering the picker would silently desync the two.
+  const [selectedTheme, setSelectedTheme] = useState(Object.values(THEMES)[0].id);
 
   // Second child, twins, etc. — offer joining an existing family (where
   // the user is already a parent) instead of always starting a new one.
@@ -203,17 +231,28 @@ export default function SetupPage() {
           <form onSubmit={goToAuth} className="space-y-8 lg:space-y-6">
 
             {/* Below lg this is a plain block, so everything keeps its current
-                phone ordering: fields, preview, then the button. 28rem keeps
-                the form exactly the width it is on a phone, so the six theme
-                cards don't reflow and grow taller. */}
-            <div className="lg:grid lg:grid-cols-[28rem_minmax(0,1fr)] lg:gap-10 lg:items-start">
-              <div className="space-y-8 lg:space-y-6">
+                phone ordering: fields, preview, then the button.
 
-                {/* Family chooser — only when the user already parents a family */}
+                The preview renders from the first paint — a placeholder name
+                and the default theme — so the two columns are balanced
+                immediately. Waiting for a name meant the form opened beside an
+                empty column, and animating it in afterwards was more movement
+                than the moment deserves. */}
+            <div className="lg:flex lg:justify-center lg:gap-10 lg:items-start">
+              <div className="space-y-8 lg:space-y-6 lg:w-[28rem] lg:shrink-0">
+
+                {/* This used to ask which *family* to add the baby to, which
+                    asked the user to reason about a container. "Family" is
+                    already the everyday word and the name of an audience tier,
+                    and the container is really the whole guest list —
+                    membership is family-wide, so every viewer who ever
+                    redeemed an invite is on it. So ask about people instead,
+                    and name them: the carry-over is the actual consequence,
+                    and a proper noun hides it. */}
                 {parentFamilies.length > 0 && (
                   <div className="space-y-2">
                     <p className="text-sm font-medium text-gray-700 dark:text-gray-300 text-center">
-                      Add this baby to
+                      Who can see this page?
                     </p>
                     <div className="space-y-2">
                       {parentFamilies.map((f) => (
@@ -229,9 +268,10 @@ export default function SetupPage() {
                             onChange={() => setSelectedFamilyId(f.id)}
                           />
                           <span className="text-sm text-gray-800 dark:text-gray-100">
-                            {f.display_name}
+                            The same people as{' '}
+                            {describeBirths(f.births) || f.display_name}
                             <span className="block text-xs text-gray-400 dark:text-gray-500">
-                              Co-parents and viewers from this family carry over
+                              {describeMembers(f)}
                             </span>
                           </span>
                         </label>
@@ -246,7 +286,12 @@ export default function SetupPage() {
                           checked={selectedFamilyId === 'new'}
                           onChange={() => setSelectedFamilyId('new')}
                         />
-                        <span className="text-sm text-gray-800 dark:text-gray-100">A new family</span>
+                        <span className="text-sm text-gray-800 dark:text-gray-100">
+                          Start fresh
+                          <span className="block text-xs text-gray-400 dark:text-gray-500">
+                            Nobody yet — you invite people afterwards
+                          </span>
+                        </span>
                       </label>
                     </div>
                   </div>
@@ -342,12 +387,12 @@ export default function SetupPage() {
               {/* Live preview — under the form on a phone, beside it on a wide
                   screen, where it sticks so it stays in view while you try
                   themes on. Pulling its ~230px out of the vertical stack is what
-                  brings the button back above the fold. */}
-              {displayName && (
-                <div className="mt-8 lg:mt-0 lg:sticky lg:top-12">
-                  <PagePreview theme={theme} displayName={displayName} />
-                </div>
-              )}
+                  brings the button back above the fold. Falls back to the same
+                  placeholder the theme cards use, so it's a real preview from
+                  the first paint rather than an empty half of the page. */}
+              <div className="mt-8 lg:mt-0 lg:sticky lg:top-12 lg:shrink-0 lg:w-[24rem]">
+                <PagePreview theme={theme} displayName={displayName || 'Baby'} />
+              </div>
             </div>
 
             {error && (
