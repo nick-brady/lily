@@ -12,10 +12,19 @@ account-level tokens also send an X-PF-Store-Id header.
 
 The product/variant to render onto is chosen by the caller from the curated
 shortlist (`fulfillment.products`) and passed explicitly.
+
+Printful rate-limits the Mockup Generator to 2 calls per minute per store,
+which a re-render of a birth's gallery blows straight through — one design
+after another, seconds apart. Two defences, because either alone leaves a
+design without a mockup: calls are spaced process-wide before they are sent
+(`_mockup_rate_limit`), and a 429 that still gets through is waited out and
+retried (`_request`).
 """
 from __future__ import annotations
 
+import threading
 import time
+from contextlib import contextmanager
 
 import httpx
 
@@ -34,6 +43,38 @@ _POLL_ATTEMPTS = 12
 _POLL_INTERVAL_SECONDS = 3
 _REQUEST_TIMEOUT = 30.0
 
+# Spacing between mockup tasks: 2 per minute is the documented limit, so 35s
+# leaves headroom for clock skew and for the retry path below.
+_MOCKUP_INTERVAL_SECONDS = 35.0
+_RATE_LIMIT_RETRIES = 2
+# A partner-supplied backoff is trusted only this far — a bogus Retry-After
+# must not park a background thread for the afternoon.
+_MAX_RETRY_WAIT_SECONDS = 90.0
+
+# Module-level, not per-instance: `fulfillment.get_adapter()` builds a fresh
+# adapter per call, and the limit is per store, not per object. A single
+# uvicorn worker (see repositories/gifts.py) is what makes a process-local
+# gate sufficient.
+_mockup_gate = threading.Lock()
+_last_mockup_task_at: float | None = None
+
+
+@contextmanager
+def _mockup_rate_limit(min_interval: float):
+    """Serialize mockup tasks process-wide, `min_interval` seconds apart.
+    The wait happens while holding the gate, so callers queue up rather than
+    all waking at once."""
+    global _last_mockup_task_at
+    with _mockup_gate:
+        if min_interval > 0 and _last_mockup_task_at is not None:
+            wait = min_interval - (time.monotonic() - _last_mockup_task_at)
+            if wait > 0:
+                time.sleep(wait)
+        try:
+            yield
+        finally:
+            _last_mockup_task_at = time.monotonic()
+
 
 class PrintfulAdapter(FulfillmentAdapter):
     name = "printful"
@@ -46,9 +87,11 @@ class PrintfulAdapter(FulfillmentAdapter):
         client: httpx.Client | None = None,
         poll_attempts: int = _POLL_ATTEMPTS,
         poll_interval_seconds: float = _POLL_INTERVAL_SECONDS,
+        mockup_interval_seconds: float = _MOCKUP_INTERVAL_SECONDS,
     ) -> None:
         self._poll_attempts = poll_attempts
         self._poll_interval = poll_interval_seconds
+        self._mockup_interval = mockup_interval_seconds
         headers = {"Authorization": f"Bearer {api_key}"}
         if store_id:
             headers["X-PF-Store-Id"] = str(store_id)
@@ -70,29 +113,35 @@ class PrintfulAdapter(FulfillmentAdapter):
         artwork_height: int,
         placement: str = "default",
     ) -> MockupResult:
-        task_key = self._create_task(
-            product_id=product_id,
-            variant_id=variant_id,
-            placement=placement,
-            artwork_url=artwork_url,
-            artwork_width=artwork_width,
-            artwork_height=artwork_height,
-        )
-        mockup_url, extra = self._poll_for_mockup(task_key)
-        result = self._download(mockup_url)
-        for item in extra:
-            url = item.get("url")
-            if not url:
-                continue
-            image_bytes, content_type = self._download_bytes(url)
-            result.extra.append(
-                MockupExtra(
-                    title=item.get("title") or "",
-                    image_bytes=image_bytes,
-                    content_type=content_type,
+        try:
+            with _mockup_rate_limit(self._mockup_interval):
+                task_key = self._create_task(
+                    product_id=product_id,
+                    variant_id=variant_id,
+                    placement=placement,
+                    artwork_url=artwork_url,
+                    artwork_width=artwork_width,
+                    artwork_height=artwork_height,
                 )
-            )
-        return result
+            mockup_url, extra = self._poll_for_mockup(task_key)
+            result = self._download(mockup_url)
+            for item in extra:
+                url = item.get("url")
+                if not url:
+                    continue
+                image_bytes, content_type = self._download_bytes(url)
+                result.extra.append(
+                    MockupExtra(
+                        title=item.get("title") or "",
+                        image_bytes=image_bytes,
+                        content_type=content_type,
+                    )
+                )
+            return result
+        except httpx.HTTPError as exc:
+            # The adapter contract is MockupError; a transport/status error
+            # reaching the caller as httpx would leak the vendor.
+            raise MockupError(f"printful mockup: {exc}") from exc
 
     def create_order(
         self,
@@ -157,21 +206,50 @@ class PrintfulAdapter(FulfillmentAdapter):
                 }
             ],
         }
-        resp = self._client.post(
-            f"/mockup-generator/create-task/{product_id}", json=body
+        resp = self._request(
+            "POST", f"/mockup-generator/create-task/{product_id}", json=body
         )
-        resp.raise_for_status()
         task_key = (resp.json().get("result") or {}).get("task_key")
         if not task_key:
             raise MockupError("Printful create-task returned no task_key")
         return task_key
 
+    def _request(self, method: str, url: str, **kwargs) -> httpx.Response:
+        """Send a mockup-generator request, waiting out a 429 and retrying.
+        Printful's own Retry-After is the authority on how long; the
+        X-RateLimit-Reset epoch is the fallback, and our own spacing the
+        last resort."""
+        for attempt in range(_RATE_LIMIT_RETRIES + 1):
+            resp = self._client.request(method, url, **kwargs)
+            if resp.status_code != 429:
+                resp.raise_for_status()
+                return resp
+            if attempt == _RATE_LIMIT_RETRIES:
+                break
+            time.sleep(self._retry_after_seconds(resp))
+        raise MockupError("Printful rate limit exceeded")
+
+    def _retry_after_seconds(self, resp: httpx.Response) -> float:
+        for value, is_deadline in (
+            (resp.headers.get("retry-after"), False),
+            (resp.headers.get("x-ratelimit-reset"), True),
+        ):
+            if not value:
+                continue
+            try:
+                seconds = float(value) - (time.time() if is_deadline else 0.0)
+            except ValueError:  # Retry-After may be an HTTP date
+                continue
+            return min(max(seconds, 0.0), _MAX_RETRY_WAIT_SECONDS)
+        return min(
+            self._mockup_interval or _MOCKUP_INTERVAL_SECONDS, _MAX_RETRY_WAIT_SECONDS
+        )
+
     def _poll_for_mockup(self, task_key: str) -> tuple[str, list[dict]]:
         for _ in range(self._poll_attempts):
-            resp = self._client.get(
-                "/mockup-generator/task", params={"task_key": task_key}
+            resp = self._request(
+                "GET", "/mockup-generator/task", params={"task_key": task_key}
             )
-            resp.raise_for_status()
             result = resp.json().get("result") or {}
             status = result.get("status")
             if status == "completed":
