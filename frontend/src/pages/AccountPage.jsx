@@ -82,6 +82,64 @@ function BirthCard({ birth }) {
 
 const PARENT_ROLES = ['owner', 'co_parent'];
 
+// Leaving is family-wide, because membership is — so name every page it
+// covers rather than saying "family", which sounds like one page and isn't.
+function FollowedPages({ family, onLeft }) {
+  const [confirming, setConfirming] = useState(false);
+  const [leaving, setLeaving] = useState(false);
+  const [error, setError] = useState('');
+  const names = (family.births || []).map((b) => b.child_name).filter(Boolean);
+  const label = names.length === 1
+    ? `${names[0]}'s page`
+    : `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}'s pages`;
+
+  const leave = async () => {
+    setLeaving(true);
+    setError('');
+    try {
+      await api.leaveFamily(family.id);
+      await onLeft();
+    } catch (err) {
+      setError(err.message || 'Could not leave');
+      setLeaving(false);
+    }
+  };
+
+  return (
+    <div className="flex items-center justify-between gap-3 text-sm">
+      <span className="text-gray-700 dark:text-gray-300">{label}</span>
+      {confirming ? (
+        <span className="flex items-center gap-3 shrink-0">
+          <button
+            type="button"
+            onClick={leave}
+            disabled={leaving}
+            className="text-red-600 dark:text-red-400 hover:underline disabled:opacity-50"
+          >
+            {leaving ? 'Leaving…' : 'Yes, stop following'}
+          </button>
+          <button
+            type="button"
+            onClick={() => setConfirming(false)}
+            className="text-gray-500 dark:text-gray-400 hover:underline"
+          >
+            Cancel
+          </button>
+        </span>
+      ) : (
+        <button
+          type="button"
+          onClick={() => setConfirming(true)}
+          className="shrink-0 text-gray-500 dark:text-gray-400 hover:underline"
+        >
+          Stop following
+        </button>
+      )}
+      {error && <span className="text-xs text-red-500">{error}</span>}
+    </div>
+  );
+}
+
 function NameField({ user, onSaved }) {
   const [editing, setEditing] = useState(false);
   const [value, setValue] = useState(user?.display_name || '');
@@ -287,6 +345,12 @@ export default function AccountPage() {
   // Families where you're a parent get a "Your family" block to manage
   // co-parents. Name the block only when there's more than one.
   const parentFamilies = (me?.families || []).filter((f) => PARENT_ROLES.includes(f.role));
+  // Pages you follow but don't run. Until now there was no way to stop —
+  // redeeming an invite attached you permanently, and the only copy that
+  // mentioned leaving lived inside the account-deletion preview.
+  const followedFamilies = (me?.families || []).filter(
+    (f) => !PARENT_ROLES.includes(f.role) && (f.births || []).length > 0,
+  );
 
   if (births.length === 0) return <Navigate to="/setup" replace />;
 
@@ -353,6 +417,20 @@ export default function AccountPage() {
             + Add another birth
           </Link>
         </div>
+
+        {/* Pages you follow — with a way out */}
+        {followedFamilies.length > 0 && (
+          <div className="mt-10 pt-6 border-t border-gray-200 dark:border-gray-800">
+            <h2 className="text-sm font-semibold text-gray-700 dark:text-gray-200 mb-3">
+              Pages you follow
+            </h2>
+            <div className="space-y-2">
+              {followedFamilies.map((family) => (
+                <FollowedPages key={family.id} family={family} onLeft={refreshMe} />
+              ))}
+            </div>
+          </div>
+        )}
 
         {/* Birth alerts (the birth-events-only text opt-in) */}
         <div className="mt-10 pt-6 border-t border-gray-200 dark:border-gray-800">

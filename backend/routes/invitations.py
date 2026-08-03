@@ -343,3 +343,35 @@ def revoke_co_parent_invitation(
     invitations_repo.revoke(db, invitation)
     db.commit()
     return Response(status_code=204)
+
+
+@router.delete("/family/{family_id}/membership", status_code=204)
+def leave_family(
+    family_id: uuid.UUID,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> Response:
+    """Stop following the pages in this family.
+
+    Membership is family-wide rather than per-birth, so leaving covers every
+    page in it — the UI names them all rather than saying "family", which
+    promises a small intimate unit and is really the whole guest list.
+
+    Until now there was no way out at all: a viewer who redeemed an invite was
+    attached forever, and the only copy that mentioned leaving lived inside the
+    account-deletion preview. The owner can't leave — there'd be nobody left to
+    run the pages; they delete them instead.
+    """
+    membership = families_repo.get_membership(
+        db, family_id=family_id, user_id=current_user.id
+    )
+    if membership is None:
+        raise HTTPException(status_code=404, detail="You're not in this family")
+    if membership.role is FamilyRole.owner:
+        raise HTTPException(
+            status_code=409,
+            detail="You own these pages — delete them from Birth settings instead",
+        )
+    db.delete(membership)
+    db.commit()
+    return Response(status_code=204)

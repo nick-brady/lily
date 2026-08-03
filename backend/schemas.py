@@ -130,6 +130,14 @@ class FamilyWithBirthsOut(BaseModel):
     display_name: str
     role: FamilyRole
     births: list["BirthOut"]
+    # Who is already in here, excluding the caller. Membership is family-wide,
+    # not per-birth, so everyone named below carries over to any new page added
+    # to this family — including every viewer who ever redeemed an invite. The
+    # setup chooser lists these people instead of asking the user to reason
+    # about a container called "family", which promises a small intimate unit
+    # and is actually the whole guest list.
+    co_parent_names: list[str] = []
+    viewer_count: int = 0
 
 
 class BirthOut(BaseModel):

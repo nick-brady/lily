@@ -136,19 +136,41 @@ def test_delete_birth_rejects_co_parent():
     assert exc_info.value.status_code == 403
 
 
-def test_delete_birth_erases_commits_then_clears_s3(monkeypatch):
-    """The commit-before-external ordering is the contract: rows go first,
-    S3 objects only after the transaction holds."""
+class _DeleteBirthDB:
+    """Enough Session for delete_birth: the sibling-count query, the family
+    lookup, and whatever DELETEs the family cleanup issues."""
+
+    def __init__(self, *, remaining, family=None, calls=None):
+        self._remaining = remaining
+        self._family = family
+        self.calls = calls if calls is not None else []
+        self.deleted_tables: list[str] = []
+
+    def scalar(self, _stmt):
+        return self._remaining
+
+    def execute(self, stmt):
+        self.deleted_tables.append(stmt.table.name)
+        return None
+
+    def get(self, _model, _ident):
+        return self._family
+
+    def commit(self):
+        self.calls.append("commit")
+
+
+def _delete_birth_env(monkeypatch, *, hard_deleted=True):
     from routes import births as births_routes
 
-    birth = SimpleNamespace(id=uuid.uuid4())
-    access = SimpleNamespace(role=FamilyRole.owner, birth=birth)
     calls: list = []
+    birth = SimpleNamespace(id=uuid.uuid4(), family_id=uuid.uuid4())
+    access = SimpleNamespace(role=FamilyRole.owner, birth=birth)
 
     def fake_erase(db, b, now):
         assert b is birth
         calls.append("erase")
-        return ["key-a", "key-b"], True
+        return ["key-a", "key-b"], hard_deleted
 
     monkeypatch.setattr(births_routes, "erase_birth", fake_erase)
     monkeypatch.setattr(
@@ -156,9 +178,44 @@ def test_delete_birth_erases_commits_then_clears_s3(monkeypatch):
         "delete_objects",
         lambda keys: calls.append(("s3", tuple(keys))) or [],
     )
-    db = SimpleNamespace(commit=lambda: calls.append("commit"))
+    return births_routes, access, calls
+
+
+def test_delete_birth_erases_commits_then_clears_s3(monkeypatch):
+    """The commit-before-external ordering is the contract: rows go first,
+    S3 objects only after the transaction holds."""
+    births_routes, access, calls = _delete_birth_env(monkeypatch)
+    # a sibling page survives, so the family is left alone
+    db = _DeleteBirthDB(remaining=1, calls=calls)
 
     response = births_routes.delete_birth(access=access, db=db)
 
     assert response.status_code == 204
     assert calls == ["erase", "commit", ("s3", ("key-a", "key-b"))]
+    assert db.deleted_tables == []
+
+
+def test_deleting_the_last_page_takes_the_family_with_it(monkeypatch):
+    """An empty family used to survive, invisible on the account page but
+    still offered by the setup wizard as somewhere to add a baby — silently
+    re-admitting every co-parent and viewer who was ever on it."""
+    births_routes, access, calls = _delete_birth_env(monkeypatch, hard_deleted=True)
+    db = _DeleteBirthDB(remaining=0, calls=calls)
+
+    births_routes.delete_birth(access=access, db=db)
+
+    assert db.deleted_tables == ["families"]  # memberships CASCADE
+
+
+def test_a_soft_deleted_last_page_scrubs_the_family_instead(monkeypatch):
+    """A birth with gift orders soft-deletes so the Stripe records survive,
+    and it still points at the family — so the family can't be dropped or the
+    FK cascade would take the birth with it. Same rule as account deletion."""
+    births_routes, access, calls = _delete_birth_env(monkeypatch, hard_deleted=False)
+    family = SimpleNamespace(display_name="The Brady Family")
+    db = _DeleteBirthDB(remaining=0, family=family, calls=calls)
+
+    births_routes.delete_birth(access=access, db=db)
+
+    assert db.deleted_tables == ["family_memberships"]
+    assert family.display_name == "Deleted"

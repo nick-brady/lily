@@ -21,7 +21,14 @@ from auth import (
 )
 from db import get_db
 from messenger import ChallengeDeliveryError
-from models import AuthIdentifierKind, Birth, Family, User
+from models import (
+    AuthIdentifierKind,
+    Birth,
+    Family,
+    FamilyMembership,
+    FamilyRole,
+    User,
+)
 from repositories import users as users_repo
 from schemas import (
     AuthRequestIn,
@@ -104,12 +111,31 @@ def me(
             .where(Birth.family_id == family.id, Birth.deleted_at.is_(None))
             .order_by(Birth.created_at.asc())
         ).all()
+        # Who else is in here. Membership is family-wide, so this is exactly
+        # the set of people a new page added to this family would inherit.
+        others = db.execute(
+            select(FamilyMembership.role, User.display_name)
+            .join(User, User.id == FamilyMembership.user_id)
+            .where(
+                FamilyMembership.family_id == family.id,
+                FamilyMembership.user_id != current_user.id,
+            )
+        ).all()
+        co_parent_names = [
+            (name or "").strip()
+            for role, name in others
+            if role in (FamilyRole.owner, FamilyRole.co_parent)
+        ]
         families.append(
             FamilyWithBirthsOut(
                 id=family.id,
                 display_name=family.display_name,
                 role=membership.role,
                 births=[BirthOut.model_validate(b) for b in births],
+                co_parent_names=[n for n in co_parent_names if n],
+                viewer_count=sum(
+                    1 for role, _ in others if role is FamilyRole.family_viewer
+                ),
             )
         )
 
