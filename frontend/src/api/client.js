@@ -559,6 +559,15 @@ export const api = {
     return jsonOrThrow(res);
   },
 
+  // Membership is family-wide rather than per-birth, so this covers every page
+  // in the family — the caller names them all rather than saying "family".
+  async leaveFamily(familyId) {
+    const res = await fetch(`${API_URL}/family/${familyId}/membership`, {
+      method: 'DELETE',
+    });
+    return jsonOrThrow(res);
+  },
+
   async listGuesses({ birthId, slug }) {
     const url = birthId
       ? `${API_URL}/birth/${birthId}/guesses`

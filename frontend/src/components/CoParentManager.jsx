@@ -96,7 +96,10 @@ export default function CoParentManager({ familyId, familyName }) {
     <section className="rounded-2xl bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 p-5">
       <div className="flex items-center justify-between mb-1">
         <h2 className="text-base font-semibold text-gray-800 dark:text-white">
-          {familyName || 'Your family'}
+          {/* "Your family" named a container; this section only ever listed
+              co-parents, and "family" is already the everyday word and an
+              audience tier. Say what's in the box. */}
+          {familyName || 'Co-parents'}
         </h2>
         {!showForm && (
           <button

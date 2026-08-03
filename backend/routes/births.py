@@ -7,6 +7,7 @@ import re
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Response
+from sqlalchemy import delete, func, select
 from sqlalchemy.orm import Session
 
 import storage
@@ -14,7 +15,7 @@ from account_deletion import erase_birth
 
 from auth import get_current_user
 from db import get_db
-from models import Family, FamilyMembership, FamilyRole, User
+from models import Birth, Family, FamilyMembership, FamilyRole, User
 from repositories import births as births_repo
 from repositories import families as families_repo
 from repositories import gifts as gifts_repo
@@ -174,10 +175,35 @@ def delete_birth(
             status_code=403, detail="Only the page owner can delete it"
         )
     # After a hard delete + commit the ORM object is unloadable — grab the
-    # id while the row still exists.
+    # ids while the row still exists.
     birth_id = access.birth.id
+    family_id = access.birth.family_id
     now = datetime.now(timezone.utc)
-    s3_keys, _hard_deleted = erase_birth(db, access.birth, now)
+    s3_keys, hard_deleted = erase_birth(db, access.birth, now)
+
+    # A family with no pages left is not a thing anyone should have to manage.
+    # It used to survive the last deletion, invisible (the account page bounces
+    # you to /setup when you have no births) but still offered in the setup
+    # wizard as somewhere to "add this baby to" — quietly re-admitting every
+    # co-parent and viewer who was ever on it. Same rule as account deletion:
+    # the family goes only when the birth went completely, because a
+    # soft-deleted birth (one with gift orders, kept so Stripe records survive)
+    # still points at it and the FK cascades.
+    remaining = db.scalar(
+        select(func.count())
+        .select_from(Birth)
+        .where(Birth.family_id == family_id, Birth.deleted_at.is_(None))
+    )
+    if remaining == 0:
+        if hard_deleted:
+            db.execute(delete(Family).where(Family.id == family_id))  # memberships CASCADE
+        else:
+            family = db.get(Family, family_id)
+            if family is not None:
+                family.display_name = "Deleted"
+            db.execute(
+                delete(FamilyMembership).where(FamilyMembership.family_id == family_id)
+            )
     db.commit()
 
     failed = storage.delete_objects(s3_keys)
