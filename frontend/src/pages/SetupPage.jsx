@@ -5,6 +5,7 @@ import { api } from '../api/client';
 import { THEMES, getTheme, themeVars } from '../utils/themes';
 import ThemeCard from '../components/ThemeCard';
 import GuessForm from '../components/GuessForm';
+import GoogleSignInButton from '../components/GoogleSignInButton';
 
 function toSlug(name) {
   return name
@@ -170,6 +171,22 @@ export default function SetupPage() {
     } finally { setAuthLoading(false); }
   };
 
+  // Both sign-in methods land here: the session cookie is already set, so
+  // load the profile and spend that freshly-earned intent on the page the
+  // wizard was assembled to create.
+  const createPageAfterSignIn = async () => {
+    await completeSignIn();
+    const birth = await api.createBirth({
+      babyName, slug, theme: selectedTheme, familyId: familyIdToJoin, dueDate,
+    });
+    // Mark the post-create flow before refreshing `me` (see goToAuth).
+    setCreatedBirth(birth);
+    setStep('invite');
+    // completeSignIn fetched /me before the birth existed; refresh so
+    // the birth page recognizes us as its parent on arrival.
+    await refreshMe();
+  };
+
   const submitCode = async (e) => {
     e.preventDefault();
     setError('');
@@ -179,16 +196,17 @@ export default function SetupPage() {
         identifier: identifier.trim().toLowerCase(),
         code,
       });
-      await completeSignIn();
-      const birth = await api.createBirth({
-        babyName, slug, theme: selectedTheme, familyId: familyIdToJoin, dueDate,
-      });
-      // Mark the post-create flow before refreshing `me` (see goToAuth).
-      setCreatedBirth(birth);
-      setStep('invite');
-      // completeSignIn fetched /me before the birth existed; refresh so
-      // the birth page recognizes us as its parent on arrival.
-      await refreshMe();
+      await createPageAfterSignIn();
+    } catch (err) {
+      setError(err.message || 'Something went wrong');
+    } finally { setAuthLoading(false); }
+  };
+
+  const submitGoogle = async () => {
+    setError('');
+    setAuthLoading(true);
+    try {
+      await createPageAfterSignIn();
     } catch (err) {
       setError(err.message || 'Something went wrong');
     } finally { setAuthLoading(false); }
@@ -450,6 +468,14 @@ export default function SetupPage() {
             )}
 
             {authStep === 'identifier' && (
+              <>
+              {/* Renders nothing without a client id, and stays above — but
+                  never instead of — the email form: in-app browsers block
+                  Google OAuth, and invite links open in plenty of those. */}
+              <GoogleSignInButton
+                onSuccess={submitGoogle}
+                onError={(err) => setError(err.message || 'Google sign-in failed')}
+              />
               <form onSubmit={submitIdentifier} className="space-y-4">
                 <label className="block">
                   <span className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
@@ -493,6 +519,7 @@ export default function SetupPage() {
                   ← Back
                 </button>
               </form>
+              </>
             )}
 
             {authStep === 'code' && (
