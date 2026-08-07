@@ -6,14 +6,17 @@ import ReactionBar from './ReactionBar';
 import CommentThread from './CommentThread';
 
 const AUDIENCE_LABELS = {
-  public: { label: 'Public', tone: 'bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-300' },
-  group_targeted: { label: 'Family', tone: 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300' },
   parents_only: { label: 'Parents', tone: 'bg-rose-100 text-rose-700 dark:bg-rose-900/30 dark:text-rose-300' },
 };
 
+// The badge marks the exception, never the rule. Family is where posts go
+// by default, so badging it would put a label on nearly every row and stop
+// meaning anything — the one worth calling out is the post the parents kept
+// to themselves. (`public` is retired; old rows in that scope are Family to
+// everyone who can see them, so they get no badge either.)
 function AudienceBadge({ scope }) {
-  const meta = AUDIENCE_LABELS[scope] || AUDIENCE_LABELS.public;
-  if (scope === 'public') return null;
+  const meta = AUDIENCE_LABELS[scope];
+  if (!meta) return null;
   return (
     <span className={`text-[10px] uppercase tracking-wide px-2 py-0.5 rounded ${meta.tone}`}>
       {meta.label}

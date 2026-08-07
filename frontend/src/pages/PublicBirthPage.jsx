@@ -18,12 +18,15 @@ import { bumpCommentCount, updateReaction } from '../utils/engagement';
 import { toLocalInputValue } from '../utils/relativeTime';
 import { getTheme, themeVars } from '../utils/themes';
 
-// THE birth page — one page for every role. Anonymous visitors get the
-// preview; signed-in family sees the timeline; parents additionally get
+// THE birth page — one page for every role that can see it, and it's a
+// private page: invited family sees the timeline, parents additionally get
 // the labor tooling (contraction timer, composer, Baby Born, stats)
-// rendered inline behind `canManageThisBirth`. Reads go through the slug
-// endpoints for everyone (the server widens audience scopes by role);
-// parent writes use the id endpoints, which enforce parenthood.
+// rendered inline behind `canManageThisBirth`, and everyone else — signed
+// in or not — gets a plain not-found. The preview that used to live here
+// for strangers moved to the invite screen, where a token vouches for the
+// person asking. Reads go through the slug endpoints (the server widens
+// audience scopes by role); parent writes use the id endpoints, which
+// enforce parenthood.
 export default function PublicBirthPage() {
   const { slug } = useParams();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -33,6 +36,7 @@ export default function PublicBirthPage() {
   const [events, setEvents] = useState(() => new Map());
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [notFound, setNotFound] = useState(false);
   const [celebration, setCelebration] = useState(null);
   const [activeTab, setActiveTab] = useState('timeline');
   const [confirmingBorn, setConfirmingBorn] = useState(false);
@@ -46,19 +50,24 @@ export default function PublicBirthPage() {
     if (authLoading) return undefined;
     let cancelled = false;
     setLoading(true);
-    // Viewing is auth-gated: `/b/{slug}` alone is the anonymous preview
-    // (name, status, theme); the timeline needs a session.
-    const loads = isAuthenticated
-      ? Promise.all([api.getPublicBirth(slug), api.listPublicTimeline(slug)])
-      : api.getPublicBirth(slug).then((b) => [b, []]);
-    loads
+    setNotFound(false);
+    // The page is private: every one of these 404s unless you're a member,
+    // whether or not you're signed in. There's no anonymous shape to load
+    // — the preview a not-yet-member sees lives on the invite screen.
+    Promise.all([api.getPublicBirth(slug), api.listPublicTimeline(slug)])
       .then(([b, rows]) => {
         if (cancelled) return;
         setBirth(b);
         setEvents(new Map(rows.map((e) => [e.id, e])));
       })
       .catch((err) => {
-        if (!cancelled) setError(err.message || 'Could not load birth');
+        if (cancelled) return;
+        // A page you can't see is a page that isn't there, as far as this
+        // screen knows — the API deliberately gives non-members the same
+        // 404 as an unused slug, and we must not undo that by hinting
+        // that signing in would help.
+        if (err.status === 404 || err.status === 401) setNotFound(true);
+        else setError(err.message || 'Could not load birth');
       })
       .finally(() => {
         if (!cancelled) setLoading(false);
@@ -158,12 +167,13 @@ export default function PublicBirthPage() {
   }, [currentUserId]);
 
   const streamUrl = useMemo(() => {
-    if (!birth || !isAuthenticated) return null;
+    // A loaded birth means a member: the API gives everyone else a 404.
+    if (!birth) return null;
     // The httpOnly session cookie rides the same-origin EventSource on its
     // own — no token in the URL (or the access logs). One stream for every
     // role; the server filters events by the viewer's audience scopes.
     return new URL(`${api.apiUrl}/b/${slug}/stream`, window.location.origin).toString();
-  }, [birth, slug, isAuthenticated]);
+  }, [birth, slug]);
   const { status: syncStatus } = useSSE(streamUrl, handleSSE);
 
   const sortedEvents = useMemo(
@@ -250,6 +260,11 @@ export default function PublicBirthPage() {
     return () => { document.title = 'Arrival Story'; };
   }, [birth?.child_name]);
 
+  // Below every hook, so the early return can't change how many run.
+  // Everything after this assumes a member looking at their own family's
+  // page — nobody else gets here.
+  if (notFound) return <PageNotFound />;
+
   return (
     <div
       className="min-h-screen transition-colors"
@@ -275,25 +290,17 @@ export default function PublicBirthPage() {
               {title}
             </h1>
             <div className="flex items-center gap-2">
+              {/* No "Sign in" variant: everyone who can see this page is
+                  already signed in and on the family. */}
               {!canManageThisBirth && (
-                isAuthenticated ? (
-                  <Link
-                    to="/account"
-                    className="px-3 py-2 text-sm rounded-lg transition-opacity hover:opacity-80"
-                    style={{ backgroundColor: 'var(--t-soft-bg)', color: 'var(--t-soft-text)' }}
-                    title="Back to your account"
-                  >
-                    Home
-                  </Link>
-                ) : (
-                  <Link
-                    to="/login"
-                    className="px-3 py-2 text-sm rounded-lg transition-opacity hover:opacity-80"
-                    style={{ backgroundColor: 'var(--t-soft-bg)', color: 'var(--t-soft-text)' }}
-                  >
-                    Sign in
-                  </Link>
-                )
+                <Link
+                  to="/account"
+                  className="px-3 py-2 text-sm rounded-lg transition-opacity hover:opacity-80"
+                  style={{ backgroundColor: 'var(--t-soft-bg)', color: 'var(--t-soft-text)' }}
+                  title="Back to your account"
+                >
+                  Home
+                </Link>
               )}
               <DarkModeToggle darkMode={darkMode} setDarkMode={setDarkMode} />
               {canManageThisBirth && (
@@ -309,7 +316,7 @@ export default function PublicBirthPage() {
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
               <ConnectionStatus status={syncStatus} />
-              {!loading && birth && isAuthenticated && (
+              {!loading && birth && (
                 <PoolPill
                   slug={slug}
                   birthId={canManageThisBirth ? birth.id : undefined}
@@ -485,8 +492,6 @@ export default function PublicBirthPage() {
           <p className="text-center t-muted py-12">
             Loading timeline…
           </p>
-        ) : !isAuthenticated ? (
-          <TimelinePreview slug={slug} childName={birth?.child_name} />
         ) : canManageThisBirth && activeTab === 'stats' ? (
           <StatsTab events={sortedEvents} birthId={birth.id} status={birth.status} />
         ) : canManageThisBirth ? (
@@ -501,7 +506,7 @@ export default function PublicBirthPage() {
         {/* Keepsake gifts are made FROM the story — they exist only once
             the birth is done (Day Two is the moment), never as a shop on
             a page that's still waiting. */}
-        {!loading && birth && isAuthenticated && activeTab === 'timeline'
+        {!loading && birth && activeTab === 'timeline'
           && birth.status === 'born' && (
           <MemberGifts birthId={birth.id} isParent={canManageThisBirth} />
         )}
@@ -547,51 +552,25 @@ function TabSwitcher({ activeTab, setActiveTab }) {
   );
 }
 
-// The unauthenticated preview (v1 requirement): the emotional hook —
-// the name, the moment — before the email ask, never a login wall as the
-// first thing a QR-scanning great-aunt sees. The blurred bars are
-// decorative; no real content is fetched (the API enforces that).
-function TimelinePreview({ slug, childName }) {
-  const widths = [78, 92, 64, 85, 70];
+// What someone without a place on this page gets, and all they get.
+//
+// No baby's name, no "this is a private birth", no invitation to sign in,
+// no suggestion to go ask the parents for access — the family invites who
+// they want to invite, and anything warmer here would either confirm the
+// page exists to a stranger who guessed a name, or send them knocking.
+// Deliberately un-themed too: the theme belongs to a page they can't see.
+function PageNotFound() {
   return (
-    <section className="card relative overflow-hidden py-8">
-      <div aria-hidden="true" className="space-y-5 px-6" style={{ filter: 'blur(6px)', opacity: 0.45 }}>
-        {widths.map((w, i) => (
-          <div key={i} className="flex items-start gap-3">
-            <div
-              className="w-8 h-8 rounded-full shrink-0"
-              style={{ backgroundColor: 'var(--t-soft-bg)' }}
-            />
-            <div className="flex-1 space-y-2">
-              <div
-                className="h-3 rounded-full"
-                style={{ width: `${w}%`, backgroundColor: 'var(--t-soft-bg)' }}
-              />
-              <div
-                className="h-3 rounded-full"
-                style={{ width: `${Math.max(30, w - 35)}%`, backgroundColor: 'var(--t-soft-bg)' }}
-              />
-            </div>
-          </div>
-        ))}
-      </div>
-      <div className="absolute inset-0 flex flex-col items-center justify-center text-center px-6">
-        <p className="t-display mb-1" style={{ fontSize: '1.5rem' }}>
-          {childName ? `Follow ${childName}'s story` : 'Follow the story'}
+    <div className="min-h-screen flex items-center justify-center bg-gray-100 dark:bg-gray-900 px-4">
+      <div className="text-center">
+        <h1 className="text-xl font-semibold text-gray-900 dark:text-white mb-2">
+          Page not found
+        </h1>
+        <p className="text-sm text-gray-600 dark:text-gray-400">
+          This link doesn't go anywhere.
         </p>
-        <p className="text-sm t-muted mb-4 max-w-xs">
-          Photos, milestones, and the moments as they happen — shared with
-          family and friends.
-        </p>
-        <Link
-          to={`/login?next=/b/${slug}`}
-          className="px-5 py-3 rounded-lg text-white font-medium transition-colors"
-          style={{ backgroundColor: 'var(--t-accent)' }}
-        >
-          Sign in to follow along
-        </Link>
       </div>
-    </section>
+    </div>
   );
 }
 

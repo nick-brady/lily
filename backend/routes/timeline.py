@@ -173,7 +173,8 @@ async def mark_baby_born(
         },
         posted_by_user_id=current_user.id,
         occurred_at=when,
-        audience_scope=AudienceScope.public,
+        # The announcement itself — the widest tier there is.
+        audience_scope=AudienceScope.group_targeted,
     )
     db.commit()
     db.refresh(event)

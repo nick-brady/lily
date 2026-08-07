@@ -19,12 +19,16 @@ PARENT_ROLES: frozenset[FamilyRole] = frozenset(
 def visible_scopes_for_role(role: FamilyRole | None) -> frozenset[AudienceScope]:
     """Which `AudienceScope`s a viewer can see, by membership role.
 
-    - Anonymous (no role): public only
-    - family_viewer: public + group_targeted
+    - No membership: nothing. A birth page is private; being signed in is not
+      a relationship to it. Callers 404 rather than serving an empty timeline.
+    - family_viewer: group_targeted (the "Family" tier)
     - owner / co_parent: everything
+
+    `AudienceScope.public` is retired — it stays in the enum so the old rows
+    remain readable, but nothing is written with it and nobody is granted it.
     """
     if role is None:
-        return frozenset({AudienceScope.public})
+        return frozenset()
     if role is FamilyRole.family_viewer:
         return frozenset({AudienceScope.public, AudienceScope.group_targeted})
     return frozenset(AudienceScope)

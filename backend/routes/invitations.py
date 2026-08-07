@@ -222,20 +222,43 @@ def remove_birth_viewer(
     return Response(status_code=204)
 
 
+def _usable_invitation(db: Session, token: str) -> ViewerInvitation:
+    """Resolve a token or raise the right kind of no.
+
+    Expired and revoked are deliberately different answers. Revocation is
+    the kill switch a parent reaches for to put someone out, so it looks
+    like nothing ever existed. Expiry is the clock running out on a link
+    that was genuinely shared, so it says so and the holder can ask for
+    another.
+    """
+    invitation = invitations_repo.lookup_by_token(db, token)
+    if invitation is None:
+        raise HTTPException(status_code=404, detail="Invitation is invalid")
+    if invitations_repo.is_expired(invitation):
+        raise HTTPException(status_code=410, detail="Invitation has expired")
+    if not invitations_repo.is_redeemable(invitation):
+        raise HTTPException(status_code=404, detail="Invitation is invalid")
+    return invitation
+
+
 @router.get("/invite/{token}", response_model=InvitationContextOut)
 def lookup_invitation(token: str, db: Session = Depends(get_db)) -> InvitationContextOut:
-    invitation = invitations_repo.lookup_by_token(db, token)
-    if invitation is None or not invitations_repo.is_redeemable(invitation):
-        raise HTTPException(status_code=404, detail="Invitation is invalid or expired")
+    """The invite screen's context — and the only place a preview of a
+    birth is served to someone who isn't a member yet. Holding the token
+    is what earns it."""
+    invitation = _usable_invitation(db, token)
     family = db.get(Family, invitation.family_id)
     birth = db.get(Birth, invitation.birth_id)
     if family is None or birth is None:
-        raise HTTPException(status_code=404, detail="Invitation is invalid or expired")
+        raise HTTPException(status_code=404, detail="Invitation is invalid")
     return InvitationContextOut(
         family_display_name=family.display_name,
         birth_id=birth.id,
         birth_slug=birth.slug,
         birth_child_name=birth.child_name,
+        birth_status=birth.status,
+        birth_theme=birth.theme,
+        birth_completed_at=birth.birth_completed_at,
         display_name_hint=invitation.display_name_hint,
         email_hint=invitation.email_hint,
         phone_hint=invitation.phone_hint,
@@ -253,9 +276,7 @@ def redeem_invitation_authed(
     """For users who are already signed in. The new-user flow goes
     through `/auth/verify` with `invite_token` instead.
     """
-    invitation = invitations_repo.lookup_by_token(db, token)
-    if invitation is None or not invitations_repo.is_redeemable(invitation):
-        raise HTTPException(status_code=404, detail="Invitation is invalid or expired")
+    invitation = _usable_invitation(db, token)
     invitations_repo.redeem(db, invitation=invitation, user_id=current_user.id)
     users_repo.set_display_name_if_empty(
         db, user=current_user, name=invitation.display_name_hint

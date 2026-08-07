@@ -13,7 +13,7 @@ from sqlalchemy.orm import Session
 import storage
 from account_deletion import erase_birth
 
-from auth import get_current_user
+from auth import get_current_user, get_optional_current_user
 from db import get_db
 from models import Birth, Family, FamilyMembership, FamilyRole, User
 from repositories import births as births_repo
@@ -22,10 +22,11 @@ from repositories import gifts as gifts_repo
 from repositories import timeline as timeline_repo
 from routes.deps import (
     BirthAccess,
+    member_scopes_or_404,
     require_birth_access,
+    require_birth_member,
     require_parent_access,
     resolve_public_birth,
-    scope_set_for_visitor,
 )
 from routes.serializers import serialize_events_with_engagement
 from schemas import (
@@ -239,8 +240,21 @@ def list_timeline(
 
 
 @router.get("/b/{slug}", response_model=BirthOut)
-def public_birth(slug: str, db: Session = Depends(get_db)) -> BirthOut:
-    return BirthOut.model_validate(resolve_public_birth(db, slug))
+def public_birth(
+    slug: str,
+    current_user: User | None = Depends(get_optional_current_user),
+    db: Session = Depends(get_db),
+) -> BirthOut:
+    """The birth behind a slug — members only.
+
+    Optional auth rather than required, so that a caller with no session
+    gets the same 404 as an unused slug instead of a 401 announcing that
+    something is here worth signing in for. The preview a stranger used to
+    see lives on `/invite/{token}` now.
+    """
+    birth = resolve_public_birth(db, slug)
+    require_birth_member(db, birth, current_user)
+    return BirthOut.model_validate(birth)
 
 
 @router.get("/b/{slug}/timeline", response_model=list[TimelineEventOut])
@@ -248,11 +262,11 @@ def public_timeline(
     slug: str,
     after_sequence_id: int | None = None,
     limit: int = 1000,
-    current_user: User = Depends(get_current_user),
+    current_user: User | None = Depends(get_optional_current_user),
     db: Session = Depends(get_db),
 ) -> list[TimelineEventOut]:
     birth = resolve_public_birth(db, slug)
-    visible = scope_set_for_visitor(db, birth, current_user)
+    visible = member_scopes_or_404(db, birth, current_user)
     events = timeline_repo.list_events(
         db,
         birth_id=birth.id,
@@ -261,7 +275,5 @@ def public_timeline(
         audience_scopes=visible,
     )
     return serialize_events_with_engagement(
-        db,
-        events,
-        requester_user_id=current_user.id if current_user else None,
+        db, events, requester_user_id=current_user.id
     )

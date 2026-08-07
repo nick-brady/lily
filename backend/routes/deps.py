@@ -101,11 +101,18 @@ def require_family_parent(
 
 
 # ============ Public birth ============
-# Viewing is auth-gated (2026-07-23 decision): `/b/{slug}` itself stays
-# unauthenticated and serves the PREVIEW — name, status, theme — so a
-# first-time visitor (QR scan, forwarded link) gets the emotional hook
-# before the sign-in ask. The timeline and stream require a session; an
-# invite link grants the right to sign up, never content.
+# "Public" is a routing shape here, not an access level. A birth page is
+# private (2026-08-06 decision, superseding the 2026-07-23 one): every
+# `/b/{slug}` surface — the birth itself, the timeline, the stream,
+# engagement — requires family membership, and anyone else gets the same
+# 404 as a slug that was never taken. Being signed in is not a
+# relationship to a page.
+#
+# The way in is an invite link. `/invite/{token}` carries the preview that
+# used to live on `/b/{slug}` — the baby's name, whether they're here, the
+# theme — so a forwarded link still opens with the hook before the sign-in
+# ask. The token is what distinguishes someone the family shared with from
+# someone who guessed a name.
 
 
 def resolve_public_birth(db: Session, slug: str) -> Birth:
@@ -119,32 +126,43 @@ def resolve_public_birth(db: Session, slug: str) -> Birth:
     return birth
 
 
-def scope_set_for_visitor(
+def require_birth_member(db: Session, birth: Birth, user: User | None) -> FamilyRole:
+    """This user's role on this birth — or the same 404 an unused slug
+    gives, so a page's existence never leaks to someone without a place on
+    it. Anonymous callers land here too: no session is just another way of
+    not being a member.
+    """
+    role = (
+        births_repo.user_role_for_birth(db, user_id=user.id, birth=birth)
+        if user is not None
+        else None
+    )
+    if role is None:
+        raise HTTPException(status_code=404, detail="Birth not found")
+    return role
+
+
+def member_scopes_or_404(
     db: Session, birth: Birth, user: User | None
 ) -> frozenset[AudienceScope]:
-    """Widen audience scopes if the public-route visitor turns out to be
-    a member of the family.
-    """
-    if user is None:
-        return frozenset({AudienceScope.public})
-    role = births_repo.user_role_for_birth(db, user_id=user.id, birth=birth)
-    return births_repo.visible_scopes_for_role(role)
+    """The audience scopes this user may see on this birth, or 404."""
+    return births_repo.visible_scopes_for_role(require_birth_member(db, birth, user))
 
 
 @dataclass
 class PublicEngagementAccess:
-    """Auth context for engagement on the public-shaped surface.
+    """Auth context for engagement on the slug-shaped surface.
 
-    Anyone authed can interact, even if they aren't a family member —
-    Aunt Linda scans a QR card from a printed announcement, signs in
-    with her phone number, and leaves a comment. The brand depends on
-    that being possible (see Persona 1 Stage 9: "she wasn't even invited
-    to the page originally").
+    Aunt Linda still scans the QR card from a printed announcement and
+    leaves a comment (Persona 1 Stage 9: "she wasn't even invited to the
+    page originally") — the card carries an invite link, so redeeming it
+    is what makes her a member. What no longer works is arriving with an
+    account and no invitation.
     """
 
     birth: Birth
     user: User
-    role: FamilyRole | None  # None when the user isn't a family member
+    role: FamilyRole  # members only; non-members 404 before this is built
 
 
 def require_public_engagement(
@@ -153,7 +171,7 @@ def require_public_engagement(
     db: Session = Depends(get_db),
 ) -> PublicEngagementAccess:
     birth = resolve_public_birth(db, slug)
-    role = births_repo.user_role_for_birth(db, user_id=current_user.id, birth=birth)
+    role = require_birth_member(db, birth, current_user)
     return PublicEngagementAccess(birth=birth, user=current_user, role=role)
 
 

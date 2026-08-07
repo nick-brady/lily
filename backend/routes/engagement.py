@@ -26,7 +26,7 @@ from routes.deps import (
     require_public_engagement,
     require_visible_event,
     resolve_public_birth,
-    scope_set_for_visitor,
+    member_scopes_or_404,
 )
 from schemas import (
     CommentCreateIn,
@@ -301,10 +301,10 @@ def public_list_event_comments(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ) -> list[CommentOut]:
-    """Comments are the heart of the keepsake — and viewing is auth-gated,
-    so readers are signed-in viewers like everyone else on the page."""
+    """Comments are the heart of the keepsake — and the page is private,
+    so readers are family members like everyone else on it."""
     birth = resolve_public_birth(db, slug)
-    visible = scope_set_for_visitor(db, birth, current_user)
+    visible = member_scopes_or_404(db, birth, current_user)
     event = timeline_repo.get_event(db, event_id)
     if (
         event is None

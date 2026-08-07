@@ -2,9 +2,11 @@ import { useEffect, useRef, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { api } from '../api/client';
 import { useAuth } from '../contexts/AuthContext';
+import { useDarkMode } from '../hooks/useDarkMode';
 import GoogleSignInButton from '../components/GoogleSignInButton';
 import GuessForm from '../components/GuessForm';
 import PhoneOptIn from '../components/PhoneOptIn';
+import { getTheme, themeVars } from '../utils/themes';
 
 // Janet's eleven-calm-minutes flow: tap the invite link, type an email and
 // a 6-digit code (or one-tap Google), confirm a name, "want a text the
@@ -25,8 +27,15 @@ export default function InviteRedeemPage() {
   const [code, setCode] = useState('');
   const [displayName, setDisplayName] = useState('');
   const [error, setError] = useState('');
+  const [expired, setExpired] = useState(false);
   const [loading, setLoading] = useState(false);
   const autoRedeemStarted = useRef(false);
+
+  // This screen carries the preview now — the birth page itself 404s for
+  // anyone who isn't already a member — so it wears the page's theme
+  // rather than dropping a stranger onto a generic form.
+  const theme = getTheme(context?.birth_theme);
+  const { effectiveDark } = useDarkMode(theme.alwaysDark);
 
   const goToPage = () => navigate(`/b/${context.birth_slug}`, { replace: true });
 
@@ -77,7 +86,17 @@ export default function InviteRedeemPage() {
         if (ctx.email_hint) setEmail((prev) => prev || ctx.email_hint);
       })
       .catch((err) => {
-        if (!cancelled) setContextError(err.message || 'This invitation is invalid or expired.');
+        if (cancelled) return;
+        // 410 means the link lapsed rather than never existing. Worth
+        // saying: whoever holds it was genuinely invited once, and a
+        // printed QR card outlives the 90-day link on it — "ask for a new
+        // one" is the difference between a recoverable moment and a wall.
+        if (err.status === 410) {
+          setExpired(true);
+          setContextError('This invitation link has expired.');
+        } else {
+          setContextError(err.message || 'This invitation is invalid.');
+        }
       });
     return () => {
       cancelled = true;
@@ -164,9 +183,13 @@ export default function InviteRedeemPage() {
     return (
       <Centered>
         <h1 className="text-xl font-semibold text-gray-900 dark:text-white mb-2">
-          Invitation unavailable
+          {expired ? 'This link has expired' : 'Invitation unavailable'}
         </h1>
-        <p className="text-sm text-gray-600 dark:text-gray-400">{contextError}</p>
+        <p className="text-sm text-gray-600 dark:text-gray-400">
+          {expired
+            ? 'Invitation links last 90 days. Ask whoever shared it with you for a fresh one.'
+            : contextError}
+        </p>
       </Centered>
     );
   }
@@ -178,26 +201,48 @@ export default function InviteRedeemPage() {
   const childPart = context.birth_child_name
     ? `${context.birth_child_name}'s birth`
     : 'a birth';
+  const babyName = context.birth_child_name || 'the baby';
+  const arrivalLine = context.birth_status === 'born'
+    ? (context.birth_completed_at
+      ? `${babyName} arrived ${new Date(context.birth_completed_at).toLocaleDateString([], {
+        month: 'long', day: 'numeric', year: 'numeric',
+      })}`
+      : `${babyName} is here`)
+    : context.birth_status === 'in_labor'
+      ? 'Labor has started'
+      : `Still waiting on ${babyName}`;
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-100 dark:bg-gray-900 px-4">
-      <div className="w-full max-w-sm bg-white dark:bg-gray-800 rounded-2xl shadow-xl p-6">
-        <p className="text-sm text-gray-500 dark:text-gray-400 text-center mb-1">
+    <div
+      className="min-h-screen flex items-center justify-center px-4 transition-colors"
+      style={{
+        ...themeVars(theme, effectiveDark),
+        backgroundColor: 'var(--t-page-bg)',
+        backgroundImage: 'var(--t-page-pattern)',
+        backgroundSize: 'var(--t-pattern-size)',
+      }}
+    >
+      <div
+        className="w-full max-w-sm rounded-2xl shadow-xl p-6"
+        style={{ backgroundColor: 'var(--t-card-bg)' }}
+      >
+        <p className="text-sm t-muted text-center mb-1">
           {context.family_display_name} invited you to
           {isCoParent ? ' help welcome' : ''}
         </p>
-        <h1
-          className="text-3xl text-center text-primary-600 dark:text-primary-400 mb-2"
-          style={{ fontFamily: "'Great Vibes', cursive" }}
-        >
+        <h1 className="t-display text-3xl text-center mb-2">
           {isCoParent ? childPart : `Welcome ${childPart}`}
         </h1>
+        {/* The preview. It used to live on `/b/{slug}` for anyone holding
+            the URL — along with the birth weight and the labour timestamps,
+            which nobody meant to publish. Here the token vouches for the
+            person reading it, and it says only what belongs on a card. */}
+        <p className="text-sm t-muted text-center mb-4">{arrivalLine}</p>
         {isCoParent && (
-          <p className="text-sm text-gray-500 dark:text-gray-400 text-center mb-6">
+          <p className="text-sm t-muted text-center mb-6">
             As a co-parent, you'll be able to post updates, time contractions, and run the page.
           </p>
         )}
-        {!isCoParent && <div className="mb-4" />}
 
         {error && (
           <div className="mb-4 p-3 rounded-lg bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-300 text-sm">

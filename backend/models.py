@@ -45,6 +45,18 @@ class TimelineEventType(str, enum.Enum):
 
 
 class AudienceScope(str, enum.Enum):
+    """Who a timeline event is for.
+
+    `public` is RETIRED and must not be written to. It meant "visible to any
+    signed-in person holding the link, invited or not" — a tier that only ever
+    existed for people with no relationship to the family. A birth page is
+    private now: you get in with an invite or not at all. The value stays in
+    the enum so pre-existing rows keep parsing (dropping it is DDL, and DDL on
+    this table queues behind live SSE transactions), and `family_viewer` is
+    still granted it so anything missed by the backfill stays visible to the
+    family rather than vanishing.
+    """
+
     public = "public"
     group_targeted = "group_targeted"
     parents_only = "parents_only"
@@ -329,7 +341,7 @@ class TimelineEvent(Base):
     audience_scope: Mapped[AudienceScope] = mapped_column(
         sa.Enum(AudienceScope, name="audience_scope", native_enum=True),
         nullable=False,
-        server_default=AudienceScope.public.value,
+        server_default=AudienceScope.group_targeted.value,
     )
     deleted_at: Mapped[datetime | None] = mapped_column(
         sa.DateTime(timezone=True), nullable=True

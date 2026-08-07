@@ -3,9 +3,12 @@ import { api } from '../api/client';
 import { MILESTONES } from './Timeline';
 import { toLocalInputValue } from '../utils/relativeTime';
 
+// Two tiers, not three. "Public" used to sit on top, promising "anyone with
+// the link can see" — which was never true, and shouldn't be: the page is
+// private, and everyone reading it got in with an invite. It was also the
+// default, so it collected every post anyone ever made without being chosen.
 const AUDIENCE_OPTIONS = [
-  { value: 'public', label: 'Public', hint: 'Anyone with the link can see' },
-  { value: 'group_targeted', label: 'Family', hint: 'Only invited family viewers' },
+  { value: 'group_targeted', label: 'Family', hint: 'Everyone you invited' },
   { value: 'parents_only', label: 'Parents only', hint: 'Just you and your co-parent' },
 ];
 
@@ -13,7 +16,7 @@ export default function UpdateForm({ birthId, onSuccess }) {
   const [mode, setMode] = useState(null); // 'photo' | 'note' | 'milestone' | 'audio' | 'video'
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
-  const [audienceScope, setAudienceScope] = useState('public');
+  const [audienceScope, setAudienceScope] = useState('group_targeted');
   // '' = happening now (server stamps the time); otherwise a local
   // datetime the parent picked because they're logging after the fact
   const [backdate, setBackdate] = useState('');
@@ -67,7 +70,7 @@ export default function UpdateForm({ birthId, onSuccess }) {
     setSelectedVideoFile(null);
     setVideoPreviewUrl(null);
     setVideoCaption('');
-    setAudienceScope('public');
+    setAudienceScope('group_targeted');
     if (audioUrl) URL.revokeObjectURL(audioUrl);
     setAudioBlob(null);
     setAudioUrl(null);
