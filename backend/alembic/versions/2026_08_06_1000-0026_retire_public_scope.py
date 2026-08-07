@@ -6,13 +6,19 @@ with no relationship to the family — and it was the DEFAULT, so in practice
 every post ever made landed in it (124 of 124 in production at the time of
 writing). Everything moves to `group_targeted`, the Family tier.
 
-Deliberately data-only. The enum VALUE stays: dropping a value from a
-postgres enum needs a type rewrite, and DDL against `timeline_events`
-queues behind the SSE streams' long-lived transactions, which is how the
-site wedged on 2026-07-19 (migration 0019). An UPDATE takes ordinary row
-locks and is done in milliseconds. `family_viewer` is still granted
-`public` in `visible_scopes_for_role`, so anything this misses stays
-visible to the family instead of vanishing.
+The enum VALUE stays. Dropping a value from a postgres enum needs a type
+rewrite, and a rewrite of `timeline_events` queues behind the SSE streams'
+long-lived transactions — which is how the site wedged on 2026-07-19
+(migration 0019). `family_viewer` is still granted `public` in
+`visible_scopes_for_role`, so anything the backfill misses stays visible to
+the family instead of vanishing.
+
+On locking: the UPDATE takes ordinary row locks. The `SET DEFAULT` is DDL
+and does briefly want ACCESS EXCLUSIVE — but it's a catalog-only change
+with no table rewrite, so it's milliseconds once it has the lock, and the
+deploy role restarts the app first to clear idle-in-transaction streams and
+runs with `lock_timeout=10s` (see deploy/roles/app/tasks/main.yml). Worst
+case this migration fails fast and the deploy stops; it cannot hang prod.
 
 Revision ID: 0026
 Revises: 0025
