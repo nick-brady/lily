@@ -67,7 +67,7 @@ async def upload_media(
     file: UploadFile = File(...),
     caption: str | None = Form(None),
     kind: MediaKind = Form(...),
-    audience_scope: AudienceScope = Form(AudienceScope.public),
+    audience_scope: AudienceScope = Form(AudienceScope.group_targeted),
     # photos especially get uploaded well after the moment they capture
     occurred_at: PastDatetime | None = Form(None),
     access: BirthAccess = Depends(require_parent_access),

@@ -185,7 +185,7 @@ export const api = {
     return jsonOrThrow(res);
   },
 
-  async startContraction(birthId, { audienceScope = 'public' } = {}) {
+  async startContraction(birthId, { audienceScope = 'group_targeted' } = {}) {
     const res = await fetch(`${API_URL}/birth/${birthId}/contraction/start`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -203,7 +203,7 @@ export const api = {
     return jsonOrThrow(res);
   },
 
-  async createTextNote(birthId, body, { audienceScope = 'public', occurredAt = null } = {}) {
+  async createTextNote(birthId, body, { audienceScope = 'group_targeted', occurredAt = null } = {}) {
     const res = await fetch(`${API_URL}/birth/${birthId}/event`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -217,7 +217,7 @@ export const api = {
     return jsonOrThrow(res);
   },
 
-  async createMilestone(birthId, { kind, title, body, audienceScope = 'public', occurredAt = null }) {
+  async createMilestone(birthId, { kind, title, body, audienceScope = 'group_targeted', occurredAt = null }) {
     const res = await fetch(`${API_URL}/birth/${birthId}/event`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -233,7 +233,7 @@ export const api = {
     return jsonOrThrow(res);
   },
 
-  async uploadMedia(birthId, { file, kind, caption, audienceScope = 'public', occurredAt = null }) {
+  async uploadMedia(birthId, { file, kind, caption, audienceScope = 'group_targeted', occurredAt = null }) {
     const form = new FormData();
     form.append('file', file);
     form.append('kind', kind);

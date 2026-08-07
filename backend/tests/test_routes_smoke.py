@@ -62,21 +62,22 @@ def test_gift_checkout_routes_require_auth() -> None:
         assert response.status_code == 401, f"POST {path} should require auth"
 
 
-def test_public_birth_routes_do_not_require_auth() -> None:
-    """Public read-only routes must not return 401 when called without
-    credentials. A 401 here would mean access control snuck in by
-    accident. The routes hit the DB (which the test env doesn't have),
-    so we accept any non-401 outcome as proof that auth isn't gating
-    them.
+def test_slug_routes_never_answer_401() -> None:
+    """A birth page is private, but it must never say so with a 401.
+
+    401 is an invitation — it tells whoever is holding the URL that
+    something real is here and signing in would reach it. These routes
+    take optional auth precisely so a caller without a session falls
+    through to the same 404 an unused slug gives. The routes hit the DB
+    (which the test env doesn't have), so an exception is equally good
+    proof that no auth layer rejected the request first.
     """
     client = _client()
     for path in ("/b/non-existent", "/b/non-existent/timeline"):
         try:
             response = client.get(path)
-            assert response.status_code != 401, f"{path} should not require auth"
+            assert response.status_code != 401, f"{path} must not answer 401"
         except Exception:
-            # DB-touching code blew up before reaching auth — that's also
-            # proof that auth didn't reject the request first.
             pass
 
 

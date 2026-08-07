@@ -48,14 +48,19 @@ def test_comment_write_routes_require_auth() -> None:
         assert response.status_code == 401, f"{method} {path} should require auth"
 
 
-def test_public_comment_reads_do_not_require_auth() -> None:
-    """Anonymous visitors should be able to read comments — the keepsake
-    depends on it. We accept any non-401 outcome (no DB in tests).
+def test_comment_reads_require_membership() -> None:
+    """Comments are the heart of the keepsake, and they're for the family.
+
+    Reading them used to be open to any signed-in visitor; the page is
+    private now, so a non-member gets the same 404 as a slug nobody took.
+    No DB in tests, so a raised exception is proof enough that the request
+    reached the DB-touching membership check rather than being waved
+    through.
     """
     client = _client()
     try:
         response = client.get(f"/b/anything/event/{FAKE_ID}/comments")
-        assert response.status_code != 401
+        assert response.status_code in (401, 404)
     except Exception:
         pass
 

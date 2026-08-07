@@ -17,7 +17,7 @@ from db import get_db
 from events import broker, serialize_event
 from models import AudienceScope, TimelineEvent, User
 from repositories import births as births_repo
-from routes.deps import resolve_public_birth, scope_set_for_visitor
+from routes.deps import member_scopes_or_404, resolve_public_birth
 
 router = APIRouter()
 
@@ -58,7 +58,7 @@ async def stream_public(
     db: Session = Depends(get_db),
 ) -> StreamingResponse:
     birth = resolve_public_birth(db, slug)
-    visible = scope_set_for_visitor(db, birth, current_user)
+    visible = member_scopes_or_404(db, birth, current_user)
     visible_arg = None if visible == frozenset(AudienceScope) else visible
     after = _parse_last_event_id(last_event_id)
     return StreamingResponse(

@@ -316,7 +316,11 @@ def _gather_milestones(db: Session, birth: Birth, stats) -> list[dict]:
             .where(
                 TimelineEvent.birth_id == birth.id,
                 TimelineEvent.event_type == TimelineEventType.milestone,
-                TimelineEvent.audience_scope == AudienceScope.public,
+                # Anything the parents kept to themselves stays off a product
+                # a relative will hold. Written as "not parents_only" rather
+                # than "== public" because `public` is retired: matching on it
+                # would quietly empty the ring of every new milestone.
+                TimelineEvent.audience_scope != AudienceScope.parents_only,
                 TimelineEvent.deleted_at.is_(None),
             )
             .order_by(TimelineEvent.occurred_at.asc())

@@ -422,7 +422,7 @@ class TokenOut(BaseModel):
 class CreateTextNoteIn(BaseModel):
     body: str
     occurred_at: Optional[PastDatetime] = None
-    audience_scope: AudienceScope = AudienceScope.public
+    audience_scope: AudienceScope = AudienceScope.group_targeted
 
 
 class CreateMilestoneIn(BaseModel):
@@ -430,12 +430,12 @@ class CreateMilestoneIn(BaseModel):
     title: Optional[str] = None
     body: Optional[str] = None
     occurred_at: Optional[PastDatetime] = None
-    audience_scope: AudienceScope = AudienceScope.public
+    audience_scope: AudienceScope = AudienceScope.group_targeted
 
 
 class StartContractionIn(BaseModel):
     occurred_at: Optional[PastDatetime] = None
-    audience_scope: AudienceScope = AudienceScope.public
+    audience_scope: AudienceScope = AudienceScope.group_targeted
 
 
 class StopContractionIn(BaseModel):
@@ -510,6 +510,13 @@ class InvitationContextOut(BaseModel):
     birth_id: uuid.UUID
     birth_slug: str
     birth_child_name: Optional[str] = None
+    # The preview. `/b/{slug}` used to answer this to anyone who had the
+    # URL — and answered with the whole birth, measurements and labour
+    # timestamps included. It belongs here, where a token vouches for the
+    # asker, and it carries only what the invite screen draws.
+    birth_status: BirthStatus
+    birth_theme: str = "lily"
+    birth_completed_at: Optional[datetime] = None
     display_name_hint: Optional[str] = None
     email_hint: Optional[str] = None
     phone_hint: Optional[str] = None

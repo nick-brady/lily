@@ -280,3 +280,49 @@ def test_resolve_invite_contact_rejects_garbage() -> None:
     with pytest.raises(HTTPException) as exc_info:
         _resolve_invite_contact("not an email or phone", None)
     assert exc_info.value.status_code == 400
+
+
+def _invitation(*, expires_in_days: int, revoked: bool = False):
+    """A ViewerInvitation detached from any session — enough for the
+    pure-function expiry/revocation checks."""
+    from datetime import datetime, timedelta, timezone
+
+    from models import ViewerInvitation
+
+    now = datetime.now(timezone.utc)
+    return ViewerInvitation(
+        expires_at=now + timedelta(days=expires_in_days),
+        revoked_at=now if revoked else None,
+    )
+
+
+def test_expired_and_revoked_are_told_apart() -> None:
+    """They answer differently on purpose. An expired link was genuinely
+    shared with its holder, so saying "this lapsed" gives away nothing and
+    lets them ask for a fresh one — which matters when the link is a QR
+    code printed on an announcement card that outlives the 90-day TTL.
+    Revocation is the kill switch for putting someone out, so it must look
+    like nothing ever existed.
+    """
+    lapsed = _invitation(expires_in_days=-1)
+    assert invitations_repo.is_expired(lapsed) is True
+    assert invitations_repo.is_redeemable(lapsed) is False
+
+    killed = _invitation(expires_in_days=30, revoked=True)
+    assert invitations_repo.is_expired(killed) is False
+    assert invitations_repo.is_redeemable(killed) is False
+
+
+def test_revoked_never_reads_as_merely_expired() -> None:
+    """A link that was revoked AND has since run out of time is still a
+    revocation — otherwise waiting out the TTL would turn a silent 404
+    into a helpful "ask for another"."""
+    both = _invitation(expires_in_days=-5, revoked=True)
+    assert invitations_repo.is_expired(both) is False
+    assert invitations_repo.is_redeemable(both) is False
+
+
+def test_live_invitation_is_neither() -> None:
+    live = _invitation(expires_in_days=30)
+    assert invitations_repo.is_expired(live) is False
+    assert invitations_repo.is_redeemable(live) is True

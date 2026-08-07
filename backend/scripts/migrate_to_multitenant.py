@@ -205,7 +205,7 @@ def _migrate_contractions(db, conn, birth: Birth, owner: User, summary: Summary)
             },
             posted_by_user_id=owner.id,
             occurred_at=start_time,
-            audience_scope=AudienceScope.public,
+            audience_scope=AudienceScope.group_targeted,
             sequence_id=sequence,
         )
         summary.contractions_migrated += 1
@@ -250,7 +250,7 @@ def _migrate_updates(db, conn, birth: Birth, owner: User, summary: Summary) -> N
                 payload={"type": "text_note", "body": row.content},
                 posted_by_user_id=owner.id,
                 occurred_at=occurred_at,
-                audience_scope=AudienceScope.public,
+                audience_scope=AudienceScope.group_targeted,
                 sequence_id=sequence,
             )
             summary.updates_migrated += 1
@@ -270,7 +270,7 @@ def _migrate_updates(db, conn, birth: Birth, owner: User, summary: Summary) -> N
                 },
                 posted_by_user_id=owner.id,
                 occurred_at=occurred_at,
-                audience_scope=AudienceScope.public,
+                audience_scope=AudienceScope.group_targeted,
                 sequence_id=sequence,
             )
             summary.updates_migrated += 1
@@ -318,7 +318,7 @@ def _migrate_updates(db, conn, birth: Birth, owner: User, summary: Summary) -> N
                 payload=payload,
                 posted_by_user_id=owner.id,
                 occurred_at=occurred_at,
-                audience_scope=AudienceScope.public,
+                audience_scope=AudienceScope.group_targeted,
                 sequence_id=sequence,
             )
             summary.updates_migrated += 1

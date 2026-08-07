@@ -120,8 +120,10 @@ curl http://localhost:8000/me -H 'Authorization: Bearer <access_token>'
 ## API surface
 
 Birth-scoped routes (under `/birth/{birth_id}`) require a `Bearer` JWT and a
-family membership. Public `/b/{slug}` routes are unauthenticated — they
-serve the shareable keepsake page.
+family membership. The `/b/{slug}` routes are the same page addressed by its
+slug and need the same membership — "public" there is a URL shape, not an
+access level. The only genuinely unauthenticated birth surface is
+`GET /invite/{token}`, where the token itself is the credential.
 
 ### Auth + identity
 
@@ -155,7 +157,7 @@ serve the shareable keepsake page.
 - `PATCH /birth/{birth_id}/event/{event_id}/comments/{comment_id}` — author-only edit.
 - `DELETE /birth/{birth_id}/event/{event_id}/comments/{comment_id}` — author or parent.
 
-The same routes are mirrored under `/b/{slug}/event/{event_id}/...` for the public surface. The public versions accept any authenticated user (not just family members) so visitors who self-sign-in via a QR code can react and comment too. Anonymous users can `GET` reactions (inline on the timeline) and comments, but `POST/PATCH/DELETE` requires auth.
+The same routes are mirrored under `/b/{slug}/event/{event_id}/...`. They require family membership like everything else on the page — a QR-code scanner becomes a member by redeeming the invite the card carries, which is what lets them react and comment. Non-members get 404, signed in or not.
 
 `GET /birth/{birth_id}/timeline` and `GET /b/{slug}/timeline` include per-event `reactions: { kind: { count, mine } }` and `comment_count` inline — two extra bulk queries, no N+1.
 
@@ -174,12 +176,16 @@ SSE adds these event kinds: `reaction_added`, `reaction_removed`, `comment_added
 - New-user path: include `invite_token` in the body of `POST /auth/verify` and
   the user is created + attached atomically with sign-in
 
-### Public birth routes
+### Slug-addressed birth routes
 
-- `GET /b/{slug}` — birth metadata (no auth)
-- `GET /b/{slug}/timeline?after_sequence_id=N&limit=500` — audience-filtered
-  timeline. Sending a Bearer token widens visibility if the requester turns
-  out to be a family member.
+Members only — a non-member gets the same 404 as an unused slug, whether or
+not they have a session. Auth is *optional* on these rather than required so
+that a caller without one falls through to that 404 instead of a 401, which
+would advertise that something is here worth signing in for.
+
+- `GET /b/{slug}` — birth metadata
+- `GET /b/{slug}/timeline?after_sequence_id=N&limit=500` — timeline, filtered
+  to the audience scopes the requester's role grants.
 - `GET /b/{slug}/stream` — same as `/timeline` but SSE. Sending `?token=<jwt>`
   widens visibility for signed-in viewers.
 - `GET /media/{media_id}` — gated by audience scope, then 307 redirect to a
@@ -188,18 +194,30 @@ SSE adds these event kinds: `reaction_added`, `reaction_removed`, `comment_added
 
 ## Audience scopes
 
-Posts carry one of three audience scopes; the viewer's role on the family
-determines what they can see:
+A birth page is private. Every `/b/{slug}` surface — the birth, the
+timeline, the stream, reactions and comments — requires membership in the
+family, and everyone else gets the same 404 as a slug nobody has taken.
+Being signed in is not a relationship to a page; the way in is an invite
+link, which is also where the preview of a birth lives (`/invite/{token}`).
 
-| Scope            | Anonymous | family_viewer | owner / co_parent |
-|------------------|-----------|---------------|-------------------|
-| `public`         | yes       | yes           | yes               |
-| `group_targeted` |           | yes           | yes               |
-| `parents_only`   |           |               | yes               |
+Within the page, posts carry one of two audience scopes:
 
-`group_targeted` is the "Family" tier — visible to anyone who's redeemed
-an invitation. Sub-grouping (close family vs extended family) is a future
-PR; today every invited viewer sees every `group_targeted` post.
+| Scope            | Non-member | family_viewer | owner / co_parent |
+|------------------|------------|---------------|-------------------|
+| `group_targeted` | 404        | yes           | yes               |
+| `parents_only`   | 404        |               | yes               |
+
+`group_targeted` is the "Family" tier and the default — visible to anyone
+who's redeemed an invitation. Sub-grouping (close family vs extended
+family) is a future PR; today every invited viewer sees every
+`group_targeted` post.
+
+A third scope, `public`, is **retired** (migration `0026`). It meant
+"visible to any signed-in person holding the link, invited or not", and
+being the default it collected every post anyone ever made. Existing rows
+were backfilled to `group_targeted`; the enum value survives so old rows
+parse, and `family_viewer` is still granted it so nothing the backfill
+missed disappears from a family's own timeline.
 
 ## Frontend routes
 
@@ -207,7 +225,7 @@ PR; today every invited viewer sees every `group_targeted` post.
   defaults to `lily-wren`)
 - `/login?next=/path` — email OTP form + "Continue with Google" (identity is email; sessions ride an httpOnly cookie). The `next` param lets guarded actions come back to where the user was after sign-in.
 - `/invite/:token` — viewer invitation redeem page (email code or Google, then the birth-alerts phone opt-in, attaches as family_viewer)
-- `/b/:slug` — THE birth page, for every role: anonymous visitors get a preview (name + sign-in CTA), signed-in viewers the audience-scoped timeline with reactions + comments, and parents additionally the inline tooling (contraction button, post composer, Baby Born, stats tab) rendered by role.
+- `/b/:slug` — THE birth page, for every role that can see it: invited viewers get the audience-scoped timeline with reactions + comments, parents additionally the inline tooling (contraction button, post composer, Baby Born, stats tab) rendered by role. Everyone else — signed in or not — gets a plain "page not found"; the preview of a birth lives on the invite page.
 - `/b/:slug/manage` — legacy URL; client-redirects to `/b/:slug` (the manage page merged into the birth page)
 
 ## Production deployment (single instance, bare-metal)

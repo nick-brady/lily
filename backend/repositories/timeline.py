@@ -34,7 +34,7 @@ def append_event(
     payload: dict[str, Any],
     posted_by_user_id: uuid.UUID,
     occurred_at: datetime | None = None,
-    audience_scope: AudienceScope = AudienceScope.public,
+    audience_scope: AudienceScope = AudienceScope.group_targeted,
     sequence_id: int | None = None,
 ) -> TimelineEvent:
     now = datetime.now(timezone.utc)

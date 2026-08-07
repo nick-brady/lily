@@ -104,6 +104,17 @@ def lookup_by_token(db: Session, token: str) -> ViewerInvitation | None:
     return invitation
 
 
+def is_expired(invitation: ViewerInvitation, *, now: datetime | None = None) -> bool:
+    """Ran out of time on its own. Distinct from revoked: an expired link
+    was legitimately shared with this person, so telling them it lapsed
+    gives away nothing they didn't already hold — and it's the difference
+    between "ask for a fresh link" and a dead end. Matters most for a QR
+    code printed on an announcement card, which outlives the 90-day TTL.
+    """
+    now = now or datetime.now(timezone.utc)
+    return invitation.revoked_at is None and invitation.expires_at < now
+
+
 def is_redeemable(invitation: ViewerInvitation, *, now: datetime | None = None) -> bool:
     now = now or datetime.now(timezone.utc)
     if invitation.revoked_at is not None:
