@@ -361,8 +361,9 @@ export default function SetupPage() {
                   )}
                 </div>
 
-                {/* Due date — optional, skippable; drives the family pool's
-                    36-week guess lock and can be set later in Birth settings */}
+                {/* Due date — optional, skippable, settable later in Birth
+                    settings. It locks nothing: it shows on the guessing jar's
+                    board and prefills the date guess. */}
                 <label className="block">
                   <span className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                     When are they due? <span className="font-normal text-gray-400">(optional)</span>
@@ -658,7 +659,7 @@ function InviteStep({ birth, theme, displayName, onDone }) {
         </h1>
         <p className="text-sm text-gray-500 dark:text-gray-400">
           Now share it — grab a link and drop it in the family group text.
-          Anyone with it can follow along and join the pool.
+          Anyone with it can follow along and join the guessing jar.
         </p>
       </div>
 
