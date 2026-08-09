@@ -513,7 +513,9 @@ export default function UpdateForm({ birthId, onSuccess }) {
             onClick={() => setBackdate(toLocalInputValue())}
             className="text-xs text-gray-400 hover:text-primary-500"
           >
-            Happened earlier? Set the time
+            {/* The question is context; only "Set the time" does anything, so
+                it's the part that carries the underline. */}
+            Happened earlier? <span className="underline">Set the time</span>
           </button>
         )}
       </div>
