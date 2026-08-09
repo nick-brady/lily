@@ -12,10 +12,13 @@ const AUDIENCE_OPTIONS = [
   { value: 'parents_only', label: 'Parents only', hint: 'Just you and your co-parent' },
 ];
 
-export default function UpdateForm({ birthId, onSuccess }) {
-  const [mode, setMode] = useState(null); // 'photo' | 'note' | 'milestone' | 'audio' | 'video'
+// `onBabyBorn(occurredAtISO)` announces the birth; pass null once it's been
+// announced and the button drops out of the row.
+export default function UpdateForm({ birthId, onSuccess, onBabyBorn = null }) {
+  const [mode, setMode] = useState(null); // 'photo' | 'note' | 'milestone' | 'audio' | 'video' | 'born'
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [bornTime, setBornTime] = useState('');
   const [audienceScope, setAudienceScope] = useState('group_targeted');
   // '' = happening now (server stamps the time); otherwise a local
   // datetime the parent picked because they're logging after the fact
@@ -59,6 +62,7 @@ export default function UpdateForm({ birthId, onSuccess }) {
   const resetForm = () => {
     setMode(null);
     setError('');
+    setBornTime('');
     setBackdate('');
     setNoteText('');
     setSelectedMilestone('');
@@ -159,6 +163,22 @@ export default function UpdateForm({ birthId, onSuccess }) {
       onSuccess?.();
     } catch (err) {
       setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const submitBorn = async () => {
+    setLoading(true);
+    setError('');
+    try {
+      await onBabyBorn(bornTime ? new Date(bornTime).toISOString() : null);
+      resetForm();
+    } catch (err) {
+      // Stay on the form and say why. Closing regardless would look exactly
+      // like a successful announcement, which is the worst possible outcome
+      // here — the parent would think the family had been told.
+      setError(err.message || 'Could not announce the birth');
     } finally {
       setLoading(false);
     }
@@ -282,6 +302,83 @@ export default function UpdateForm({ birthId, onSuccess }) {
           <ModeButton mode="audio" color="rose" onClick={() => setMode('audio')}>
             Voice Memo
           </ModeButton>
+          {/* Baby Born! is one of these — you're posting to the timeline, and
+              it IS a milestone (kind: 'born'). So it takes the same shape and
+              size as its neighbours and is marked rather than shouted: the
+              theme accent in the text and an outline, instead of a solid fill
+              that made it look like it belonged to a different control set.
+              It sits last because an announcement that can't be un-tapped
+              without undoing the whole flip shouldn't be the easiest thing to
+              hit while reaching for Photo. */}
+          {onBabyBorn && (
+            <button
+              type="button"
+              onClick={() => {
+                setBornTime(toLocalInputValue());
+                setMode('born');
+              }}
+              className="flex items-center gap-2 px-4 py-3 rounded-xl font-semibold border transition-colors"
+              style={{
+                backgroundColor: 'var(--t-soft-bg)',
+                color: 'var(--t-accent)',
+                borderColor: 'var(--t-accent)',
+              }}
+            >
+              👶 Mark baby born!
+            </button>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  // The announcement doesn't take an audience or a backdate — it's always the
+  // widest tier, and its time is the arrival itself — so it skips the shared
+  // composer body and footer entirely.
+  if (mode === 'born') {
+    return (
+      <div className="card flex flex-col items-center gap-3 py-5">
+        {error && (
+          <div className="w-full mb-1 p-3 bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-300 rounded-lg text-sm">
+            {error}
+          </div>
+        )}
+        {/* Lead with the time, not the confirmation. Nobody taps this while
+            it's happening — you post once you have a free hand, so the
+            prefilled "now" is nearly always late by 15-40 minutes. Asking the
+            question outright gets the real time on the record; burying it
+            under a confirm button got it corrected afterwards, if at all. */}
+        <label className="flex flex-col items-center gap-2">
+          <span className="text-base font-medium t-ink text-center">
+            When did they arrive?
+          </span>
+          <input
+            type="datetime-local"
+            value={bornTime}
+            onChange={(e) => setBornTime(e.target.value)}
+            max={toLocalInputValue()}
+            className="px-3 py-2 rounded-lg border text-base bg-white dark:bg-gray-800 t-ink"
+            style={{ borderColor: 'var(--t-soft-ring)' }}
+          />
+        </label>
+        <p className="text-xs t-muted text-center">
+          Set to now — nudge it back if the moment has already passed.
+        </p>
+        <div className="flex gap-2">
+          <button
+            onClick={submitBorn}
+            disabled={loading}
+            className="px-5 py-2.5 rounded-full t-btn-accent font-medium disabled:opacity-50"
+          >
+            {loading ? 'Announcing…' : '🎉 Baby Born!'}
+          </button>
+          <button
+            onClick={resetForm}
+            disabled={loading}
+            className="px-4 py-2.5 rounded-full text-sm t-muted hover:opacity-80"
+          >
+            Not yet
+          </button>
         </div>
       </div>
     );
