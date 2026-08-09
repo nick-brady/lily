@@ -473,7 +473,6 @@ export default function PublicBirthPage() {
               <UpdateForm
                 birthId={birth.id}
                 childName={birth.child_name}
-                authorName={me?.user?.display_name || ''}
                 onBabyBorn={birth.status !== 'born' ? handleBorn : null}
                 openBornMode={markBornFromNudge}
                 onBornModeOpened={() => setMarkBornFromNudge(false)}

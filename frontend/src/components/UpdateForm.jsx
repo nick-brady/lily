@@ -21,7 +21,6 @@ export default function UpdateForm({
   onSuccess,
   onBabyBorn = null,
   childName = null,
-  authorName = '',
   joinedBelow = false,
   // Lets the arrival nudge drive the composer straight into born mode, so
   // "Mark it" lands on the real form with its real question rather than
@@ -33,6 +32,9 @@ export default function UpdateForm({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [bornTime, setBornTime] = useState('');
+  // Whether the resting note composer has been focused — controls the grow,
+  // the audience/backdate controls and the Post button.
+  const [noteOpen, setNoteOpen] = useState(false);
   const [audienceScope, setAudienceScope] = useState('group_targeted');
   // '' = happening now (server stamps the time); otherwise a local
   // datetime the parent picked because they're logging after the fact
@@ -77,6 +79,7 @@ export default function UpdateForm({
     setMode(null);
     setError('');
     setBornTime('');
+    setNoteOpen(false);
     setBackdate('');
     setNoteText('');
     setSelectedMilestone('');
@@ -304,7 +307,6 @@ export default function UpdateForm({
     onBornModeOpened?.();
   }, [openBornMode, onBabyBorn, onBornModeOpened]);
 
-  const initial = (authorName || '').trim().charAt(0).toUpperCase() || '🤍';
   const placeholder = childName
     ? `Share something with ${childName}'s family…`
     : 'Share something with the family…';
@@ -316,31 +318,44 @@ export default function UpdateForm({
   //
   // Attachments stay quiet and secondary. Photo and Voice lead because they're
   // what actually gets used between contractions; Video and Milestone follow.
+  // The resting state IS the note composer — a real textarea, not a button
+  // wearing an input's clothes. The previous version looked like a field but
+  // swapped the whole card into "note mode" on click, which meant the cursor
+  // never landed where you tapped and you had to click a second time to type.
+  // One element now: click it and you're writing, exactly like every composer
+  // anyone has ever used. It grows from one row to three on focus.
   if (!mode) {
     return (
       <div className={`card ${joinedBelow ? 'rounded-b-none border-b-0 pb-4' : ''}`}>
-        <div className="flex gap-3 items-center">
-          <div
-            className="w-10 h-10 rounded-full grid place-items-center font-semibold text-sm shrink-0"
-            style={{ backgroundColor: 'var(--t-soft-bg)', color: 'var(--t-accent)' }}
-          >
-            {initial}
+        {error && (
+          <div className="mb-3 p-3 bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-300 rounded-lg text-sm">
+            {error}
           </div>
-          <button
-            type="button"
-            onClick={() => setMode('note')}
-            className="flex-1 text-left px-5 py-3 rounded-full border text-[0.98rem] transition-colors"
-            style={{
-              borderColor: 'var(--t-soft-ring)',
-              color: 'var(--t-ink-faint)',
-              backgroundColor: 'var(--t-note-bg)',
-            }}
-          >
-            {placeholder}
-          </button>
-        </div>
+        )}
 
-        <div className="flex flex-wrap items-center gap-1 mt-3 sm:pl-[52px]">
+        <textarea
+          value={noteText}
+          onChange={(e) => setNoteText(e.target.value)}
+          onFocus={() => setNoteOpen(true)}
+          placeholder={placeholder}
+          rows={noteOpen ? 3 : 1}
+          className="w-full px-5 py-3 rounded-2xl border resize-none transition-all
+                     focus:outline-none focus:ring-2 focus:ring-offset-0"
+          style={{
+            borderColor: 'var(--t-soft-ring)',
+            backgroundColor: 'var(--t-note-bg)',
+            color: 'var(--t-ink)',
+          }}
+        />
+
+        {noteOpen && (
+          <>
+            <AudiencePicker value={audienceScope} onChange={setAudienceScope} />
+            <BackdateRow backdate={backdate} setBackdate={setBackdate} />
+          </>
+        )}
+
+        <div className="flex flex-wrap items-center gap-1 mt-3">
           <AttachButton icon="📷" label="Photo" onClick={() => setMode('photo')} />
           <AttachButton icon="🎙️" label="Voice" onClick={() => setMode('audio')} />
           <AttachButton icon="🎥" label="Video" onClick={() => setMode('video')} />
@@ -369,6 +384,26 @@ export default function UpdateForm({
             </button>
           )}
         </div>
+
+        {noteOpen && (
+          <div className="flex gap-3 mt-3">
+            <button
+              onClick={resetForm}
+              className="flex-1 py-3 rounded-xl border border-gray-200 dark:border-gray-700
+                         text-gray-600 dark:text-gray-400 font-medium"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={submitNote}
+              disabled={loading || !noteText.trim()}
+              className="flex-1 py-3 rounded-xl bg-primary-600 text-white font-medium
+                         disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {loading ? 'Posting…' : 'Post'}
+            </button>
+          </div>
+        )}
       </div>
     );
   }
@@ -519,17 +554,6 @@ export default function UpdateForm({
         </div>
       )}
 
-      {mode === 'note' && (
-        <textarea
-          value={noteText}
-          onChange={(e) => setNoteText(e.target.value)}
-          placeholder="What's happening?"
-          rows={3}
-          className="w-full px-4 py-3 rounded-xl border border-gray-200 dark:border-gray-700
-                     bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 resize-none"
-        />
-      )}
-
       {mode === 'milestone' && (
         <div className="space-y-4">
           <div className="grid grid-cols-2 gap-2">
@@ -626,37 +650,7 @@ export default function UpdateForm({
 
       <AudiencePicker value={audienceScope} onChange={setAudienceScope} />
 
-      <div className="mt-3">
-        {backdate ? (
-          <div className="flex items-center gap-2">
-            <input
-              type="datetime-local"
-              value={backdate}
-              onChange={(e) => setBackdate(e.target.value)}
-              max={toLocalInputValue()}
-              className="flex-1 px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-700
-                         bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 text-sm"
-            />
-            <button
-              type="button"
-              onClick={() => setBackdate('')}
-              className="text-xs text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
-            >
-              Just now
-            </button>
-          </div>
-        ) : (
-          <button
-            type="button"
-            onClick={() => setBackdate(toLocalInputValue())}
-            className="text-xs text-gray-400 hover:text-primary-500"
-          >
-            {/* The question is context; only "Set the time" does anything, so
-                it's the part that carries the underline. */}
-            Happened earlier? <span className="underline">Set the time</span>
-          </button>
-        )}
-      </div>
+      <BackdateRow backdate={backdate} setBackdate={setBackdate} />
 
       <div className="flex gap-3 mt-4">
         <button
@@ -670,7 +664,6 @@ export default function UpdateForm({
           onClick={
             mode === 'photo' ? submitPhoto
               : mode === 'video' ? submitVideo
-                : mode === 'note' ? submitNote
                   : mode === 'audio' ? submitAudio
                     : submitMilestone
           }
@@ -678,7 +671,6 @@ export default function UpdateForm({
             loading
             || (mode === 'photo' && !selectedFile)
             || (mode === 'video' && !selectedVideoFile)
-            || (mode === 'note' && !noteText.trim())
             || (mode === 'milestone' && !selectedMilestone)
             || (mode === 'audio' && !audioBlob)
           }
@@ -715,6 +707,44 @@ function AudiencePicker({ value, onChange }) {
       <p className="text-xs text-gray-500 dark:text-gray-400 mt-2 text-center">
         {active.hint}
       </p>
+    </div>
+  );
+}
+
+// Shared by the resting note composer and every attachment form, so a post
+// carries its real time no matter which one wrote it.
+function BackdateRow({ backdate, setBackdate }) {
+  return (
+    <div className="mt-3">
+      {backdate ? (
+        <div className="flex items-center gap-2">
+          <input
+            type="datetime-local"
+            value={backdate}
+            onChange={(e) => setBackdate(e.target.value)}
+            max={toLocalInputValue()}
+            className="flex-1 px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-700
+                       bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 text-sm"
+          />
+          <button
+            type="button"
+            onClick={() => setBackdate('')}
+            className="text-xs text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
+          >
+            Just now
+          </button>
+        </div>
+      ) : (
+        <button
+          type="button"
+          onClick={() => setBackdate(toLocalInputValue())}
+          className="text-xs text-gray-400 hover:text-primary-500"
+        >
+          {/* The question is context; only "Set the time" does anything, so
+              it's the part that carries the underline. */}
+          Happened earlier? <span className="underline">Set the time</span>
+        </button>
+      )}
     </div>
   );
 }
