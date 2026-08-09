@@ -13,8 +13,22 @@ const AUDIENCE_OPTIONS = [
 ];
 
 // `onBabyBorn(occurredAtISO)` announces the birth; pass null once it's been
-// announced and the button drops out of the row.
-export default function UpdateForm({ birthId, onSuccess, onBabyBorn = null }) {
+// announced and the button drops out of the row. `joinedBelow` squares off the
+// bottom edge so the composer and the timeline read as one surface — the
+// composer isn't a tool that happens to sit near the story, it's the top of it.
+export default function UpdateForm({
+  birthId,
+  onSuccess,
+  onBabyBorn = null,
+  childName = null,
+  authorName = '',
+  joinedBelow = false,
+  // Lets the arrival nudge drive the composer straight into born mode, so
+  // "Mark it" lands on the real form with its real question rather than
+  // flipping the birth behind the parent's back on a guessed timestamp.
+  openBornMode = false,
+  onBornModeOpened = null,
+}) {
   const [mode, setMode] = useState(null); // 'photo' | 'note' | 'milestone' | 'audio' | 'video' | 'born'
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -283,33 +297,59 @@ export default function UpdateForm({ birthId, onSuccess, onBabyBorn = null }) {
     return `${mins}:${secs.toString().padStart(2, '0')}`;
   };
 
+  useEffect(() => {
+    if (!openBornMode || !onBabyBorn) return;
+    setBornTime(toLocalInputValue());
+    setMode('born');
+    onBornModeOpened?.();
+  }, [openBornMode, onBabyBorn, onBornModeOpened]);
+
+  const initial = (authorName || '').trim().charAt(0).toUpperCase() || '🤍';
+  const placeholder = childName
+    ? `Share something with ${childName}'s family…`
+    : 'Share something with the family…';
+
+  // The resting state: one open field, not a rack of type buttons. You start
+  // with a thought — "she's doing so well" — and reach for a medium only if
+  // you have one. Six equal-weight buttons made you name the file type before
+  // you'd had the thought, and put a decision in front of every single post.
+  //
+  // Attachments stay quiet and secondary. Photo and Voice lead because they're
+  // what actually gets used between contractions; Video and Milestone follow.
   if (!mode) {
     return (
-      <div className="card">
-        <div className="flex flex-wrap gap-3 justify-center">
-          <ModeButton mode="photo" color="primary" onClick={() => setMode('photo')}>
-            Photo
-          </ModeButton>
-          <ModeButton mode="video" color="violet" onClick={() => setMode('video')}>
-            Video
-          </ModeButton>
-          <ModeButton mode="note" color="blue" onClick={() => setMode('note')}>
-            Note
-          </ModeButton>
-          <ModeButton mode="milestone" color="amber" onClick={() => setMode('milestone')}>
-            Milestone
-          </ModeButton>
-          <ModeButton mode="audio" color="rose" onClick={() => setMode('audio')}>
-            Voice Memo
-          </ModeButton>
-          {/* Baby Born! is one of these — you're posting to the timeline, and
-              it IS a milestone (kind: 'born'). So it takes the same shape and
-              size as its neighbours and is marked rather than shouted: the
-              theme accent in the text and an outline, instead of a solid fill
-              that made it look like it belonged to a different control set.
-              It sits last because an announcement that can't be un-tapped
-              without undoing the whole flip shouldn't be the easiest thing to
-              hit while reaching for Photo. */}
+      <div className={`card ${joinedBelow ? 'rounded-b-none border-b-0 pb-4' : ''}`}>
+        <div className="flex gap-3 items-center">
+          <div
+            className="w-10 h-10 rounded-full grid place-items-center font-semibold text-sm shrink-0"
+            style={{ backgroundColor: 'var(--t-soft-bg)', color: 'var(--t-accent)' }}
+          >
+            {initial}
+          </div>
+          <button
+            type="button"
+            onClick={() => setMode('note')}
+            className="flex-1 text-left px-5 py-3 rounded-full border text-[0.98rem] transition-colors"
+            style={{
+              borderColor: 'var(--t-soft-ring)',
+              color: 'var(--t-ink-faint)',
+              backgroundColor: 'var(--t-note-bg)',
+            }}
+          >
+            {placeholder}
+          </button>
+        </div>
+
+        <div className="flex flex-wrap items-center gap-1 mt-3 sm:pl-[52px]">
+          <AttachButton icon="📷" label="Photo" onClick={() => setMode('photo')} />
+          <AttachButton icon="🎙️" label="Voice" onClick={() => setMode('audio')} />
+          <AttachButton icon="🎥" label="Video" onClick={() => setMode('video')} />
+          <AttachButton icon="⭐" label="Milestone" onClick={() => setMode('milestone')} />
+          {/* Announcing is one of these — you're posting to the timeline, and
+              it IS a milestone (kind: 'born'). It's marked rather than
+              shouted, and pushed to the far end: an announcement that can't be
+              un-tapped without undoing the whole flip shouldn't sit under the
+              thumb that's reaching for Photo. */}
           {onBabyBorn && (
             <button
               type="button"
@@ -317,14 +357,15 @@ export default function UpdateForm({ birthId, onSuccess, onBabyBorn = null }) {
                 setBornTime(toLocalInputValue());
                 setMode('born');
               }}
-              className="flex items-center gap-2 px-4 py-3 rounded-xl font-semibold border transition-colors"
+              className="sm:ml-auto flex items-center gap-2 px-3 py-2 rounded-lg
+                         text-sm font-bold border transition-colors"
               style={{
                 backgroundColor: 'var(--t-soft-bg)',
                 color: 'var(--t-accent)',
                 borderColor: 'var(--t-accent)',
               }}
             >
-              👶 Mark baby born!
+              👶 Mark baby born
             </button>
           )}
         </div>
@@ -678,20 +719,21 @@ function AudiencePicker({ value, onChange }) {
   );
 }
 
-function ModeButton({ children, color, onClick }) {
-  const palette = {
-    primary: 'bg-primary-50 dark:bg-primary-900/30 text-primary-700 dark:text-primary-300 hover:bg-primary-100 dark:hover:bg-primary-900/50',
-    blue: 'bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 hover:bg-blue-100 dark:hover:bg-blue-900/50',
-    amber: 'bg-amber-50 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300 hover:bg-amber-100 dark:hover:bg-amber-900/50',
-    rose: 'bg-rose-50 dark:bg-rose-900/30 text-rose-700 dark:text-rose-300 hover:bg-rose-100 dark:hover:bg-rose-900/50',
-    violet: 'bg-violet-50 dark:bg-violet-900/30 text-violet-700 dark:text-violet-300 hover:bg-violet-100 dark:hover:bg-violet-900/50',
-  };
+// Secondary by design: no fill at rest, so the row reads as a set of options
+// available to the field above rather than five competing buttons. The colour
+// only arrives on hover, once you've aimed at one.
+function AttachButton({ icon, label, onClick }) {
   return (
     <button
+      type="button"
       onClick={onClick}
-      className={`flex items-center gap-2 px-4 py-3 rounded-xl font-medium transition-colors ${palette[color]}`}
+      className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-semibold
+                 t-muted hover:t-ink transition-colors"
+      onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = 'var(--t-soft-bg)'; }}
+      onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = 'transparent'; }}
     >
-      {children}
+      <span className="text-base leading-none">{icon}</span>
+      {label}
     </button>
   );
 }

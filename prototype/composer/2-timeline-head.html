@@ -1,0 +1,157 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Option 2 · Timeline head</title>
+<style>
+  :root {
+    --page:#f3f9fc; --card:#fff; --border:#def0f9; --ink:#2e4a57; --muted:#6d8a99;
+    --faint:#a3bdc9; --accent:#0284c7; --soft:#e5f4fc; --ring:#bbdff5;
+    --title:#075985; --divider:#e3f1f8; --dot:#38bdf8;
+    --milestone-bg:#e9f6fd; --milestone-border:#c8e7f8; --milestone-text:#075985;
+  }
+  * { box-sizing:border-box; }
+  body {
+    margin:0; font:16px/1.5 'Quicksand',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
+    color:var(--ink); background-color:var(--page);
+    background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='88' height='64' viewBox='0 0 88 64'%3E%3Cg stroke='%230284c7' stroke-opacity='0.14' fill='none' stroke-width='1.5' stroke-linecap='round'%3E%3Cpath d='M0 18 q11 -8 22 0 t22 0 t22 0 t22 0'/%3E%3Cpath d='M0 48 q11 -8 22 0 t22 0 t22 0 t22 0'/%3E%3C/g%3E%3C/svg%3E");
+    background-size:88px;
+  }
+  .spec { background:#0f2b3d; color:#cfe8f6; padding:12px 20px; font-size:.84rem; }
+  .spec a { color:#7dd3fc; } .spec b { color:#fff; }
+  header { background:rgba(250,253,255,.9); border-bottom:1px solid #d8eaf5; position:sticky; top:0; z-index:5; backdrop-filter:blur(10px); }
+  .hin { max-width:860px; margin:0 auto; padding:14px 20px; }
+  h1 { font-size:1.65rem; font-weight:600; color:var(--title); margin:0; }
+  .meta { display:flex; gap:14px; margin-top:6px; font-size:.82rem; align-items:center; }
+  .live { color:#0f766e; display:flex; align-items:center; gap:6px; }
+  .live i { width:8px; height:8px; border-radius:99px; background:#10b981; display:block; }
+  .pill { background:var(--soft); color:var(--accent); padding:3px 11px; border-radius:99px; }
+  main { max-width:860px; margin:0 auto; padding:22px 20px 70px; }
+  .card { background:var(--card); border:1px solid var(--border); border-radius:18px; }
+  .timer { padding:34px; text-align:center; margin-bottom:18px; }
+  .clock { font:600 3rem/1 ui-monospace,monospace; color:var(--faint); letter-spacing:.06em; }
+  .big { width:170px; height:170px; border-radius:99px; background:var(--accent); color:#fff;
+    border:0; font:700 1.05rem/1.25 inherit; margin:20px auto 12px; display:block; cursor:pointer;
+    box-shadow:0 8px 22px rgba(2,132,199,.28); }
+  .hint { color:var(--muted); font-size:.88rem; }
+
+  /* ---- the timeline card, with the composer as its head ---- */
+  .story { padding:0 20px 16px; }
+  .head { padding:18px 0 16px; }
+  .headRow { display:flex; align-items:center; gap:12px; }
+  .plus {
+    width:42px; height:42px; border-radius:99px; border:1.5px dashed var(--ring);
+    background:#fbfeff; color:var(--accent); font-size:1.4rem; display:grid; place-items:center;
+    cursor:pointer; flex:none;
+  }
+  .plus:hover { border-style:solid; background:var(--soft); }
+  .addLine { color:var(--faint); cursor:text; flex:1; font-size:.98rem; }
+  .quick { display:flex; gap:6px; }
+  .qb { width:38px; height:38px; border-radius:10px; border:0; background:transparent;
+    font-size:1.1rem; cursor:pointer; }
+  .qb:hover { background:var(--soft); }
+  .expand { display:none; margin-top:14px; }
+  .open .expand { display:block; }
+  .open .addLine { color:var(--ink); }
+  .expand textarea { width:100%; border:1px solid var(--ring); border-radius:14px; padding:12px 14px;
+    font:inherit; resize:none; min-height:78px; background:#fbfeff; color:var(--ink); }
+  .kinds { display:flex; gap:6px; flex-wrap:wrap; margin-top:10px; }
+  .kind { padding:7px 13px; border-radius:10px; border:0; background:var(--soft);
+    color:var(--accent); font:600 .86rem inherit; cursor:pointer; }
+  .kind.born { border:1px solid var(--accent); font-weight:700; }
+  .go { margin-left:auto; padding:8px 20px; border-radius:99px; border:0;
+    background:var(--accent); color:#fff; font:700 .88rem inherit; cursor:pointer; }
+
+  .day { font-size:.74rem; letter-spacing:.1em; text-transform:uppercase; color:var(--muted);
+    padding:6px 0 4px; border-top:2px solid var(--divider); }
+  .ev { display:flex; align-items:center; gap:14px; padding:11px 0; border-top:1px solid var(--divider); }
+  .ev .t { color:var(--faint); font-size:.84rem; width:72px; flex:none; }
+  .ev .d { width:8px; height:8px; border-radius:99px; background:var(--dot); flex:none; }
+  .ev .n { font-weight:600; }
+  .ev .s { color:var(--muted); font-size:.88rem; }
+  .mile { background:var(--milestone-bg); border:1px solid var(--milestone-border);
+    color:var(--milestone-text); border-radius:12px; padding:10px 14px; font-weight:600; }
+  .note { background:#f0f7fb; border-radius:12px; padding:10px 14px; }
+  .callout { background:#fffbeb; border:1px solid #fde68a; color:#92400e;
+    border-radius:12px; padding:12px 16px; font-size:.88rem; margin-top:20px; }
+</style>
+</head>
+<body>
+<div class="spec">
+  <b>Option 2 · Timeline head</b> — the composer is the first row of the timeline card itself.
+  <a href="index.html">← all options</a>
+</div>
+
+<header>
+  <div class="hin">
+    <h1>Welcoming luke</h1>
+    <div class="meta">
+      <span class="live"><i></i> Live sync active</span>
+      <span class="pill">🎈 you're in · 1</span>
+    </div>
+  </div>
+</header>
+
+<main>
+  <section class="card timer">
+    <div class="clock">00:00</div>
+    <button class="big">START<br>CONTRACTION</button>
+    <div class="hint">Tap when contraction begins</div>
+  </section>
+
+  <section class="card story" id="story">
+    <div class="head">
+      <div class="headRow">
+        <div class="plus" onclick="document.getElementById('story').classList.toggle('open')">+</div>
+        <div class="addLine" onclick="document.getElementById('story').classList.add('open')">
+          Add to luke's story…
+        </div>
+        <div class="quick">
+          <button class="qb" title="Photo">📷</button>
+          <button class="qb" title="Voice memo">🎙️</button>
+        </div>
+      </div>
+
+      <div class="expand">
+        <textarea placeholder="What's happening?"></textarea>
+        <div class="kinds">
+          <button class="kind">📷 Photo</button>
+          <button class="kind">🎥 Video</button>
+          <button class="kind">🎙️ Voice</button>
+          <button class="kind">⭐ Milestone</button>
+          <button class="kind born">👶 Mark baby born</button>
+          <button class="go">Add</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="day">Today</div>
+    <div class="ev">
+      <span class="t">08:24 PM</span>
+      <div class="mile" style="flex:1">💧 Water Broke</div>
+    </div>
+    <div class="ev">
+      <span class="t">08:19 PM</span>
+      <div class="note" style="flex:1">Heading in. Bag's in the car. 🤍</div>
+    </div>
+    <div class="ev"><span class="t">08:11 PM</span><span class="d"></span><span class="n">Contraction</span><span class="s">2m 41s</span></div>
+    <div class="ev"><span class="t">08:10 PM</span><span class="d"></span><span class="n">Contraction</span><span class="s">1m 5s</span></div>
+    <div class="ev"><span class="t">08:10 PM</span><span class="d"></span><span class="n">Contraction</span><span class="s">16s</span></div>
+    <div class="ev"><span class="t">08:10 PM</span><span class="d"></span><span class="n">Contraction</span><span class="s">14s</span></div>
+  </section>
+
+  <div class="callout">
+    <b>The idea:</b> there is no composer card. There's a story, and the top of the story is where
+    you add to it — the same white surface, one border, the newest entry landing directly under the
+    thing you typed it into. The two most common actions (photo, voice) stay one tap away on the
+    right; everything else lives behind the <b>+</b>.
+    <br><br>
+    <b>Click the + or the "Add to luke's story…" line</b> to expand.
+    <br><br>
+    <b>Trade-off:</b> it scrolls away. Once the story is long, adding to it means scrolling back to
+    the top — which is exactly what Option 3 solves.
+  </div>
+</main>
+</body>
+</html>

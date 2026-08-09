@@ -17,6 +17,15 @@ import UpdateForm from '../components/UpdateForm';
 import { bumpCommentCount, updateReaction } from '../utils/engagement';
 import { getTheme, themeVars } from '../utils/themes';
 
+// Milestones that are only possible once the baby is out. Posting one of these
+// while the birth isn't marked is proof the announcement got skipped.
+const POST_BIRTH_MILESTONES = {
+  first_hold: 'a First Hold',
+  first_feed: 'a First Feed',
+  name_announced: 'a Name Announced',
+  going_home: 'a Going Home',
+};
+
 // THE birth page — one page for every role that can see it, and it's a
 // private page: invited family sees the timeline, parents additionally get
 // the labor tooling (contraction timer, composer, Baby Born, stats)
@@ -38,6 +47,8 @@ export default function PublicBirthPage() {
   const [notFound, setNotFound] = useState(false);
   const [celebration, setCelebration] = useState(null);
   const [activeTab, setActiveTab] = useState('timeline');
+  // Set by the arrival nudge to pop the composer straight into born mode.
+  const [markBornFromNudge, setMarkBornFromNudge] = useState(false);
 
   const theme = getTheme(birth?.theme);
   const { darkMode, setDarkMode, effectiveDark } = useDarkMode(theme.alwaysDark);
@@ -181,6 +192,24 @@ export default function PublicBirthPage() {
     () => sortedEvents.find((e) => e.event_type === 'contraction' && !e.payload?.end_time),
     [sortedEvents],
   );
+
+  // The forget-to-tap safety net. Everything downstream of the birth hangs off
+  // one flip that someone has to remember in the least rememberable hour of
+  // their life: no artwork is generated, the guessing jar never settles, the
+  // measurements form never appears, and nobody watching gets the moment.
+  //
+  // These milestones can't happen before the baby does, so posting one while
+  // the birth still isn't marked is a contradiction the page can see. We ask
+  // rather than flip on our own: a First Hold is *after* the arrival, and its
+  // timestamp isn't the birth time — which is the number that ends up printed
+  // on the keepsake. So the nudge opens the real form, with its real question.
+  const arrivalHint = useMemo(() => {
+    if (!birth || birth.status === 'born' || birth.status === 'archived') return null;
+    const proof = sortedEvents.find(
+      (e) => e.event_type === 'milestone' && POST_BIRTH_MILESTONES[(e.payload || {}).kind],
+    );
+    return proof ? POST_BIRTH_MILESTONES[proof.payload.kind] : null;
+  }, [birth, sortedEvents]);
 
   const canManageThisBirth = useMemo(() => {
     if (!me || !birth) return false;
@@ -431,11 +460,27 @@ export default function PublicBirthPage() {
           <StatsTab events={sortedEvents} birthId={birth.id} status={birth.status} />
         ) : canManageThisBirth ? (
           <>
-            <UpdateForm
-              birthId={birth.id}
-              onBabyBorn={birth.status !== 'born' ? handleBorn : null}
-            />
-            <Timeline events={sortedEvents} canManage birthId={birth.id} />
+            {arrivalHint && (
+              <ArrivalNudge
+                hint={arrivalHint}
+                onMark={() => setMarkBornFromNudge(true)}
+              />
+            )}
+            {/* No gap: the composer and the story are one surface. It isn't a
+                tool that happens to sit near the timeline — it's the top of
+                the timeline, and what you write lands directly beneath it. */}
+            <div>
+              <UpdateForm
+                birthId={birth.id}
+                childName={birth.child_name}
+                authorName={me?.user?.display_name || ''}
+                onBabyBorn={birth.status !== 'born' ? handleBorn : null}
+                openBornMode={markBornFromNudge}
+                onBornModeOpened={() => setMarkBornFromNudge(false)}
+                joinedBelow
+              />
+              <Timeline events={sortedEvents} canManage birthId={birth.id} joinedAbove />
+            </div>
           </>
         ) : (
           <Timeline events={sortedEvents} slug={slug} />
@@ -465,6 +510,36 @@ export default function PublicBirthPage() {
           onDone={() => setCelebration(null)}
         />
       )}
+    </div>
+  );
+}
+
+// Deliberately not dismissible: the cost of ignoring it is the whole back half
+// of the product silently not happening. It disappears the moment the birth is
+// marked, which is the only thing that actually resolves it.
+function ArrivalNudge({ hint, onMark }) {
+  return (
+    <div
+      className="card flex flex-wrap items-center gap-3 py-4"
+      style={{ backgroundColor: 'var(--t-soft-bg)', borderColor: 'var(--t-soft-ring)' }}
+    >
+      <span className="text-2xl leading-none">👶</span>
+      <div className="flex-1 min-w-[16rem]">
+        <p className="font-semibold t-ink">
+          You posted {hint} — are they here?
+        </p>
+        <p className="text-sm t-muted">
+          Marking the arrival tells everyone watching, settles the guessing jar,
+          and starts the keepsake.
+        </p>
+      </div>
+      <button
+        type="button"
+        onClick={onMark}
+        className="px-5 py-2.5 rounded-full t-btn-accent font-semibold"
+      >
+        Mark it
+      </button>
     </div>
   );
 }

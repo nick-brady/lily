@@ -315,6 +315,7 @@ export default function Timeline({
   canManage = false,
   birthId = null,
   slug = null,
+  joinedAbove = false,
 }) {
   const engagementScope = birthId
     ? { birthId }
@@ -382,7 +383,7 @@ export default function Timeline({
 
   if (!events || events.length === 0) {
     return (
-      <div className="card text-center py-12">
+      <div className={`card text-center py-12 ${joinedAbove ? 'rounded-t-none' : ''}`}>
         <p className="t-muted">
           No updates yet. The journey is about to begin!
         </p>
@@ -515,8 +516,13 @@ export default function Timeline({
       )}
 
       <div className="space-y-6">
-        {Object.entries(grouped).map(([date, items]) => (
-          <div key={date} className="card">
+        {Object.entries(grouped).map(([date, items], groupIndex) => (
+          // The first group squares its top edge when a composer sits directly
+          // above it, so the two share one surface instead of floating apart.
+          <div
+            key={date}
+            className={`card ${joinedAbove && groupIndex === 0 ? 'rounded-t-none' : ''}`}
+          >
             <h3 className="text-sm font-medium t-muted mb-4 uppercase tracking-wide">
               {date}
             </h3>

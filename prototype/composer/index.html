@@ -1,0 +1,99 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Composer explorations — Arrival Story</title>
+<style>
+  :root {
+    --page: #f3f9fc; --card: #fff; --border: #def0f9; --ink: #2e4a57;
+    --muted: #6d8a99; --faint: #a3bdc9; --accent: #0284c7; --soft: #e5f4fc;
+    --ring: #bbdff5; --title: #075985;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; padding: 40px 20px 80px;
+    font: 16px/1.55 -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    background: var(--page); color: var(--ink);
+  }
+  .wrap { max-width: 860px; margin: 0 auto; }
+  h1 { font-size: 1.9rem; color: var(--title); margin: 0 0 6px; }
+  .sub { color: var(--muted); margin: 0 0 28px; }
+  .problem {
+    background: var(--card); border: 1px solid var(--border); border-radius: 16px;
+    padding: 20px 24px; margin-bottom: 32px;
+  }
+  .problem h2 { font-size: .8rem; text-transform: uppercase; letter-spacing: .08em;
+    color: var(--muted); margin: 0 0 12px; }
+  .problem ul { margin: 0; padding-left: 20px; }
+  .problem li { margin-bottom: 7px; }
+  .grid { display: grid; gap: 18px; }
+  a.opt {
+    display: block; text-decoration: none; color: inherit;
+    background: var(--card); border: 1px solid var(--border); border-radius: 16px;
+    padding: 22px 24px; transition: border-color .15s, transform .15s;
+  }
+  a.opt:hover { border-color: var(--accent); transform: translateY(-2px); }
+  .n { font-size: .72rem; letter-spacing: .1em; text-transform: uppercase;
+    color: var(--accent); font-weight: 700; }
+  .opt h3 { margin: 6px 0 8px; font-size: 1.25rem; color: var(--title); }
+  .opt p { margin: 0 0 12px; color: var(--muted); font-size: .93rem; }
+  .tags { display: flex; flex-wrap: wrap; gap: 6px; }
+  .tag { font-size: .74rem; padding: 3px 9px; border-radius: 99px;
+    background: var(--soft); color: var(--accent); }
+  .tag.warn { background: #fef3e2; color: #b45309; }
+  footer { margin-top: 34px; color: var(--faint); font-size: .85rem; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Composer explorations</h1>
+  <p class="sub">Four takes on the compose row and its relationship to the timeline. Open each and compare.</p>
+
+  <div class="problem">
+    <h2>What's wrong with the current one</h2>
+    <ul>
+      <li><strong>It's a type picker, not a composer.</strong> You have to choose a medium before you've had a thought. Six equal-weight buttons means a decision every single time.</li>
+      <li><strong>It floats.</strong> A separate card with a gap above and below the timeline it writes into — so it reads as unrelated to the story, when it's the thing that makes the story.</li>
+      <li><strong>The categories overlap.</strong> "Milestone" is a meta-type that can also be a photo or a note. "Photo" and "Video" are the same gesture on a phone.</li>
+      <li><strong>Media type is an implementation detail.</strong> A parent thinks "I want to share this," not "I want to invoke Video mode."</li>
+    </ul>
+  </div>
+
+  <div class="grid">
+    <a class="opt" href="1-one-box.html">
+      <div class="n">Option 1</div>
+      <h3>One box</h3>
+      <p>The Facebook lesson. A single open text field — "Share something with luke's family…" — with attachments as quiet secondary icons. Type first, attach second. Joined to the timeline with no gap.</p>
+      <div class="tags"><span class="tag">familiar</span><span class="tag">lowest commitment to start</span><span class="tag warn">text-first may not suit a photo-first moment</span></div>
+    </a>
+
+    <a class="opt" href="2-timeline-head.html">
+      <div class="n">Option 2</div>
+      <h3>Timeline head</h3>
+      <p>The composer <em>is</em> the first row of the timeline card — same white surface, sitting directly above TODAY. What you write appears immediately beneath it. The tightest possible answer to "disassociated from the timeline."</p>
+      <div class="tags"><span class="tag">strongest story connection</span><span class="tag">one object, not two</span><span class="tag warn">scrolls away as the story grows</span></div>
+    </a>
+
+    <a class="opt" href="3-dock.html">
+      <div class="n">Option 3</div>
+      <h3>Dock</h3>
+      <p>A persistent bottom bar, like every messaging app. The timeline owns the whole page. Always reachable one-handed — which is the actual posture of someone in labor.</p>
+      <div class="tags"><span class="tag">best on a phone</span><span class="tag">always reachable</span><span class="tag">timeline gets full height</span><span class="tag warn">less native on desktop</span></div>
+    </a>
+
+    <a class="opt" href="4-right-now.html">
+      <div class="n">Option 4</div>
+      <h3>Right now</h3>
+      <p>Stage-aware. The page offers what this moment calls for and hides the rest behind a +. Shown in both states — mid-labor and just-after-birth — so you can see it change character.</p>
+      <div class="tags"><span class="tag">fewest choices at once</span><span class="tag">surfaces "mark baby born" when it matters</span><span class="tag warn">most logic to build</span></div>
+    </a>
+  </div>
+
+  <footer>
+    Static mockups — no live behaviour beyond a couple of expand-on-click demos.
+    Ocean / "Little Waves" theme, matching the real tokens in <code>frontend/src/utils/themes.js</code>.
+  </footer>
+</div>
+</body>
+</html>
