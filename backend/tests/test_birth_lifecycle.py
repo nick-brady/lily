@@ -60,6 +60,38 @@ def test_mark_born_records_arrival_and_backfills_start() -> None:
     assert birth.birth_started_at == when  # backfilled since none was set
 
 
+def test_unmark_born_resumes_labor_and_keeps_the_recorded_start() -> None:
+    """Labor was really observed, so `in_labor` is where undoing lands and
+    the first-contraction time survives — it's an observation, not an
+    inference."""
+    birth = _birth(BirthStatus.born)
+    labor_start = datetime(2026, 4, 8, 1, 10, tzinfo=timezone.utc)
+    birth.birth_started_at = labor_start
+    birth.birth_completed_at = datetime(2026, 4, 8, 4, 47, tzinfo=timezone.utc)
+
+    births_repo.unmark_born(_FlushOnly(), birth=birth, resume_labor=True)
+
+    assert birth.status is BirthStatus.in_labor
+    assert birth.birth_completed_at is None
+    assert birth.birth_started_at == labor_start
+
+
+def test_unmark_born_clears_the_start_mark_born_invented() -> None:
+    """No contraction was ever recorded, so `mark_born` backfilled the start
+    from the arrival time. Undoing has to take that with it — otherwise the
+    page returns to `preparing` claiming a labor that never happened."""
+    birth = _birth(BirthStatus.born)
+    when = datetime(2026, 4, 8, 4, 47, tzinfo=timezone.utc)
+    births_repo.mark_born(_FlushOnly(), birth=birth, when=when)
+    assert birth.birth_started_at == when  # the inference we're undoing
+
+    births_repo.unmark_born(_FlushOnly(), birth=birth, resume_labor=False)
+
+    assert birth.status is BirthStatus.preparing
+    assert birth.birth_completed_at is None
+    assert birth.birth_started_at is None
+
+
 def test_born_route_requires_auth() -> None:
     from main import app
 

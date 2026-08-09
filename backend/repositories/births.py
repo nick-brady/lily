@@ -123,6 +123,24 @@ def mark_born(db: Session, *, birth: Birth, when: datetime) -> None:
     db.flush()
 
 
+def unmark_born(db: Session, *, birth: Birth, resume_labor: bool) -> None:
+    """Undo the Baby Born! flip — the recovery path for a mistaken tap.
+    Reached by deleting the Born milestone, which *is* the announcement.
+
+    `resume_labor` says whether labor was genuinely underway beforehand
+    (the caller checks for a real contraction). If it was, we land back in
+    `in_labor` and keep `birth_started_at` — it's a recorded observation.
+    If it wasn't, `mark_born` invented that timestamp from the arrival
+    time, so returning to `preparing` has to clear it rather than leave a
+    labor that never happened on the record.
+    """
+    birth.status = BirthStatus.in_labor if resume_labor else BirthStatus.preparing
+    birth.birth_completed_at = None
+    if not resume_labor:
+        birth.birth_started_at = None
+    db.flush()
+
+
 def primary_birth_for_family(db: Session, family_id: uuid.UUID) -> Birth | None:
     """The birth used as welcome-screen context for a co-parent invite.
     The membership a co-parent invite grants is family-wide regardless;
