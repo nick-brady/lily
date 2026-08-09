@@ -1,4 +1,4 @@
-"""The family pool: guesses at the baby's weight/length.
+"""The guessing jar: guesses at the baby's weight/length.
 
 Free-tier engagement (like reactions, unlike comments): any signed-in
 viewer can guess, one guess per user per birth, editable until the baby is

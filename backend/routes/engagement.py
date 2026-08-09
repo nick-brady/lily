@@ -443,7 +443,7 @@ async def public_delete_event_comment(
     )
 
 
-# ============ The family pool (guesses) ============
+# ============ The guessing jar (guesses) ============
 
 
 # There is deliberately no calendar lock on edits. A due date tells nobody

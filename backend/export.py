@@ -405,7 +405,7 @@ What's in here (all times are UTC, ISO-8601):
   birth.json        Basic details: name, dates, measurements.
   contractions.csv  Every contraction: start, end, duration, and the
                     interval since the previous one.
-  guesses.csv       The family pool: everyone's weight/length guesses,
+  guesses.csv       The guessing jar: everyone's weight/length guesses,
                     scored against the actuals once known (lower wins).
   timeline.csv      Every timeline entry — photos, videos, voice memos,
                     notes, milestones, contractions. The media_file column

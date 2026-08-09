@@ -48,7 +48,7 @@ TEMPLATES: dict[str, GiftTemplate] = {
         clock_cx=640,
         clock_cy=577,
     ),
-    # The family pool: everyone's guesses vs. what actually happened — the
+    # The guessing jar: everyone's guesses vs. what actually happened — the
     # winner's trophy mug.
     "mug_pool": GiftTemplate(
         template_id="mug_pool",
@@ -124,7 +124,7 @@ TEMPLATES: dict[str, GiftTemplate] = {
         photo=False,
         scene="reel",
     ),
-    # The family pool leaderboard as a keepsake card.
+    # The guessing-jar leaderboard as a keepsake card.
     "card_pool": GiftTemplate(
         template_id="card_pool",
         product_kind="birth_announcement_cards",
