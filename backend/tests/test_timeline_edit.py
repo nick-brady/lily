@@ -108,6 +108,7 @@ def _born_event(birth_id: uuid.UUID, occurred_at: datetime):
         payload={"type": "milestone", "kind": "born"},
         occurred_at=occurred_at,
         deleted_at=None,
+        sequence_id=1,
     )
 
 
@@ -162,6 +163,83 @@ def test_born_edit_moves_completed_but_never_labor_start(monkeypatch) -> None:
     asyncio.run(_edit(monkeypatch, birth=birth, event=event, new_time=bogus))
     assert birth.birth_completed_at == bogus
     assert birth.birth_started_at == labor_start
+
+
+# ── undoing the announcement ──────────────────────────────────────────────
+# Deleting the Born milestone is the way back from a mistaken tap. Before
+# this, it soft-deleted the event and left the birth `born`: the Baby Born!
+# button stays hidden (it renders only while status isn't `born`) and the
+# arrival time loses its only editor, since that's this same event.
+
+
+async def _delete(monkeypatch, *, birth, event, has_contraction):
+    """Drive delete_event with the repo and broker stubbed out."""
+    from routes import timeline
+
+    monkeypatch.setattr(timeline.timeline_repo, "get_event", lambda db, _id: event)
+    monkeypatch.setattr(timeline.gifts_repo, "mark_stale", lambda db, **kw: 0)
+    monkeypatch.setattr(timeline, "_has_contraction", lambda db, _bid: has_contraction)
+
+    async def noop(*args, **kwargs):
+        return None
+
+    monkeypatch.setattr(timeline, "publish_event_deleted", noop)
+    monkeypatch.setattr(timeline, "publish_birth_update", noop)
+
+    db = SimpleNamespace(commit=lambda: None, refresh=lambda _obj: None, flush=lambda: None)
+    await timeline.delete_event(
+        event_id=event.id,
+        access=SimpleNamespace(birth=birth, role=None, user=None),
+        db=db,
+    )
+
+
+def _born_birth():
+    from models import BirthStatus
+
+    return SimpleNamespace(
+        id=uuid.uuid4(),
+        status=BirthStatus.born,
+        birth_started_at=datetime(2026, 7, 30, 9, 0, tzinfo=timezone.utc),
+        birth_completed_at=datetime(2026, 7, 30, 14, 54, tzinfo=timezone.utc),
+    )
+
+
+def test_deleting_the_born_milestone_undoes_the_flip(monkeypatch) -> None:
+    from models import BirthStatus
+
+    birth = _born_birth()
+    event = _born_event(birth.id, birth.birth_completed_at)
+
+    asyncio.run(_delete(monkeypatch, birth=birth, event=event, has_contraction=True))
+
+    assert event.deleted_at is not None
+    assert birth.status is BirthStatus.in_labor
+    assert birth.birth_completed_at is None
+
+
+def test_deleting_an_ordinary_post_leaves_the_birth_alone(monkeypatch) -> None:
+    """The undo is scoped to the announcement — deleting a note or a photo
+    must not walk the birth backwards."""
+    from models import BirthStatus, TimelineEventType
+
+    birth = _born_birth()
+    completed = birth.birth_completed_at
+    event = SimpleNamespace(
+        id=uuid.uuid4(),
+        birth_id=birth.id,
+        event_type=TimelineEventType.text_note,
+        payload={"type": "text_note", "body": "she has his nose"},
+        occurred_at=completed,
+        deleted_at=None,
+        sequence_id=7,
+    )
+
+    asyncio.run(_delete(monkeypatch, birth=birth, event=event, has_contraction=True))
+
+    assert event.deleted_at is not None
+    assert birth.status is BirthStatus.born
+    assert birth.birth_completed_at == completed
 
 
 def test_labor_duration_reads_unknown_not_zero() -> None:

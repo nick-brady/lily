@@ -3,7 +3,7 @@ import { api } from '../api/client';
 import GuessForm from './GuessForm';
 
 /**
- * The family pool: weight/length, an arrival-date call, and (for surprise
+ * The guessing jar: weight/length, an arrival-date call, and (for surprise
  * families) boy-or-girl. Guesses are SEALED until the parents record the
  * actuals — the server withholds other people's values pre-settle, so the
  * table shows who's in without spoiling the reveal or anchoring anyone.
@@ -30,7 +30,7 @@ export default function Predictions({ birthId, slug, status, isParent = false, o
       setError('');
       onBoardChange?.(next);
     } catch (err) {
-      setError(err.message || 'Could not load the family pool');
+      setError(err.message || 'Could not load the guessing jar');
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [birthId, slug]);
@@ -57,7 +57,7 @@ export default function Predictions({ birthId, slug, status, isParent = false, o
   return (
     <div className="card">
       <h3 className="text-lg font-semibold text-gray-800 dark:text-gray-200 mb-1">
-        The family pool
+        The guessing jar
       </h3>
       <p className="text-xs t-muted mb-4">
         {born
@@ -114,13 +114,11 @@ function PoolFormToggle({ mine, scope, status, genderEnabled, dueDate, onSaved }
   const [open, setOpen] = useState(!mine);
   if (!open) {
     return (
-      <button
-        type="button"
-        onClick={() => setOpen(true)}
-        className="w-full px-3 py-2 text-xs t-muted hover:t-ink text-left transition-colors"
-      >
-        Your guess is in, sealed 🎈 — change it →
-      </button>
+      <YourGuessLine
+        mine={mine}
+        onOpen={() => setOpen(true)}
+        className="w-full px-3 py-2 text-xs"
+      />
     );
   }
   return (
@@ -151,7 +149,7 @@ function ActualsForm({ birthId, genderEnabled, onSaved }) {
     const o = oz === '' ? 0 : Number(oz);
     const weight = l + o / 16;
     if (!weight) {
-      setFormError('Weight is what settles the pool.');
+      setFormError('Weight is what settles the jar.');
       return;
     }
     setSaving(true);
@@ -176,7 +174,7 @@ function ActualsForm({ birthId, genderEnabled, onSaved }) {
       style={{ backgroundColor: 'var(--t-soft-bg)' }}
     >
       <p className="text-xs t-muted">
-        Record the measurements to settle the pool and crown the winners:
+        Record the measurements to settle the jar and crown the winners:
       </p>
       <div className="flex flex-wrap items-center gap-2">
         <input
@@ -217,11 +215,48 @@ function ActualsForm({ birthId, genderEnabled, onSaved }) {
           className="px-4 py-2 rounded-lg text-sm font-medium text-white disabled:opacity-50"
           style={{ backgroundColor: 'var(--t-accent)' }}
         >
-          Settle the pool
+          Settle the jar
         </button>
       </div>
       {formError && <p className="text-xs text-red-500">{formError}</p>}
     </div>
+  );
+}
+
+// The parent's own guess, spelled out, above whichever surface is asking.
+// It states the fact — "7 lbs 6 oz, 20", Aug 15" — because a line that only
+// says a guess exists leaves you clicking around to find out what it was. The
+// underline is what marks it as the way in; "change it →" read as a caption
+// and got missed. Lives here beside the formatters so the sentence and the
+// board can't render the same guess differently, and so the birth page and
+// Birth settings can't drift apart again.
+export function YourGuessLine({ mine, onOpen, className = 'text-sm' }) {
+  const parts = mine
+    ? [
+        formatWeight(mine.weight_lbs),
+        formatLength(mine.length_in),
+        mine.date_guess ? `on ${formatDate(mine.date_guess)}` : null,
+      ].filter(Boolean)
+    : [];
+
+  return (
+    <button
+      type="button"
+      onClick={onOpen}
+      className={`${className} t-muted hover:t-ink text-left transition-colors`}
+    >
+      {parts.length > 0 ? (
+        <>
+          Your guess — <span className="t-ink">{parts.join(', ')}</span>.{' '}
+          <span className="underline">Update</span>
+        </>
+      ) : (
+        <>
+          You haven&rsquo;t left your guess yet!{' '}
+          <span className="underline">Make it now</span>
+        </>
+      )}
+    </button>
   );
 }
 

@@ -205,7 +205,7 @@ class GuessOut(BaseModel):
 
 
 class GuessBoardOut(BaseModel):
-    """The family pool: everyone's guesses, plus the actuals and ranking
+    """The guessing jar: everyone's guesses, plus the actuals and ranking
     once the parents record the measurements. Pre-settle, other people's
     guess VALUES are sealed server-side (names visible, numbers null) —
     no anchoring, no spoiled reveal."""
@@ -602,8 +602,8 @@ class BirthCreateIn(BaseModel):
     baby_name: str = Field(..., min_length=1, max_length=100)
     slug: str = Field(..., min_length=1, max_length=100)
     theme: str = Field(default="lily", max_length=50)
-    # Optional at setup; also settable later in Birth settings. Drives the
-    # pool's 36-week guess-edit lock.
+    # Optional at setup; also settable later in Birth settings. Shown on the
+    # guess board and seeds the date field — it gates nothing.
     due_date: Optional[date] = None
     # Attach to an existing family (second child, twins, etc.) instead of
     # starting a new one. The caller must already be an owner/co-parent
@@ -614,7 +614,7 @@ class BirthCreateIn(BaseModel):
 class BirthUpdateIn(BaseModel):
     theme: Optional[str] = Field(default=None, max_length=50)
     # Actual measurements, recorded by the parents once known — these settle
-    # the family pool and unlock the pool gift artwork.
+    # the guessing jar and unlock the pool gift artwork.
     child_weight_lbs: Optional[float] = Field(default=None, gt=0, lt=30)
     child_length_in: Optional[float] = Field(default=None, gt=0, lt=40)
     # Pool controls (Birth settings): expected arrival + the gender-surprise

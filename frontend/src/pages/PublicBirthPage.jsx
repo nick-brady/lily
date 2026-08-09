@@ -15,7 +15,6 @@ import StatsTab from '../components/StatsTab';
 import Timeline from '../components/Timeline';
 import UpdateForm from '../components/UpdateForm';
 import { bumpCommentCount, updateReaction } from '../utils/engagement';
-import { toLocalInputValue } from '../utils/relativeTime';
 import { getTheme, themeVars } from '../utils/themes';
 
 // THE birth page — one page for every role that can see it, and it's a
@@ -39,9 +38,6 @@ export default function PublicBirthPage() {
   const [notFound, setNotFound] = useState(false);
   const [celebration, setCelebration] = useState(null);
   const [activeTab, setActiveTab] = useState('timeline');
-  const [confirmingBorn, setConfirmingBorn] = useState(false);
-  const [bornTime, setBornTime] = useState('');
-  const [markingBorn, setMarkingBorn] = useState(false);
 
   const theme = getTheme(birth?.theme);
   const { darkMode, setDarkMode, effectiveDark } = useDarkMode(theme.alwaysDark);
@@ -226,27 +222,21 @@ export default function PublicBirthPage() {
     }
   };
 
-  const handleBorn = async () => {
-    setMarkingBorn(true);
-    setError('');
-    try {
-      const updated = await api.markBorn(
-        birth.id,
-        bornTime ? { occurred_at: new Date(bornTime).toISOString() } : {},
-      );
-      // Celebrate immediately for the parent who tapped — don't rely on
-      // our own SSE echo. Viewers get the moment via birth_update.
-      setBirth((prev) => (prev ? { ...prev, ...updated } : prev));
-      setCelebration({ name: updated.child_name || birth.child_name });
-      // Keep the account page badge fresh; fire-and-forget on purpose —
-      // page data is keyed on the slug, so this triggers no refetch.
-      refreshMe().catch(() => {});
-    } catch (err) {
-      setError(err.message || 'Failed to mark baby born');
-    } finally {
-      setMarkingBorn(false);
-      setConfirmingBorn(false);
-    }
+  // Called by the composer's Baby Born! mode with the arrival time it
+  // collected. Errors propagate: the composer keeps its form open and shows
+  // why, rather than closing as if the family had been told.
+  const handleBorn = async (occurredAtISO) => {
+    const updated = await api.markBorn(
+      birth.id,
+      occurredAtISO ? { occurred_at: occurredAtISO } : {},
+    );
+    // Celebrate immediately for the parent who tapped — don't rely on
+    // our own SSE echo. Viewers get the moment via birth_update.
+    setBirth((prev) => (prev ? { ...prev, ...updated } : prev));
+    setCelebration({ name: updated.child_name || birth.child_name });
+    // Keep the account page badge fresh; fire-and-forget on purpose —
+    // page data is keyed on the slug, so this triggers no refetch.
+    refreshMe().catch(() => {});
   };
 
   const title = birth?.child_name
@@ -411,78 +401,23 @@ export default function PublicBirthPage() {
           </section>
         ) : null}
 
-        {!loading && canManageThisBirth && (
-          birth.status !== 'born' ? (
-            <section className="card flex flex-col items-center gap-3 py-5">
-              {confirmingBorn ? (
-                <>
-                  {/* Lead with the time, not the confirmation. Nobody taps
-                      this while it's happening — you post once you have a free
-                      hand, so the prefilled "now" is nearly always late by
-                      15-40 minutes. Asking the question outright gets the real
-                      time on the record; burying it under a confirm button got
-                      it corrected afterwards, if at all. */}
-                  <label className="flex flex-col items-center gap-2">
-                    <span className="text-base font-medium t-ink text-center">
-                      When did they arrive?
-                    </span>
-                    <input
-                      type="datetime-local"
-                      value={bornTime}
-                      onChange={(e) => setBornTime(e.target.value)}
-                      max={toLocalInputValue()}
-                      className="px-3 py-2 rounded-lg border text-base bg-white dark:bg-gray-800 t-ink"
-                      style={{ borderColor: 'var(--t-soft-ring)' }}
-                    />
-                  </label>
-                  <p className="text-xs t-muted text-center">
-                    Set to now — nudge it back if the moment has already passed.
-                  </p>
-                  <div className="flex gap-2">
-                    <button
-                      onClick={handleBorn}
-                      disabled={markingBorn}
-                      className="px-5 py-2.5 rounded-full t-btn-accent font-medium disabled:opacity-50"
-                    >
-                      {markingBorn ? 'Announcing…' : '🎉 Baby Born!'}
-                    </button>
-                    <button
-                      onClick={() => setConfirmingBorn(false)}
-                      disabled={markingBorn}
-                      className="px-4 py-2.5 rounded-full text-sm t-muted hover:opacity-80"
-                    >
-                      Not yet
-                    </button>
-                  </div>
-                </>
-              ) : (
-                <button
-                  onClick={() => {
-                    setBornTime(toLocalInputValue());
-                    setConfirmingBorn(true);
-                  }}
-                  className="px-6 py-3 rounded-full font-semibold text-base transition-opacity hover:opacity-90"
-                  style={{ backgroundColor: 'var(--t-accent)', color: '#fff' }}
-                >
-                  👶 Baby Born!
-                </button>
-              )}
-            </section>
-          ) : (
-            <section className="card text-center py-5">
-              <p className="t-display" style={{ fontSize: '1.5rem' }}>
-                {birth.child_name || 'Baby'} is here 🤍
+        {/* Announcing lives in the composer alongside the other things you
+            post — it IS a timeline milestone — so there's no separate card for
+            it here. Once it's happened, this states the fact instead. */}
+        {!loading && canManageThisBirth && birth.status === 'born' && (
+          <section className="card text-center py-5">
+            <p className="t-display" style={{ fontSize: '1.5rem' }}>
+              {birth.child_name || 'Baby'} is here 🤍
+            </p>
+            {birth.birth_completed_at && (
+              <p className="text-sm t-muted mt-1">
+                Born {new Date(birth.birth_completed_at).toLocaleString([], {
+                  dateStyle: 'medium',
+                  timeStyle: 'short',
+                })}
               </p>
-              {birth.birth_completed_at && (
-                <p className="text-sm t-muted mt-1">
-                  Born {new Date(birth.birth_completed_at).toLocaleString([], {
-                    dateStyle: 'medium',
-                    timeStyle: 'short',
-                  })}
-                </p>
-              )}
-            </section>
-          )
+            )}
+          </section>
         )}
 
         {/* ---- Shared page content (the pool lives in the header pill
@@ -496,7 +431,10 @@ export default function PublicBirthPage() {
           <StatsTab events={sortedEvents} birthId={birth.id} status={birth.status} />
         ) : canManageThisBirth ? (
           <>
-            <UpdateForm birthId={birth.id} />
+            <UpdateForm
+              birthId={birth.id}
+              onBabyBorn={birth.status !== 'born' ? handleBorn : null}
+            />
             <Timeline events={sortedEvents} canManage birthId={birth.id} />
           </>
         ) : (

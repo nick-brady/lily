@@ -54,6 +54,30 @@ CreateEventIn = Annotated[
 ]
 
 
+def _is_born_milestone(event: TimelineEvent) -> bool:
+    """The single Born milestone — the announcement itself. Both editing it
+    and deleting it reach past the event into the birth's own clocks."""
+    return (
+        event.event_type is TimelineEventType.milestone
+        and (event.payload or {}).get("kind") == "born"
+    )
+
+
+def _has_contraction(db: Session, birth_id: uuid.UUID) -> bool:
+    """Whether labor was really observed, as opposed to `mark_born` filling
+    in a start time it inferred from the arrival. Decides where undoing the
+    announcement lands: back in `in_labor`, or all the way to `preparing`."""
+    return db.scalars(
+        select(TimelineEvent.id)
+        .where(
+            TimelineEvent.birth_id == birth_id,
+            TimelineEvent.event_type == TimelineEventType.contraction,
+            TimelineEvent.deleted_at.is_(None),
+        )
+        .limit(1)
+    ).first() is not None
+
+
 @router.post("/birth/{birth_id}/event", response_model=TimelineEventOut)
 async def create_event(
     payload: CreateEventIn = Body(...),
@@ -253,10 +277,7 @@ async def edit_event(
         event.occurred_at = new_time
         # The Born milestone IS the arrival time — keep the birth's own
         # clocks telling the same story.
-        if (
-            event.event_type is TimelineEventType.milestone
-            and (event.payload or {}).get("kind") == "born"
-        ):
+        if _is_born_milestone(event):
             access.birth.birth_completed_at = new_time
             # birth_started_at is deliberately left alone. It's the first
             # contraction — a real recorded observation — and it used to get
@@ -297,9 +318,25 @@ async def delete_event(
     if event.deleted_at is not None:
         return Response(status_code=204)
     event.deleted_at = datetime.now(timezone.utc)
+    # The Born milestone isn't a post about the birth — it *is* the
+    # announcement, so removing it has to undo the flip too. Without this the
+    # page stays `born` forever with its Baby Born! button gone (it renders
+    # only while status isn't `born`) and no handle left to correct the
+    # arrival time, since that's edited through this very event. A mistaken
+    # tap needs a way back, and this is the one parents reach for.
+    unborn = _is_born_milestone(event)
+    if unborn:
+        births_repo.unmark_born(
+            db,
+            birth=access.birth,
+            resume_labor=_has_contraction(db, access.birth.id),
+        )
     gifts_repo.mark_stale(db, birth_id=access.birth.id)
     db.commit()
     await publish_event_deleted(access.birth.id, event.sequence_id, event.id)
+    if unborn:
+        db.refresh(access.birth)
+        await publish_birth_update(access.birth.id, access.birth)
     return Response(status_code=204)
 
 

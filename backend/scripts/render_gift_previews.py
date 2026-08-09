@@ -115,7 +115,7 @@ def main() -> None:
         {"body": "Crying at my desk. So proud of you, Sarah.", "who": "Lisa", "when": "9:02 am"},
         {"body": "We've been waiting for you, sweet girl.", "who": "Grandpa", "when": "11:11 am"},
     ]
-    # mirrors the family pool in frontend/src/components/Predictions.jsx
+    # mirrors the guessing jar in frontend/src/components/Predictions.jsx
     pool = [
         {"name": "Alexis (Momma)", "weight_lbs": 7.75, "length_in": 20.5},
         {"name": "Nick (Daddy)", "weight_lbs": 7.5, "length_in": 20},

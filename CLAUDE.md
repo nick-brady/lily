@@ -1,5 +1,15 @@
 # Project: Lily
 
+## Decisions
+
+`DECISIONS.md` records product and design decisions that have already been
+made, and why. **Read the relevant section before changing product behavior.**
+If a requested change would contradict an entry, say so before implementing it
+— a decision is only superseded when it's explicitly reversed in that file.
+
+When a new decision gets made in conversation, add it there: dated, with the
+reasoning and a pointer to the code. Reversals get struck, not deleted.
+
 ## Permissions
 
 This project grants Claude full permissions to:

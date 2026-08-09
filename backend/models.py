@@ -281,9 +281,10 @@ class Birth(Base):
     theme: Mapped[str] = mapped_column(
         sa.Text, nullable=False, server_default="lily"
     )
-    # Expected arrival — drives the pool's 36-week guess-edit lock
-    # (edits freeze at due_date - 28 days). Optional; without it, guesses
-    # stay editable until the birth.
+    # Expected arrival. Optional, and it locks nothing: it rides out on the
+    # guess board and seeds the date field's default. The 36-week edit freeze
+    # this used to drive was removed 2026-07-31 — see the note above the
+    # guessing jar in routes/engagement.py for why.
     due_date: Mapped[date | None] = mapped_column(sa.Date, nullable=True)
     # Parents keeping the gender a surprise can open a boy/girl guess in
     # the pool. Off by default — a pool on "Welcoming Lily" asking boy-or-

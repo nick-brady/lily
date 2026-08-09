@@ -401,15 +401,27 @@ export default function Timeline({
     return groups;
   }, {});
 
+  const isBornConfirm =
+    deleteConfirm?.event_type === 'milestone' &&
+    deleteConfirm?.payload?.kind === 'born';
+
   return (
     <>
       {deleteConfirm && (
         <Modal onClose={() => setDeleteConfirm(null)}>
+          {/* Removing the Born milestone takes the announcement back with it —
+              say so plainly. Calling it "this post" and warning it can't be
+              undone got both facts backwards: it's the birth record, and it's
+              the only way back from a mistaken tap. */}
           <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-2">
-            Delete this {deleteConfirm.event_type === 'contraction' ? 'contraction' : 'post'}?
+            {isBornConfirm
+              ? 'Undo the announcement?'
+              : `Delete this ${deleteConfirm.event_type === 'contraction' ? 'contraction' : 'post'}?`}
           </h3>
           <p className="text-gray-600 dark:text-gray-400 mb-6">
-            This can't be undone.
+            {isBornConfirm
+              ? "The page goes back to waiting and the arrival time is cleared. Anyone watching sees it return. You can announce again whenever you're ready."
+              : "This can't be undone."}
           </p>
           <div className="flex gap-3">
             <button
@@ -424,7 +436,7 @@ export default function Timeline({
               disabled={busy}
               className="flex-1 py-2 rounded-lg bg-red-500 text-white font-medium hover:bg-red-600 disabled:opacity-50"
             >
-              Delete
+              {isBornConfirm ? 'Undo' : 'Delete'}
             </button>
           </div>
         </Modal>
