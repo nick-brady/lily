@@ -3,14 +3,13 @@ import { api } from '../api/client';
 import { MILESTONES } from './Timeline';
 import { toLocalInputValue } from '../utils/relativeTime';
 
-// Two tiers, not three. "Public" used to sit on top, promising "anyone with
-// the link can see" — which was never true, and shouldn't be: the page is
-// private, and everyone reading it got in with an invite. It was also the
-// default, so it collected every post anyone ever made without being chosen.
-const AUDIENCE_OPTIONS = [
-  { value: 'group_targeted', label: 'Family', hint: 'Everyone you invited' },
-  { value: 'parents_only', label: 'Parents only', hint: 'Just you and your co-parent' },
-];
+// Everything a parent posts goes to everyone they invited. The per-post
+// audience choice is gone from the UI — with no real users yet it was a
+// decision on every single post, paying for a distinction nobody had asked
+// for. The mechanic is untouched server-side (`audience_scope` on every
+// event, scopes widened by role) and the API client already defaults each
+// write to `group_targeted`, so bringing the choice back is UI-only work.
+// Old `parents_only` rows keep their scope and still carry their badge.
 
 // `onBabyBorn(occurredAtISO)` announces the birth; pass null once it's been
 // announced and the button drops out of the row. `joinedBelow` squares off the
@@ -35,7 +34,6 @@ export default function UpdateForm({
   // Whether the resting note composer has been focused — controls the grow,
   // the audience/backdate controls and the Post button.
   const [noteOpen, setNoteOpen] = useState(false);
-  const [audienceScope, setAudienceScope] = useState('group_targeted');
   // '' = happening now (server stamps the time); otherwise a local
   // datetime the parent picked because they're logging after the fact
   const [backdate, setBackdate] = useState('');
@@ -91,7 +89,6 @@ export default function UpdateForm({
     setSelectedVideoFile(null);
     setVideoPreviewUrl(null);
     setVideoCaption('');
-    setAudienceScope('group_targeted');
     if (audioUrl) URL.revokeObjectURL(audioUrl);
     setAudioBlob(null);
     setAudioUrl(null);
@@ -137,7 +134,6 @@ export default function UpdateForm({
         file: selectedFile,
         kind: 'photo',
         caption: photoCaption,
-        audienceScope,
         occurredAt: occurredAt(),
       });
       resetForm();
@@ -154,7 +150,7 @@ export default function UpdateForm({
     setLoading(true);
     setError('');
     try {
-      await api.createTextNote(birthId, noteText, { audienceScope, occurredAt: occurredAt() });
+      await api.createTextNote(birthId, noteText, { occurredAt: occurredAt() });
       resetForm();
       onSuccess?.();
     } catch (err) {
@@ -173,7 +169,6 @@ export default function UpdateForm({
         kind: selectedMilestone,
         title: MILESTONES[selectedMilestone]?.label,
         body: milestoneNote || null,
-        audienceScope,
         occurredAt: occurredAt(),
       });
       resetForm();
@@ -261,7 +256,6 @@ export default function UpdateForm({
         file,
         kind: 'voice_memo',
         caption: audioCaption,
-        audienceScope,
         occurredAt: occurredAt(),
       });
       resetForm();
@@ -282,7 +276,6 @@ export default function UpdateForm({
         file: selectedVideoFile,
         kind: 'video',
         caption: videoCaption,
-        audienceScope,
         occurredAt: occurredAt(),
       });
       resetForm();
@@ -348,12 +341,7 @@ export default function UpdateForm({
           }}
         />
 
-        {noteOpen && (
-          <>
-            <AudiencePicker value={audienceScope} onChange={setAudienceScope} />
-            <BackdateRow backdate={backdate} setBackdate={setBackdate} />
-          </>
-        )}
+        {noteOpen && <BackdateRow backdate={backdate} setBackdate={setBackdate} />}
 
         <div className="flex flex-wrap items-center gap-1 mt-3">
           <AttachButton icon="📷" label="Photo" onClick={() => setMode('photo')} />
@@ -648,8 +636,6 @@ export default function UpdateForm({
         </div>
       )}
 
-      <AudiencePicker value={audienceScope} onChange={setAudienceScope} />
-
       <BackdateRow backdate={backdate} setBackdate={setBackdate} />
 
       <div className="flex gap-3 mt-4">
@@ -680,33 +666,6 @@ export default function UpdateForm({
           {loading ? 'Posting…' : 'Post'}
         </button>
       </div>
-    </div>
-  );
-}
-
-function AudiencePicker({ value, onChange }) {
-  const active = AUDIENCE_OPTIONS.find((o) => o.value === value) || AUDIENCE_OPTIONS[0];
-  return (
-    <div className="mt-4">
-      <div className="flex bg-gray-100 dark:bg-gray-700 rounded-lg p-1">
-        {AUDIENCE_OPTIONS.map((opt) => (
-          <button
-            key={opt.value}
-            type="button"
-            onClick={() => onChange(opt.value)}
-            className={`flex-1 px-3 py-2 text-xs font-medium rounded-md transition-colors ${
-              value === opt.value
-                ? 'bg-white dark:bg-gray-600 text-gray-900 dark:text-white shadow-sm'
-                : 'text-gray-600 dark:text-gray-400'
-            }`}
-          >
-            {opt.label}
-          </button>
-        ))}
-      </div>
-      <p className="text-xs text-gray-500 dark:text-gray-400 mt-2 text-center">
-        {active.hint}
-      </p>
     </div>
   );
 }
