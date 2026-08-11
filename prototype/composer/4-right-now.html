@@ -1,0 +1,193 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Option 4 · Right now</title>
+<style>
+  :root {
+    --page:#f3f9fc; --card:#fff; --border:#def0f9; --ink:#2e4a57; --muted:#6d8a99;
+    --faint:#a3bdc9; --accent:#0284c7; --soft:#e5f4fc; --ring:#bbdff5;
+    --title:#075985; --divider:#e3f1f8; --dot:#38bdf8;
+    --milestone-bg:#e9f6fd; --milestone-border:#c8e7f8; --milestone-text:#075985;
+  }
+  * { box-sizing:border-box; }
+  body {
+    margin:0; font:16px/1.5 'Quicksand',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
+    color:var(--ink); background-color:var(--page);
+    background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='88' height='64' viewBox='0 0 88 64'%3E%3Cg stroke='%230284c7' stroke-opacity='0.14' fill='none' stroke-width='1.5' stroke-linecap='round'%3E%3Cpath d='M0 18 q11 -8 22 0 t22 0 t22 0 t22 0'/%3E%3Cpath d='M0 48 q11 -8 22 0 t22 0 t22 0 t22 0'/%3E%3C/g%3E%3C/svg%3E");
+    background-size:88px;
+  }
+  .spec { background:#0f2b3d; color:#cfe8f6; padding:12px 20px; font-size:.84rem; }
+  .spec a { color:#7dd3fc; } .spec b { color:#fff; }
+  .toggle { display:flex; gap:0; max-width:860px; margin:20px auto 0; padding:0 20px; }
+  .toggle button {
+    flex:1; padding:11px; border:1px solid var(--ring); background:#fff; color:var(--muted);
+    font:600 .9rem inherit; cursor:pointer;
+  }
+  .toggle button:first-child { border-radius:12px 0 0 12px; }
+  .toggle button:last-child { border-radius:0 12px 12px 0; border-left:0; }
+  .toggle button.on { background:var(--accent); color:#fff; border-color:var(--accent); }
+
+  .stage { display:none; }
+  .stage.on { display:block; }
+  main { max-width:860px; margin:0 auto; padding:18px 20px 70px; }
+  .card { background:var(--card); border:1px solid var(--border); border-radius:18px; }
+
+  .now { padding:12px 4px 14px; font-size:.76rem; letter-spacing:.11em;
+    text-transform:uppercase; color:var(--muted); }
+
+  /* labor state */
+  .timer { padding:30px; text-align:center; margin-bottom:14px; }
+  .clock { font:600 2.8rem/1 ui-monospace,monospace; color:var(--faint); letter-spacing:.06em; }
+  .big { width:158px; height:158px; border-radius:99px; background:var(--accent); color:#fff;
+    border:0; font:700 1rem/1.25 inherit; margin:18px auto 10px; display:block; cursor:pointer;
+    box-shadow:0 8px 22px rgba(2,132,199,.28); }
+  .hint { color:var(--muted); font-size:.86rem; }
+
+  /* the single add row — same in both states, contents differ */
+  .add { padding:14px 18px; display:flex; align-items:center; gap:11px; margin-bottom:14px; }
+  .plus { width:42px; height:42px; border-radius:99px; border:0; background:var(--soft);
+    color:var(--accent); font-size:1.4rem; cursor:pointer; flex:none; }
+  .field { flex:1; color:var(--faint); cursor:text; font-size:.98rem; }
+  .quickBtn { padding:9px 15px; border-radius:10px; border:0; background:var(--soft);
+    color:var(--accent); font:600 .87rem inherit; cursor:pointer; display:flex; align-items:center; gap:6px; }
+  .quickBtn.strong { border:1px solid var(--accent); font-weight:700; }
+
+  .story { padding:0 20px 18px; }
+  .day { font-size:.74rem; letter-spacing:.1em; text-transform:uppercase; color:var(--muted); padding:16px 0 6px; }
+  .ev { display:flex; align-items:center; gap:14px; padding:11px 0; border-top:1px solid var(--divider); }
+  .ev .t { color:var(--faint); font-size:.84rem; width:72px; flex:none; }
+  .ev .d { width:8px; height:8px; border-radius:99px; background:var(--dot); flex:none; }
+  .ev .n { font-weight:600; }
+  .ev .s { color:var(--muted); font-size:.88rem; }
+  .mile { background:var(--milestone-bg); border:1px solid var(--milestone-border);
+    color:var(--milestone-text); border-radius:12px; padding:10px 14px; font-weight:600; }
+  .note { background:#f0f7fb; border-radius:12px; padding:10px 14px; }
+  .photo { background:linear-gradient(135deg,#dbeafe,#e0f2fe); border-radius:12px;
+    padding:30px 14px; text-align:center; color:var(--muted); font-size:.86rem; }
+  .hero { padding:26px; text-align:center; margin-bottom:14px; }
+  .hero h2 { font:600 1.9rem/1.15 'Quicksand',sans-serif; color:var(--title); margin:0 0 4px; }
+  .hero p { color:var(--muted); font-size:.9rem; margin:0; }
+  .callout { background:#fffbeb; border:1px solid #fde68a; color:#92400e;
+    border-radius:12px; padding:12px 16px; font-size:.88rem; margin-top:20px; }
+  .nudge { background:#ecfdf5; border:1px solid #a7f3d0; color:#065f46;
+    border-radius:14px; padding:14px 18px; margin-bottom:14px; display:flex;
+    align-items:center; gap:12px; font-size:.92rem; }
+  .nudge button { margin-left:auto; padding:9px 16px; border-radius:99px; border:0;
+    background:#059669; color:#fff; font:700 .86rem inherit; cursor:pointer; flex:none; }
+</style>
+</head>
+<body>
+<div class="spec">
+  <b>Option 4 · Right now</b> — the page offers what this moment calls for; everything else lives behind a +.
+  <a href="index.html">← all options</a>
+</div>
+
+<div class="toggle">
+  <button class="on" id="bLabor" onclick="sw('labor')">During labor</button>
+  <button id="bBorn" onclick="sw('born')">Just after the birth</button>
+</div>
+
+<!-- ============ IN LABOR ============ -->
+<div class="stage on" id="labor">
+<main>
+  <div class="now">Right now · in labor</div>
+
+  <section class="card timer">
+    <div class="clock">00:00</div>
+    <button class="big">START<br>CONTRACTION</button>
+    <div class="hint">Tap when contraction begins</div>
+  </section>
+
+  <section class="card add">
+    <button class="plus">+</button>
+    <div class="field">Add to luke's story…</div>
+    <button class="quickBtn">📷 Photo</button>
+    <button class="quickBtn">🎙️ Voice</button>
+  </section>
+
+  <section class="card story">
+    <div class="day">Today</div>
+    <div class="ev" style="border-top:0">
+      <span class="t">08:24 PM</span>
+      <div class="mile" style="flex:1">💧 Water Broke</div>
+    </div>
+    <div class="ev">
+      <span class="t">08:19 PM</span>
+      <div class="note" style="flex:1">Heading in. Bag's in the car. 🤍</div>
+    </div>
+    <div class="ev"><span class="t">08:11 PM</span><span class="d"></span><span class="n">Contraction</span><span class="s">2m 41s</span></div>
+    <div class="ev"><span class="t">08:10 PM</span><span class="d"></span><span class="n">Contraction</span><span class="s">1m 5s</span></div>
+    <div class="ev"><span class="t">08:10 PM</span><span class="d"></span><span class="n">Contraction</span><span class="s">16s</span></div>
+  </section>
+
+  <div class="callout">
+    <b>In labor:</b> the timer is the whole point, so it keeps the stage. Adding to the story is one
+    quiet row — photo and voice sit out front because they're what actually gets used between
+    contractions; video, milestone and the rest are behind the <b>+</b>.
+    <b>"Mark baby born" is deliberately absent</b> — it's not one of five equal choices, it's the
+    next thing that's going to happen. See the other tab.
+  </div>
+</main>
+</div>
+
+<!-- ============ AFTER BIRTH ============ -->
+<div class="stage" id="born">
+<main>
+  <div class="now">Right now · they're here</div>
+
+  <div class="nudge">
+    <span style="font-size:1.4rem">👶</span>
+    <div><b>You posted a First Hold — is luke here?</b><br>
+      <span style="opacity:.85">Marking the birth settles the guessing jar and starts the keepsake.</span></div>
+    <button>Mark it</button>
+  </div>
+
+  <section class="card hero">
+    <h2>luke is here 🤍</h2>
+    <p>Born Aug 8, 2026 at 9:14 PM</p>
+  </section>
+
+  <section class="card add">
+    <button class="plus">+</button>
+    <div class="field">Share a photo of luke…</div>
+    <button class="quickBtn strong">📷 Photo</button>
+  </section>
+
+  <section class="card story">
+    <div class="day">Today</div>
+    <div class="ev" style="border-top:0">
+      <span class="t">09:31 PM</span>
+      <div class="photo" style="flex:1">📷 First photo</div>
+    </div>
+    <div class="ev">
+      <span class="t">09:14 PM</span>
+      <div class="mile" style="flex:1">👶 Baby Born!</div>
+    </div>
+    <div class="ev"><span class="t">08:11 PM</span><span class="d"></span><span class="n">Contraction</span><span class="s">2m 41s</span></div>
+  </section>
+
+  <div class="callout">
+    <b>After the birth:</b> the timer is gone — it has nothing left to time. Photo gets promoted to
+    the front because that's overwhelmingly what happens next. The green banner is the
+    <b>forget-to-tap</b> safety net: post a First Hold or a First Feed while the birth still isn't
+    marked and the app notices the contradiction and offers to fix it, rather than silently leaving
+    the artwork, the jar and the keepsake un-triggered.
+    <br><br>
+    <b>Trade-off:</b> the most logic to build, and the most ways to guess wrong about what someone
+    wants at a given moment.
+  </div>
+</main>
+</div>
+
+<script>
+  function sw(which) {
+    document.getElementById('labor').classList.toggle('on', which === 'labor');
+    document.getElementById('born').classList.toggle('on', which === 'born');
+    document.getElementById('bLabor').classList.toggle('on', which === 'labor');
+    document.getElementById('bBorn').classList.toggle('on', which === 'born');
+  }
+</script>
+</body>
+</html>

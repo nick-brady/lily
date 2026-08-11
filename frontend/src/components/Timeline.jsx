@@ -141,6 +141,43 @@ function MilestoneItem({ event, canManage, onDelete, onEdit, engagementScope }) 
   );
 }
 
+// The birth isn't one milestone among the others. Water Broke and First Feed
+// are things that happened on the way; this is the thing they were on the way
+// to, and drawing it as another chip in the same soft box said otherwise.
+//
+// It takes the display face and drops the time gutter every other row keeps,
+// so the story visibly arrives somewhere — and it carries its own actions like
+// any other post, which is the whole point: undoing the announcement is
+// deleting the announcement, right here, rather than a link parked on a
+// separate card that only reflected this one.
+function BornMilestoneItem({ event, canManage, onDelete, onEdit, engagementScope, childName }) {
+  const { body } = event.payload || {};
+  return (
+    <div className="py-4 t-row">
+      <div
+        className="rounded-2xl px-6 py-7 text-center border"
+        style={{
+          backgroundColor: 'var(--t-soft-bg)',
+          borderColor: 'var(--t-accent)',
+        }}
+      >
+        <div className="text-3xl mb-2">👶</div>
+        <p className="t-display" style={{ fontSize: '1.75rem', lineHeight: 1.2 }}>
+          {childName ? `${childName} is here` : 'Baby is here'} 🤍
+        </p>
+        {/* Time only — the day header sits directly above, and this row gave up
+            the gutter that would otherwise have carried the clock. */}
+        <p className="text-sm t-muted mt-1">Born {formatTime(event.occurred_at)}</p>
+        {body && <p className="t-ink text-sm mt-3">{body}</p>}
+      </div>
+      {canManage && (
+        <ItemActions onEdit={() => onEdit(event)} onDelete={() => onDelete(event)} audienceScope={event.audience_scope} />
+      )}
+      <EngagementFooter event={event} scope={engagementScope} />
+    </div>
+  );
+}
+
 function MediaItem({ event, canManage, onDelete, onEdit, onPhotoClick, engagementScope }) {
   // Scripted fixtures (landing demo, hero video) ride a demo_url on the
   // payload; real events always carry a media_id.
@@ -283,7 +320,9 @@ function TimelineItem(props) {
     case 'contraction':
       return <ContractionItem {...props} />;
     case 'milestone':
-      return <MilestoneItem {...props} />;
+      return event.payload?.kind === 'born'
+        ? <BornMilestoneItem {...props} />
+        : <MilestoneItem {...props} />;
     case 'photo':
     case 'video':
     case 'voice_memo':
@@ -315,6 +354,10 @@ export default function Timeline({
   canManage = false,
   birthId = null,
   slug = null,
+  joinedAbove = false,
+  // Only the Born card uses it — the announcement says the name, because the
+  // name is the news. Falls back to "Baby is here" for the landing demos.
+  childName = null,
 }) {
   const engagementScope = birthId
     ? { birthId }
@@ -382,7 +425,7 @@ export default function Timeline({
 
   if (!events || events.length === 0) {
     return (
-      <div className="card text-center py-12">
+      <div className={`card text-center py-12 ${joinedAbove ? 'rounded-t-none' : ''}`}>
         <p className="t-muted">
           No updates yet. The journey is about to begin!
         </p>
@@ -515,8 +558,13 @@ export default function Timeline({
       )}
 
       <div className="space-y-6">
-        {Object.entries(grouped).map(([date, items]) => (
-          <div key={date} className="card">
+        {Object.entries(grouped).map(([date, items], groupIndex) => (
+          // The first group squares its top edge when a composer sits directly
+          // above it, so the two share one surface instead of floating apart.
+          <div
+            key={date}
+            className={`card ${joinedAbove && groupIndex === 0 ? 'rounded-t-none' : ''}`}
+          >
             <h3 className="text-sm font-medium t-muted mb-4 uppercase tracking-wide">
               {date}
             </h3>
@@ -531,6 +579,7 @@ export default function Timeline({
                   onPhotoClick={openLightbox}
                   onToggleIgnore={toggleIgnore}
                   engagementScope={engagementScope}
+                  childName={childName}
                 />
               ))}
             </div>

@@ -3,23 +3,37 @@ import { api } from '../api/client';
 import { MILESTONES } from './Timeline';
 import { toLocalInputValue } from '../utils/relativeTime';
 
-// Two tiers, not three. "Public" used to sit on top, promising "anyone with
-// the link can see" — which was never true, and shouldn't be: the page is
-// private, and everyone reading it got in with an invite. It was also the
-// default, so it collected every post anyone ever made without being chosen.
-const AUDIENCE_OPTIONS = [
-  { value: 'group_targeted', label: 'Family', hint: 'Everyone you invited' },
-  { value: 'parents_only', label: 'Parents only', hint: 'Just you and your co-parent' },
-];
+// Everything a parent posts goes to everyone they invited. The per-post
+// audience choice is gone from the UI — with no real users yet it was a
+// decision on every single post, paying for a distinction nobody had asked
+// for. The mechanic is untouched server-side (`audience_scope` on every
+// event, scopes widened by role) and the API client already defaults each
+// write to `group_targeted`, so bringing the choice back is UI-only work.
+// Old `parents_only` rows keep their scope and still carry their badge.
 
 // `onBabyBorn(occurredAtISO)` announces the birth; pass null once it's been
-// announced and the button drops out of the row.
-export default function UpdateForm({ birthId, onSuccess, onBabyBorn = null }) {
+// announced and the button drops out of the row. `joinedBelow` squares off the
+// bottom edge so the composer and the timeline read as one surface — the
+// composer isn't a tool that happens to sit near the story, it's the top of it.
+export default function UpdateForm({
+  birthId,
+  onSuccess,
+  onBabyBorn = null,
+  childName = null,
+  joinedBelow = false,
+  // Lets the arrival nudge drive the composer straight into born mode, so
+  // "Mark it" lands on the real form with its real question rather than
+  // flipping the birth behind the parent's back on a guessed timestamp.
+  openBornMode = false,
+  onBornModeOpened = null,
+}) {
   const [mode, setMode] = useState(null); // 'photo' | 'note' | 'milestone' | 'audio' | 'video' | 'born'
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [bornTime, setBornTime] = useState('');
-  const [audienceScope, setAudienceScope] = useState('group_targeted');
+  // Whether the resting note composer has been focused — controls the grow,
+  // the audience/backdate controls and the Post button.
+  const [noteOpen, setNoteOpen] = useState(false);
   // '' = happening now (server stamps the time); otherwise a local
   // datetime the parent picked because they're logging after the fact
   const [backdate, setBackdate] = useState('');
@@ -46,6 +60,7 @@ export default function UpdateForm({ birthId, onSuccess, onBabyBorn = null }) {
 
   const fileInputRef = useRef(null);
   const videoFileInputRef = useRef(null);
+  const noteRef = useRef(null);
 
   useEffect(() => {
     return () => {
@@ -63,6 +78,7 @@ export default function UpdateForm({ birthId, onSuccess, onBabyBorn = null }) {
     setMode(null);
     setError('');
     setBornTime('');
+    setNoteOpen(false);
     setBackdate('');
     setNoteText('');
     setSelectedMilestone('');
@@ -74,7 +90,6 @@ export default function UpdateForm({ birthId, onSuccess, onBabyBorn = null }) {
     setSelectedVideoFile(null);
     setVideoPreviewUrl(null);
     setVideoCaption('');
-    setAudienceScope('group_targeted');
     if (audioUrl) URL.revokeObjectURL(audioUrl);
     setAudioBlob(null);
     setAudioUrl(null);
@@ -120,7 +135,6 @@ export default function UpdateForm({ birthId, onSuccess, onBabyBorn = null }) {
         file: selectedFile,
         kind: 'photo',
         caption: photoCaption,
-        audienceScope,
         occurredAt: occurredAt(),
       });
       resetForm();
@@ -137,7 +151,7 @@ export default function UpdateForm({ birthId, onSuccess, onBabyBorn = null }) {
     setLoading(true);
     setError('');
     try {
-      await api.createTextNote(birthId, noteText, { audienceScope, occurredAt: occurredAt() });
+      await api.createTextNote(birthId, noteText, { occurredAt: occurredAt() });
       resetForm();
       onSuccess?.();
     } catch (err) {
@@ -156,7 +170,6 @@ export default function UpdateForm({ birthId, onSuccess, onBabyBorn = null }) {
         kind: selectedMilestone,
         title: MILESTONES[selectedMilestone]?.label,
         body: milestoneNote || null,
-        audienceScope,
         occurredAt: occurredAt(),
       });
       resetForm();
@@ -244,7 +257,6 @@ export default function UpdateForm({ birthId, onSuccess, onBabyBorn = null }) {
         file,
         kind: 'voice_memo',
         caption: audioCaption,
-        audienceScope,
         occurredAt: occurredAt(),
       });
       resetForm();
@@ -265,7 +277,6 @@ export default function UpdateForm({ birthId, onSuccess, onBabyBorn = null }) {
         file: selectedVideoFile,
         kind: 'video',
         caption: videoCaption,
-        audienceScope,
         occurredAt: occurredAt(),
       });
       resetForm();
@@ -283,50 +294,140 @@ export default function UpdateForm({ birthId, onSuccess, onBabyBorn = null }) {
     return `${mins}:${secs.toString().padStart(2, '0')}`;
   };
 
+  useEffect(() => {
+    if (!openBornMode || !onBabyBorn) return;
+    setBornTime(toLocalInputValue());
+    setMode('born');
+    onBornModeOpened?.();
+  }, [openBornMode, onBabyBorn, onBornModeOpened]);
+
+  const placeholder = childName
+    ? `Share something with ${childName}'s family…`
+    : 'Share something with the family…';
+
+  // The composer shares a surface with the timeline below it, and it has to
+  // keep sharing it in every state — picking Photo or opening the birth form
+  // swaps the card's contents, not what it's joined to. Applied to all three
+  // branches so the seam never reopens mid-post.
+  const join = joinedBelow ? 'rounded-b-none border-b-0 pb-4' : '';
+
+  // The resting state: one open field, not a rack of type buttons. You start
+  // with a thought — "she's doing so well" — and reach for a medium only if
+  // you have one. Six equal-weight buttons made you name the file type before
+  // you'd had the thought, and put a decision in front of every single post.
+  //
+  // Attachments stay quiet and secondary, and all of them stay visible — the
+  // + is an entry point, not a drawer, so nothing costs an extra tap to find.
+  // Photo and Voice lead because they're what actually gets used between
+  // contractions; Video and Milestone follow.
+  // The resting state IS the note composer — a real textarea, not a button
+  // wearing an input's clothes. The previous version looked like a field but
+  // swapped the whole card into "note mode" on click, which meant the cursor
+  // never landed where you tapped and you had to click a second time to type.
+  // One element now: click it and you're writing, exactly like every composer
+  // anyone has ever used. It grows from one row to three on focus.
   if (!mode) {
     return (
-      <div className="card">
-        <div className="flex flex-wrap gap-3 justify-center">
-          <ModeButton mode="photo" color="primary" onClick={() => setMode('photo')}>
-            Photo
-          </ModeButton>
-          <ModeButton mode="video" color="violet" onClick={() => setMode('video')}>
-            Video
-          </ModeButton>
-          <ModeButton mode="note" color="blue" onClick={() => setMode('note')}>
-            Note
-          </ModeButton>
-          <ModeButton mode="milestone" color="amber" onClick={() => setMode('milestone')}>
-            Milestone
-          </ModeButton>
-          <ModeButton mode="audio" color="rose" onClick={() => setMode('audio')}>
-            Voice Memo
-          </ModeButton>
-          {/* Baby Born! is one of these — you're posting to the timeline, and
-              it IS a milestone (kind: 'born'). So it takes the same shape and
-              size as its neighbours and is marked rather than shouted: the
-              theme accent in the text and an outline, instead of a solid fill
-              that made it look like it belonged to a different control set.
-              It sits last because an announcement that can't be un-tapped
-              without undoing the whole flip shouldn't be the easiest thing to
-              hit while reaching for Photo. */}
-          {onBabyBorn && (
-            <button
-              type="button"
-              onClick={() => {
-                setBornTime(toLocalInputValue());
-                setMode('born');
-              }}
-              className="flex items-center gap-2 px-4 py-3 rounded-xl font-semibold border transition-colors"
+      <div className={`card ${join}`}>
+        {error && (
+          <div className="mb-3 p-3 bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-300 rounded-lg text-sm">
+            {error}
+          </div>
+        )}
+
+        {/* Two columns. The + owns the left one on its own — it hides nothing,
+            it's the "add something" affordance for the moment before you've
+            decided what, and tapping it puts the cursor in the field. The right
+            column holds the field and everything that acts on it, so the attach
+            row, the backdate and Post all line up under the text rather than
+            under the button. */}
+        <div className="flex items-start gap-3">
+          <button
+            type="button"
+            onClick={() => {
+              setNoteOpen(true);
+              noteRef.current?.focus();
+            }}
+            aria-label="Add to the story"
+            className="flex-none w-12 h-12 rounded-full flex items-center justify-center
+                       text-2xl leading-none transition-opacity hover:opacity-80"
+            style={{
+              backgroundColor: 'var(--t-soft-bg)',
+              color: 'var(--t-accent)',
+            }}
+          >
+            +
+          </button>
+
+          <div className="flex-1 min-w-0">
+            <textarea
+              ref={noteRef}
+              value={noteText}
+              onChange={(e) => setNoteText(e.target.value)}
+              onFocus={() => setNoteOpen(true)}
+              placeholder={placeholder}
+              rows={noteOpen ? 3 : 1}
+              className="w-full px-5 py-3 rounded-2xl border resize-none transition-all
+                         focus:outline-none focus:ring-2 focus:ring-offset-0"
               style={{
-                backgroundColor: 'var(--t-soft-bg)',
-                color: 'var(--t-accent)',
-                borderColor: 'var(--t-accent)',
+                borderColor: 'var(--t-soft-ring)',
+                backgroundColor: 'var(--t-note-bg)',
+                color: 'var(--t-ink)',
               }}
-            >
-              👶 Mark baby born!
-            </button>
-          )}
+            />
+
+            {noteOpen && <BackdateRow backdate={backdate} setBackdate={setBackdate} />}
+
+            <div className="flex flex-wrap items-center gap-1 mt-3">
+              <AttachButton icon="📷" label="Photo" onClick={() => setMode('photo')} />
+              <AttachButton icon="🎙️" label="Voice" onClick={() => setMode('audio')} />
+              <AttachButton icon="🎥" label="Video" onClick={() => setMode('video')} />
+              <AttachButton icon="⭐" label="Milestone" onClick={() => setMode('milestone')} />
+              {/* Announcing is one of these — you're posting to the timeline, and
+                  it IS a milestone (kind: 'born'). It's marked rather than
+                  shouted, and pushed to the far end: an announcement that can't be
+                  un-tapped without undoing the whole flip shouldn't sit under the
+                  thumb that's reaching for Photo. */}
+              {onBabyBorn && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setBornTime(toLocalInputValue());
+                    setMode('born');
+                  }}
+                  className="sm:ml-auto flex items-center gap-2 px-3 py-2 rounded-lg
+                             text-sm font-bold border transition-colors"
+                  style={{
+                    backgroundColor: 'var(--t-soft-bg)',
+                    color: 'var(--t-accent)',
+                    borderColor: 'var(--t-accent)',
+                  }}
+                >
+                  👶 Baby is born!
+                </button>
+              )}
+            </div>
+
+            {noteOpen && (
+              <div className="flex gap-3 mt-3">
+                <button
+                  onClick={resetForm}
+                  className="flex-1 py-3 rounded-xl border border-gray-200 dark:border-gray-700
+                             text-gray-600 dark:text-gray-400 font-medium"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={submitNote}
+                  disabled={loading || !noteText.trim()}
+                  className="flex-1 py-3 rounded-xl bg-primary-600 text-white font-medium
+                             disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {loading ? 'Posting…' : 'Post'}
+                </button>
+              </div>
+            )}
+          </div>
         </div>
       </div>
     );
@@ -337,7 +438,7 @@ export default function UpdateForm({ birthId, onSuccess, onBabyBorn = null }) {
   // composer body and footer entirely.
   if (mode === 'born') {
     return (
-      <div className="card flex flex-col items-center gap-3 py-5">
+      <div className={`card flex flex-col items-center gap-3 py-5 ${join}`}>
         {error && (
           <div className="w-full mb-1 p-3 bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-300 rounded-lg text-sm">
             {error}
@@ -385,7 +486,7 @@ export default function UpdateForm({ birthId, onSuccess, onBabyBorn = null }) {
   }
 
   return (
-    <div className="card">
+    <div className={`card ${join}`}>
       {error && (
         <div className="mb-4 p-3 bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-300 rounded-lg text-sm">
           {error}
@@ -476,17 +577,6 @@ export default function UpdateForm({ birthId, onSuccess, onBabyBorn = null }) {
                        bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100"
           />
         </div>
-      )}
-
-      {mode === 'note' && (
-        <textarea
-          value={noteText}
-          onChange={(e) => setNoteText(e.target.value)}
-          placeholder="What's happening?"
-          rows={3}
-          className="w-full px-4 py-3 rounded-xl border border-gray-200 dark:border-gray-700
-                     bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 resize-none"
-        />
       )}
 
       {mode === 'milestone' && (
@@ -583,39 +673,7 @@ export default function UpdateForm({ birthId, onSuccess, onBabyBorn = null }) {
         </div>
       )}
 
-      <AudiencePicker value={audienceScope} onChange={setAudienceScope} />
-
-      <div className="mt-3">
-        {backdate ? (
-          <div className="flex items-center gap-2">
-            <input
-              type="datetime-local"
-              value={backdate}
-              onChange={(e) => setBackdate(e.target.value)}
-              max={toLocalInputValue()}
-              className="flex-1 px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-700
-                         bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 text-sm"
-            />
-            <button
-              type="button"
-              onClick={() => setBackdate('')}
-              className="text-xs text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
-            >
-              Just now
-            </button>
-          </div>
-        ) : (
-          <button
-            type="button"
-            onClick={() => setBackdate(toLocalInputValue())}
-            className="text-xs text-gray-400 hover:text-primary-500"
-          >
-            {/* The question is context; only "Set the time" does anything, so
-                it's the part that carries the underline. */}
-            Happened earlier? <span className="underline">Set the time</span>
-          </button>
-        )}
-      </div>
+      <BackdateRow backdate={backdate} setBackdate={setBackdate} />
 
       <div className="flex gap-3 mt-4">
         <button
@@ -629,7 +687,6 @@ export default function UpdateForm({ birthId, onSuccess, onBabyBorn = null }) {
           onClick={
             mode === 'photo' ? submitPhoto
               : mode === 'video' ? submitVideo
-                : mode === 'note' ? submitNote
                   : mode === 'audio' ? submitAudio
                     : submitMilestone
           }
@@ -637,7 +694,6 @@ export default function UpdateForm({ birthId, onSuccess, onBabyBorn = null }) {
             loading
             || (mode === 'photo' && !selectedFile)
             || (mode === 'video' && !selectedVideoFile)
-            || (mode === 'note' && !noteText.trim())
             || (mode === 'milestone' && !selectedMilestone)
             || (mode === 'audio' && !audioBlob)
           }
@@ -651,47 +707,59 @@ export default function UpdateForm({ birthId, onSuccess, onBabyBorn = null }) {
   );
 }
 
-function AudiencePicker({ value, onChange }) {
-  const active = AUDIENCE_OPTIONS.find((o) => o.value === value) || AUDIENCE_OPTIONS[0];
+// Shared by the resting note composer and every attachment form, so a post
+// carries its real time no matter which one wrote it.
+function BackdateRow({ backdate, setBackdate }) {
   return (
-    <div className="mt-4">
-      <div className="flex bg-gray-100 dark:bg-gray-700 rounded-lg p-1">
-        {AUDIENCE_OPTIONS.map((opt) => (
+    <div className="mt-3">
+      {backdate ? (
+        <div className="flex items-center gap-2">
+          <input
+            type="datetime-local"
+            value={backdate}
+            onChange={(e) => setBackdate(e.target.value)}
+            max={toLocalInputValue()}
+            className="flex-1 px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-700
+                       bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 text-sm"
+          />
           <button
-            key={opt.value}
             type="button"
-            onClick={() => onChange(opt.value)}
-            className={`flex-1 px-3 py-2 text-xs font-medium rounded-md transition-colors ${
-              value === opt.value
-                ? 'bg-white dark:bg-gray-600 text-gray-900 dark:text-white shadow-sm'
-                : 'text-gray-600 dark:text-gray-400'
-            }`}
+            onClick={() => setBackdate('')}
+            className="text-xs text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
           >
-            {opt.label}
+            Just now
           </button>
-        ))}
-      </div>
-      <p className="text-xs text-gray-500 dark:text-gray-400 mt-2 text-center">
-        {active.hint}
-      </p>
+        </div>
+      ) : (
+        <button
+          type="button"
+          onClick={() => setBackdate(toLocalInputValue())}
+          className="text-xs text-gray-400 hover:text-primary-500"
+        >
+          {/* The question is context; only "Set the time" does anything, so
+              it's the part that carries the underline. */}
+          Happened earlier? <span className="underline">Set the time</span>
+        </button>
+      )}
     </div>
   );
 }
 
-function ModeButton({ children, color, onClick }) {
-  const palette = {
-    primary: 'bg-primary-50 dark:bg-primary-900/30 text-primary-700 dark:text-primary-300 hover:bg-primary-100 dark:hover:bg-primary-900/50',
-    blue: 'bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 hover:bg-blue-100 dark:hover:bg-blue-900/50',
-    amber: 'bg-amber-50 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300 hover:bg-amber-100 dark:hover:bg-amber-900/50',
-    rose: 'bg-rose-50 dark:bg-rose-900/30 text-rose-700 dark:text-rose-300 hover:bg-rose-100 dark:hover:bg-rose-900/50',
-    violet: 'bg-violet-50 dark:bg-violet-900/30 text-violet-700 dark:text-violet-300 hover:bg-violet-100 dark:hover:bg-violet-900/50',
-  };
+// Secondary by design: no fill at rest, so the row reads as a set of options
+// available to the field above rather than five competing buttons. The colour
+// only arrives on hover, once you've aimed at one.
+function AttachButton({ icon, label, onClick }) {
   return (
     <button
+      type="button"
       onClick={onClick}
-      className={`flex items-center gap-2 px-4 py-3 rounded-xl font-medium transition-colors ${palette[color]}`}
+      className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-semibold
+                 t-muted hover:t-ink transition-colors"
+      onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = 'var(--t-soft-bg)'; }}
+      onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = 'transparent'; }}
     >
-      {children}
+      <span className="text-base leading-none">{icon}</span>
+      {label}
     </button>
   );
 }
