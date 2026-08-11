@@ -60,6 +60,7 @@ export default function UpdateForm({
 
   const fileInputRef = useRef(null);
   const videoFileInputRef = useRef(null);
+  const noteRef = useRef(null);
 
   useEffect(() => {
     return () => {
@@ -304,13 +305,21 @@ export default function UpdateForm({
     ? `Share something with ${childName}'s family…`
     : 'Share something with the family…';
 
+  // The composer shares a surface with the timeline below it, and it has to
+  // keep sharing it in every state — picking Photo or opening the birth form
+  // swaps the card's contents, not what it's joined to. Applied to all three
+  // branches so the seam never reopens mid-post.
+  const join = joinedBelow ? 'rounded-b-none border-b-0 pb-4' : '';
+
   // The resting state: one open field, not a rack of type buttons. You start
   // with a thought — "she's doing so well" — and reach for a medium only if
   // you have one. Six equal-weight buttons made you name the file type before
   // you'd had the thought, and put a decision in front of every single post.
   //
-  // Attachments stay quiet and secondary. Photo and Voice lead because they're
-  // what actually gets used between contractions; Video and Milestone follow.
+  // Attachments stay quiet and secondary, and all of them stay visible — the
+  // + is an entry point, not a drawer, so nothing costs an extra tap to find.
+  // Photo and Voice lead because they're what actually gets used between
+  // contractions; Video and Milestone follow.
   // The resting state IS the note composer — a real textarea, not a button
   // wearing an input's clothes. The previous version looked like a field but
   // swapped the whole card into "note mode" on click, which meant the cursor
@@ -319,79 +328,107 @@ export default function UpdateForm({
   // anyone has ever used. It grows from one row to three on focus.
   if (!mode) {
     return (
-      <div className={`card ${joinedBelow ? 'rounded-b-none border-b-0 pb-4' : ''}`}>
+      <div className={`card ${join}`}>
         {error && (
           <div className="mb-3 p-3 bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-300 rounded-lg text-sm">
             {error}
           </div>
         )}
 
-        <textarea
-          value={noteText}
-          onChange={(e) => setNoteText(e.target.value)}
-          onFocus={() => setNoteOpen(true)}
-          placeholder={placeholder}
-          rows={noteOpen ? 3 : 1}
-          className="w-full px-5 py-3 rounded-2xl border resize-none transition-all
-                     focus:outline-none focus:ring-2 focus:ring-offset-0"
-          style={{
-            borderColor: 'var(--t-soft-ring)',
-            backgroundColor: 'var(--t-note-bg)',
-            color: 'var(--t-ink)',
-          }}
-        />
+        {/* Two columns. The + owns the left one on its own — it hides nothing,
+            it's the "add something" affordance for the moment before you've
+            decided what, and tapping it puts the cursor in the field. The right
+            column holds the field and everything that acts on it, so the attach
+            row, the backdate and Post all line up under the text rather than
+            under the button. */}
+        <div className="flex items-start gap-3">
+          <button
+            type="button"
+            onClick={() => {
+              setNoteOpen(true);
+              noteRef.current?.focus();
+            }}
+            aria-label="Add to the story"
+            className="flex-none w-12 h-12 rounded-full flex items-center justify-center
+                       text-2xl leading-none transition-opacity hover:opacity-80"
+            style={{
+              backgroundColor: 'var(--t-soft-bg)',
+              color: 'var(--t-accent)',
+            }}
+          >
+            +
+          </button>
 
-        {noteOpen && <BackdateRow backdate={backdate} setBackdate={setBackdate} />}
-
-        <div className="flex flex-wrap items-center gap-1 mt-3">
-          <AttachButton icon="📷" label="Photo" onClick={() => setMode('photo')} />
-          <AttachButton icon="🎙️" label="Voice" onClick={() => setMode('audio')} />
-          <AttachButton icon="🎥" label="Video" onClick={() => setMode('video')} />
-          <AttachButton icon="⭐" label="Milestone" onClick={() => setMode('milestone')} />
-          {/* Announcing is one of these — you're posting to the timeline, and
-              it IS a milestone (kind: 'born'). It's marked rather than
-              shouted, and pushed to the far end: an announcement that can't be
-              un-tapped without undoing the whole flip shouldn't sit under the
-              thumb that's reaching for Photo. */}
-          {onBabyBorn && (
-            <button
-              type="button"
-              onClick={() => {
-                setBornTime(toLocalInputValue());
-                setMode('born');
-              }}
-              className="sm:ml-auto flex items-center gap-2 px-3 py-2 rounded-lg
-                         text-sm font-bold border transition-colors"
+          <div className="flex-1 min-w-0">
+            <textarea
+              ref={noteRef}
+              value={noteText}
+              onChange={(e) => setNoteText(e.target.value)}
+              onFocus={() => setNoteOpen(true)}
+              placeholder={placeholder}
+              rows={noteOpen ? 3 : 1}
+              className="w-full px-5 py-3 rounded-2xl border resize-none transition-all
+                         focus:outline-none focus:ring-2 focus:ring-offset-0"
               style={{
-                backgroundColor: 'var(--t-soft-bg)',
-                color: 'var(--t-accent)',
-                borderColor: 'var(--t-accent)',
+                borderColor: 'var(--t-soft-ring)',
+                backgroundColor: 'var(--t-note-bg)',
+                color: 'var(--t-ink)',
               }}
-            >
-              👶 Mark baby born
-            </button>
-          )}
-        </div>
+            />
 
-        {noteOpen && (
-          <div className="flex gap-3 mt-3">
-            <button
-              onClick={resetForm}
-              className="flex-1 py-3 rounded-xl border border-gray-200 dark:border-gray-700
-                         text-gray-600 dark:text-gray-400 font-medium"
-            >
-              Cancel
-            </button>
-            <button
-              onClick={submitNote}
-              disabled={loading || !noteText.trim()}
-              className="flex-1 py-3 rounded-xl bg-primary-600 text-white font-medium
-                         disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              {loading ? 'Posting…' : 'Post'}
-            </button>
+            {noteOpen && <BackdateRow backdate={backdate} setBackdate={setBackdate} />}
+
+            <div className="flex flex-wrap items-center gap-1 mt-3">
+              <AttachButton icon="📷" label="Photo" onClick={() => setMode('photo')} />
+              <AttachButton icon="🎙️" label="Voice" onClick={() => setMode('audio')} />
+              <AttachButton icon="🎥" label="Video" onClick={() => setMode('video')} />
+              <AttachButton icon="⭐" label="Milestone" onClick={() => setMode('milestone')} />
+              {/* Announcing is one of these — you're posting to the timeline, and
+                  it IS a milestone (kind: 'born'). It's marked rather than
+                  shouted, and pushed to the far end: an announcement that can't be
+                  un-tapped without undoing the whole flip shouldn't sit under the
+                  thumb that's reaching for Photo. */}
+              {onBabyBorn && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setBornTime(toLocalInputValue());
+                    setMode('born');
+                  }}
+                  className="sm:ml-auto flex items-center gap-2 px-3 py-2 rounded-lg
+                             text-sm font-bold border transition-colors"
+                  style={{
+                    backgroundColor: 'var(--t-soft-bg)',
+                    color: 'var(--t-accent)',
+                    borderColor: 'var(--t-accent)',
+                  }}
+                >
+                  👶 Baby is born!
+                </button>
+              )}
+            </div>
+
+            {noteOpen && (
+              <div className="flex gap-3 mt-3">
+                <button
+                  onClick={resetForm}
+                  className="flex-1 py-3 rounded-xl border border-gray-200 dark:border-gray-700
+                             text-gray-600 dark:text-gray-400 font-medium"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={submitNote}
+                  disabled={loading || !noteText.trim()}
+                  className="flex-1 py-3 rounded-xl bg-primary-600 text-white font-medium
+                             disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {loading ? 'Posting…' : 'Post'}
+                </button>
+              </div>
+            )}
           </div>
-        )}
+        </div>
       </div>
     );
   }
@@ -401,7 +438,7 @@ export default function UpdateForm({
   // composer body and footer entirely.
   if (mode === 'born') {
     return (
-      <div className="card flex flex-col items-center gap-3 py-5">
+      <div className={`card flex flex-col items-center gap-3 py-5 ${join}`}>
         {error && (
           <div className="w-full mb-1 p-3 bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-300 rounded-lg text-sm">
             {error}
@@ -449,7 +486,7 @@ export default function UpdateForm({
   }
 
   return (
-    <div className="card">
+    <div className={`card ${join}`}>
       {error && (
         <div className="mb-4 p-3 bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-300 rounded-lg text-sm">
           {error}
