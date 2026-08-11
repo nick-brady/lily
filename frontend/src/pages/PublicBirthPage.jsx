@@ -49,9 +49,6 @@ export default function PublicBirthPage() {
   const [activeTab, setActiveTab] = useState('timeline');
   // Set by the arrival nudge to pop the composer straight into born mode.
   const [markBornFromNudge, setMarkBornFromNudge] = useState(false);
-  // Set to the Born milestone's id to hand the timeline's delete confirm the
-  // announcement, from the "is here" card rather than from the milestone.
-  const [undoBornId, setUndoBornId] = useState(null);
 
   const theme = getTheme(birth?.theme);
   const { darkMode, setDarkMode, effectiveDark } = useDarkMode(theme.alwaysDark);
@@ -193,15 +190,6 @@ export default function PublicBirthPage() {
 
   const activeContraction = useMemo(
     () => sortedEvents.find((e) => e.event_type === 'contraction' && !e.payload?.end_time),
-    [sortedEvents],
-  );
-
-  // The Born milestone *is* the announcement, so undoing means deleting it —
-  // and the undo can only be offered where the event itself is in hand.
-  const bornEvent = useMemo(
-    () => sortedEvents.find(
-      (e) => e.event_type === 'milestone' && e.payload?.kind === 'born',
-    ) || null,
     [sortedEvents],
   );
 
@@ -442,43 +430,12 @@ export default function PublicBirthPage() {
           </section>
         ) : null}
 
-        {/* Announcing lives in the composer alongside the other things you
-            post — it IS a timeline milestone — so there's no separate card for
-            it here. Once it's happened, this states the fact instead. */}
-        {!loading && canManageThisBirth && birth.status === 'born' && (
-          <section className="card text-center py-5">
-            <p className="t-display" style={{ fontSize: '1.5rem' }}>
-              {birth.child_name || 'Baby'} is here 🤍
-            </p>
-            {birth.birth_completed_at && (
-              <p className="text-sm t-muted mt-1">
-                Born {new Date(birth.birth_completed_at).toLocaleString([], {
-                  dateStyle: 'medium',
-                  timeStyle: 'short',
-                })}
-              </p>
-            )}
-            {/* Named, not an ×. A × at a card's corner means "dismiss this
-                card" everywhere else, and this one rolls the birth back for
-                everyone watching — the affordance has to say which it is
-                without leaning on the dialog to correct it. */}
-            {bornEvent && (
-              <button
-                type="button"
-                onClick={() => {
-                  // The confirm belongs to the timeline, which isn't mounted
-                  // on the stats tab — ask for the tab first or the tap lands
-                  // nowhere and the dialog ambushes the next tab switch.
-                  setActiveTab('timeline');
-                  setUndoBornId(bornEvent.id);
-                }}
-                className="mt-3 text-xs t-muted hover:opacity-80 underline"
-              >
-                Undo the announcement
-              </button>
-            )}
-          </section>
-        )}
+        {/* No card here for the birth. Announcing lives in the composer
+            because it IS a timeline milestone, and the arrival reads as one
+            too — the Born card in the story is the celebration. A banner up
+            here only ever reflected `status`, so it had no controls of its
+            own, and the undo it needed had to be a link parked on the happiest
+            thing on the page. The milestone carries its own actions. */}
 
         {/* ---- Shared page content (the pool lives in the header pill
             and on the parent stats tab — never on the timeline) ---- */}
@@ -514,13 +471,12 @@ export default function PublicBirthPage() {
                 canManage
                 birthId={birth.id}
                 joinedAbove
-                confirmDeleteEventId={undoBornId}
-                onConfirmDeleteOpened={() => setUndoBornId(null)}
+                childName={birth.child_name}
               />
             </div>
           </>
         ) : (
-          <Timeline events={sortedEvents} slug={slug} />
+          <Timeline events={sortedEvents} slug={slug} childName={birth.child_name} />
         )}
 
         {/* Keepsake gifts are made FROM the story — they exist only once

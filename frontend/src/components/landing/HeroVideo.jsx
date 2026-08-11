@@ -112,7 +112,10 @@ function HeroAppScreen({ state }) {
             transition: state.scrollTour ? 'transform 3.2s ease-in-out' : 'none',
           }}
         >
-          <Timeline events={state.events} slug="lily-demo" />
+          {/* The cue script ends on the Born milestone, and that card says the
+              name — without this it reads "Baby is here" in the one shot the
+              whole video builds to. */}
+          <Timeline events={state.events} slug="lily-demo" childName="Lily Wren" />
         </div>
       </div>
     </div>

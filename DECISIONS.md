@@ -270,29 +270,46 @@ the stranding by making the accidental-tap case permanent, which is worse.
 **Where:** `delete_event` in `backend/routes/timeline.py`; `unmark_born` in
 `backend/repositories/births.py`.
 
-### The undo is offered from the "is here" card, and it's named — not an ×
+### ~~The undo is offered from the "is here" card, and it's named — not an ×~~
+*~~2026-08-10~~ — superseded the same day by "The Born milestone is the
+celebration" below. The × reasoning survives the reversal; the card it was
+attached to doesn't.*
+
+~~The parent-facing arrival card carries an **Undo the announcement** text
+button, handing the Born milestone to the timeline's existing delete confirm.~~
+
+### The Born milestone is the celebration; the parent's arrival banner is gone
 *2026-08-10*
 
-The parent-facing arrival card carries an **Undo the announcement** text
-button. It doesn't confirm anything itself: it hands the Born milestone to the
-timeline's existing delete confirm, which is the one place that explains what
-undoing costs.
+For a parent the page used to state the birth twice: a banner derived from
+`birth.status`, and a Born milestone drawn as the same chip as Water Broke.
+Now there's one — the Born card in the story, at display size, with the name.
 
-> "feel like there should be a way to remove this.. like.. a little 'x' at the
-> top right? to undo it?"
+> "it's distracting to have that undo the announcement on what is an exciting
+> thing. but.. it's also confusing that to remove that you have to delete the
+> baby born milestone. maybe that Lily Wren is here... we should just make the
+> milestone in place be a little nicer"
 
-**Why the card:** the undo already existed on the Born milestone, but that's a
-scroll away, and the arrival card is where a parent is looking the moment they
-realise they tapped wrong.
+**Why:** the banner reflected `status`, so it had no event behind it and no
+controls of its own — which is exactly why removing it meant deleting
+something else, and why offering an undo meant parking a delete link on the
+happiest card on the page. The milestone already carries its own edit and
+delete. Undoing the announcement is now just deleting the announcement, in
+the place you're already looking at it.
 
-**Rejected alternative:** the ×. At a card's top-right, × means *dismiss this
-card* in every other app — but this one rolls the birth back for everyone
-watching. An affordance shouldn't rely on the dialog to correct its own signal.
-The same reasoning retired the composer's rotate-to-× the day before.
+**Follows:** "Announcing the birth belongs in the composer, not a card of its
+own" — the banner was the last of the card-of-its-own idea.
 
-**Where:** the `is here` section in `frontend/src/pages/PublicBirthPage.jsx`;
-`confirmDeleteEventId` on `Timeline`. The button also switches to the timeline
-tab first — the confirm lives inside `Timeline`, which isn't mounted on stats.
+**Rejected alternative:** the × on the banner. At a card's corner × means
+*dismiss this card*, but this one rolls the birth back for everyone watching;
+an affordance shouldn't lean on the dialog to correct its own signal. The same
+reasoning retired the composer's rotate-to-×.
+
+**Kept:** viewers still get their own full arrival hero — someone arriving cold
+needs the headline. Parents were there.
+
+**Where:** `BornMilestoneItem` in `frontend/src/components/Timeline.jsx`; the
+removed section in `frontend/src/pages/PublicBirthPage.jsx`.
 
 ### Undoing lands where the evidence says
 *2026-08-08*

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { api } from '../api/client';
 import { formatDuration } from '../utils/statistics';
 import { toLocalInputValue } from '../utils/relativeTime';
@@ -137,6 +137,43 @@ function MilestoneItem({ event, canManage, onDelete, onEdit, engagementScope }) 
         )}
         <EngagementFooter event={event} scope={engagementScope} />
       </div>
+    </div>
+  );
+}
+
+// The birth isn't one milestone among the others. Water Broke and First Feed
+// are things that happened on the way; this is the thing they were on the way
+// to, and drawing it as another chip in the same soft box said otherwise.
+//
+// It takes the display face and drops the time gutter every other row keeps,
+// so the story visibly arrives somewhere — and it carries its own actions like
+// any other post, which is the whole point: undoing the announcement is
+// deleting the announcement, right here, rather than a link parked on a
+// separate card that only reflected this one.
+function BornMilestoneItem({ event, canManage, onDelete, onEdit, engagementScope, childName }) {
+  const { body } = event.payload || {};
+  return (
+    <div className="py-4 t-row">
+      <div
+        className="rounded-2xl px-6 py-7 text-center border"
+        style={{
+          backgroundColor: 'var(--t-soft-bg)',
+          borderColor: 'var(--t-accent)',
+        }}
+      >
+        <div className="text-3xl mb-2">👶</div>
+        <p className="t-display" style={{ fontSize: '1.75rem', lineHeight: 1.2 }}>
+          {childName ? `${childName} is here` : 'Baby is here'} 🤍
+        </p>
+        {/* Time only — the day header sits directly above, and this row gave up
+            the gutter that would otherwise have carried the clock. */}
+        <p className="text-sm t-muted mt-1">Born {formatTime(event.occurred_at)}</p>
+        {body && <p className="t-ink text-sm mt-3">{body}</p>}
+      </div>
+      {canManage && (
+        <ItemActions onEdit={() => onEdit(event)} onDelete={() => onDelete(event)} audienceScope={event.audience_scope} />
+      )}
+      <EngagementFooter event={event} scope={engagementScope} />
     </div>
   );
 }
@@ -283,7 +320,9 @@ function TimelineItem(props) {
     case 'contraction':
       return <ContractionItem {...props} />;
     case 'milestone':
-      return <MilestoneItem {...props} />;
+      return event.payload?.kind === 'born'
+        ? <BornMilestoneItem {...props} />
+        : <MilestoneItem {...props} />;
     case 'photo':
     case 'video':
     case 'voice_memo':
@@ -316,12 +355,9 @@ export default function Timeline({
   birthId = null,
   slug = null,
   joinedAbove = false,
-  // The "is here" card offers the same undo the Born milestone does, from
-  // where the parent is actually looking. It asks the timeline to open its own
-  // confirm rather than carrying a copy: that dialog is the one place that
-  // explains what undoing costs, and two of them would drift.
-  confirmDeleteEventId = null,
-  onConfirmDeleteOpened = null,
+  // Only the Born card uses it — the announcement says the name, because the
+  // name is the news. Falls back to "Baby is here" for the landing demos.
+  childName = null,
 }) {
   const engagementScope = birthId
     ? { birthId }
@@ -338,13 +374,6 @@ export default function Timeline({
 
   const openLightbox = (url, caption) => setLightbox({ open: true, url, caption: caption || '' });
   const closeLightbox = () => setLightbox({ open: false, url: '', caption: '' });
-
-  useEffect(() => {
-    if (!confirmDeleteEventId) return;
-    const target = events.find((e) => e.id === confirmDeleteEventId);
-    if (target) setDeleteConfirm(target);
-    onConfirmDeleteOpened?.();
-  }, [confirmDeleteEventId, events, onConfirmDeleteOpened]);
 
   const askDelete = (event) => setDeleteConfirm(event);
   const askEdit = (event) => {
@@ -550,6 +579,7 @@ export default function Timeline({
                   onPhotoClick={openLightbox}
                   onToggleIgnore={toggleIgnore}
                   engagementScope={engagementScope}
+                  childName={childName}
                 />
               ))}
             </div>
