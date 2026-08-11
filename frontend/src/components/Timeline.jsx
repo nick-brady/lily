@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { api } from '../api/client';
 import { formatDuration } from '../utils/statistics';
 import { toLocalInputValue } from '../utils/relativeTime';
@@ -316,6 +316,12 @@ export default function Timeline({
   birthId = null,
   slug = null,
   joinedAbove = false,
+  // The "is here" card offers the same undo the Born milestone does, from
+  // where the parent is actually looking. It asks the timeline to open its own
+  // confirm rather than carrying a copy: that dialog is the one place that
+  // explains what undoing costs, and two of them would drift.
+  confirmDeleteEventId = null,
+  onConfirmDeleteOpened = null,
 }) {
   const engagementScope = birthId
     ? { birthId }
@@ -332,6 +338,13 @@ export default function Timeline({
 
   const openLightbox = (url, caption) => setLightbox({ open: true, url, caption: caption || '' });
   const closeLightbox = () => setLightbox({ open: false, url: '', caption: '' });
+
+  useEffect(() => {
+    if (!confirmDeleteEventId) return;
+    const target = events.find((e) => e.id === confirmDeleteEventId);
+    if (target) setDeleteConfirm(target);
+    onConfirmDeleteOpened?.();
+  }, [confirmDeleteEventId, events, onConfirmDeleteOpened]);
 
   const askDelete = (event) => setDeleteConfirm(event);
   const askEdit = (event) => {

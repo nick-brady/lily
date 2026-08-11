@@ -49,6 +49,9 @@ export default function PublicBirthPage() {
   const [activeTab, setActiveTab] = useState('timeline');
   // Set by the arrival nudge to pop the composer straight into born mode.
   const [markBornFromNudge, setMarkBornFromNudge] = useState(false);
+  // Set to the Born milestone's id to hand the timeline's delete confirm the
+  // announcement, from the "is here" card rather than from the milestone.
+  const [undoBornId, setUndoBornId] = useState(null);
 
   const theme = getTheme(birth?.theme);
   const { darkMode, setDarkMode, effectiveDark } = useDarkMode(theme.alwaysDark);
@@ -190,6 +193,15 @@ export default function PublicBirthPage() {
 
   const activeContraction = useMemo(
     () => sortedEvents.find((e) => e.event_type === 'contraction' && !e.payload?.end_time),
+    [sortedEvents],
+  );
+
+  // The Born milestone *is* the announcement, so undoing means deleting it —
+  // and the undo can only be offered where the event itself is in hand.
+  const bornEvent = useMemo(
+    () => sortedEvents.find(
+      (e) => e.event_type === 'milestone' && e.payload?.kind === 'born',
+    ) || null,
     [sortedEvents],
   );
 
@@ -446,6 +458,25 @@ export default function PublicBirthPage() {
                 })}
               </p>
             )}
+            {/* Named, not an ×. A × at a card's corner means "dismiss this
+                card" everywhere else, and this one rolls the birth back for
+                everyone watching — the affordance has to say which it is
+                without leaning on the dialog to correct it. */}
+            {bornEvent && (
+              <button
+                type="button"
+                onClick={() => {
+                  // The confirm belongs to the timeline, which isn't mounted
+                  // on the stats tab — ask for the tab first or the tap lands
+                  // nowhere and the dialog ambushes the next tab switch.
+                  setActiveTab('timeline');
+                  setUndoBornId(bornEvent.id);
+                }}
+                className="mt-3 text-xs t-muted hover:opacity-80 underline"
+              >
+                Undo the announcement
+              </button>
+            )}
           </section>
         )}
 
@@ -478,7 +509,14 @@ export default function PublicBirthPage() {
                 onBornModeOpened={() => setMarkBornFromNudge(false)}
                 joinedBelow
               />
-              <Timeline events={sortedEvents} canManage birthId={birth.id} joinedAbove />
+              <Timeline
+                events={sortedEvents}
+                canManage
+                birthId={birth.id}
+                joinedAbove
+                confirmDeleteEventId={undoBornId}
+                onConfirmDeleteOpened={() => setUndoBornId(null)}
+              />
             </div>
           </>
         ) : (

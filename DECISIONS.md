@@ -270,6 +270,30 @@ the stranding by making the accidental-tap case permanent, which is worse.
 **Where:** `delete_event` in `backend/routes/timeline.py`; `unmark_born` in
 `backend/repositories/births.py`.
 
+### The undo is offered from the "is here" card, and it's named — not an ×
+*2026-08-10*
+
+The parent-facing arrival card carries an **Undo the announcement** text
+button. It doesn't confirm anything itself: it hands the Born milestone to the
+timeline's existing delete confirm, which is the one place that explains what
+undoing costs.
+
+> "feel like there should be a way to remove this.. like.. a little 'x' at the
+> top right? to undo it?"
+
+**Why the card:** the undo already existed on the Born milestone, but that's a
+scroll away, and the arrival card is where a parent is looking the moment they
+realise they tapped wrong.
+
+**Rejected alternative:** the ×. At a card's top-right, × means *dismiss this
+card* in every other app — but this one rolls the birth back for everyone
+watching. An affordance shouldn't rely on the dialog to correct its own signal.
+The same reasoning retired the composer's rotate-to-× the day before.
+
+**Where:** the `is here` section in `frontend/src/pages/PublicBirthPage.jsx`;
+`confirmDeleteEventId` on `Timeline`. The button also switches to the timeline
+tab first — the confirm lives inside `Timeline`, which isn't mounted on stats.
+
 ### Undoing lands where the evidence says
 *2026-08-08*
 
