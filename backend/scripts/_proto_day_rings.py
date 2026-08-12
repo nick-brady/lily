@@ -259,12 +259,13 @@ def svg_for(times, durs, born, name, headline, milestones=()):
             f'<path d="{glyph(mx, my, 16)}" fill="{p.accent}" opacity="0.85"/>'
         )
 
-    # the birth — on the grey line with everything else, not floating outside
+    # the birth — a heart, on the grey line with the rest. A sparkle is an
+    # ornament; this is the one mark on the mug that is a person.
     r_star = rings[-1]["base"]
     sx, sy = CX + r_star * math.cos(star_a), CY + r_star * math.sin(star_a)
     out.append(
         f'<circle cx="{sx:.1f}" cy="{sy:.1f}" r="32" fill="{p.bg}" opacity="0.9"/>'
-        f'<path d="{_sparkle_path(sx, sy, 23)}" fill="{p.accent}"/>'
+        f'<path d="{_heart_path(sx, sy, 22)}" fill="{p.accent}"/>'
     )
 
     # right face — name, date, and the AM/PM key
