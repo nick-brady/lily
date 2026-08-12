@@ -182,6 +182,29 @@ one to name a length.
 
 **Where:** `_award` and the settle path in `backend/routes/engagement.py:461`.
 
+### The boy/girl call gets no medal, and stays off the keepsake
+*2026-08-10*
+
+The gender call is scored on the page (✓/✗ once settled) and appears nowhere in
+the artwork. Both stay that way.
+
+> "it's a 50-50 so a bunch of people would have it. it's fine as is"
+
+**Why:** every medal is awarded on a *distance* — `_award` takes the smallest
+delta. A call has no delta, so a fourth medal would land on roughly half the
+jar at once, and a medal half the room is wearing isn't one. It would also push
+🏆🥈🥉 the rest of the way into reading as 1st/2nd/3rd/4th place, which the
+medal set was shaped to avoid.
+
+**Considered and not built:** stating it on the keepsake as a fact rather than
+an award — *"Eleven of twelve said boy. She's a girl."* Still the right shape
+if this is ever revisited; it just isn't worth the two SVG templates yet.
+
+**Where:** `MEDALS` in `frontend/src/components/Predictions.jsx`;
+`_build_pool_scene` in `backend/gift_artwork.py` passes only name, weight and
+length per row. The `Call` column already hides itself when the gender pool is
+off, so a birth that was never a surprise renders correctly in both places.
+
 ### The pool's voice: intuition, not betting
 *2026-08-01*
 
