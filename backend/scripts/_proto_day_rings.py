@@ -187,11 +187,9 @@ def svg_for(times, durs, born, name, headline, milestones=()):
 
     star_a = clock_angle(born)
 
-    # dial: 60 ticks, a gap left around the star
+    # dial: 60 unbroken ticks
     for i in range(60):
         a = (i / 60) * 2 * math.pi - math.pi / 2
-        if abs((a - star_a + math.pi) % (2 * math.pi) - math.pi) < 0.10:
-            continue
         hour = i % 5 == 0
         r0 = R_RING - (22 if hour else 10)
         out.append(
@@ -257,13 +255,17 @@ def svg_for(times, durs, born, name, headline, milestones=()):
         # a ground of page colour so the mark reads clear of the rays it
         # crosses — the symbol has to survive without a label to lean on
         out.append(
-            f'<circle cx="{mx:.1f}" cy="{my:.1f}" r="30" fill="{p.bg}" opacity="0.9"/>'
-            f'<path d="{glyph(mx, my, 19)}" fill="{p.accent}" opacity="0.85"/>'
+            f'<circle cx="{mx:.1f}" cy="{my:.1f}" r="26" fill="{p.bg}" opacity="0.9"/>'
+            f'<path d="{glyph(mx, my, 16)}" fill="{p.accent}" opacity="0.85"/>'
         )
 
-    # the birth
-    sx, sy = CX + (R_RING - 6) * math.cos(star_a), CY + (R_RING - 6) * math.sin(star_a)
-    out.append(f'<path d="{_sparkle_path(sx, sy, 40)}" fill="{p.accent}"/>')
+    # the birth — on the grey line with everything else, not floating outside
+    r_star = rings[-1]["base"]
+    sx, sy = CX + r_star * math.cos(star_a), CY + r_star * math.sin(star_a)
+    out.append(
+        f'<circle cx="{sx:.1f}" cy="{sy:.1f}" r="32" fill="{p.bg}" opacity="0.9"/>'
+        f'<path d="{_sparkle_path(sx, sy, 23)}" fill="{p.accent}"/>'
+    )
 
     # right face — name, date, and the AM/PM key
     out.append(
