@@ -20,7 +20,67 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 import cairosvg  # noqa: E402
 
 import gift_themes  # noqa: E402
-from gift_artwork import _sparkle_path  # noqa: E402
+from gift_artwork import (  # noqa: E402
+    _droplet_path,
+    _heart_path,
+    _house_path,
+    _sparkle_path,
+)
+
+
+# The production set has four shapes for ten milestone kinds, so half of them
+# fall through to a generic diamond. Symbols can only replace words if every
+# kind has its own, so these fill the gaps — flat, single-colour, legible at
+# the ~30px they're drawn at.
+
+def _sunrise_path(cx: float, cy: float, r: float) -> str:
+    """A half-disc over a baseline (active labor — it's begun in earnest)."""
+    return (
+        f"M {cx - r:.1f},{cy + r * 0.35:.1f} "
+        f"A {r:.1f},{r:.1f} 0 0 1 {cx + r:.1f},{cy + r * 0.35:.1f} Z "
+        f"M {cx - r * 1.25:.1f},{cy + r * 0.62:.1f} "
+        f"L {cx + r * 1.25:.1f},{cy + r * 0.62:.1f} "
+        f"L {cx + r * 1.25:.1f},{cy + r * 0.86:.1f} "
+        f"L {cx - r * 1.25:.1f},{cy + r * 0.86:.1f} Z"
+    )
+
+
+def _chevrons_path(cx: float, cy: float, r: float) -> str:
+    """Two stacked chevrons driving outward (pushing)."""
+    def one(dy: float) -> str:
+        return (
+            f"M {cx - r:.1f},{cy + dy + r * 0.34:.1f} "
+            f"L {cx:.1f},{cy + dy - r * 0.32:.1f} "
+            f"L {cx + r:.1f},{cy + dy + r * 0.34:.1f} "
+            f"L {cx + r * 0.72:.1f},{cy + dy + r * 0.6:.1f} "
+            f"L {cx:.1f},{cy + dy + r * 0.06:.1f} "
+            f"L {cx - r * 0.72:.1f},{cy + dy + r * 0.6:.1f} Z"
+        )
+    return f"{one(-r * 0.42)} {one(r * 0.42)}"
+
+
+def _wave_path(cx: float, cy: float, r: float) -> str:
+    """A single swell (transition)."""
+    return (
+        f"M {cx - r:.1f},{cy + r * 0.2:.1f} "
+        f"Q {cx - r * 0.5:.1f},{cy - r * 0.75:.1f} {cx:.1f},{cy + r * 0.1:.1f} "
+        f"Q {cx + r * 0.5:.1f},{cy + r * 0.95:.1f} {cx + r:.1f},{cy - r * 0.1:.1f} "
+        f"L {cx + r:.1f},{cy + r * 0.62:.1f} "
+        f"Q {cx + r * 0.5:.1f},{cy + r * 1.5:.1f} {cx:.1f},{cy + r * 0.62:.1f} "
+        f"Q {cx - r * 0.5:.1f},{cy - r * 0.2:.1f} {cx - r:.1f},{cy + r * 0.78:.1f} Z"
+    )
+
+
+GLYPHS = {
+    "water_broke": _droplet_path,
+    "arrived": _house_path,
+    "going_home": _house_path,
+    "first_hold": _heart_path,
+    "first_feed": _heart_path,
+    "active_labor": _sunrise_path,
+    "transition": _wave_path,
+    "pushing": _chevrons_path,
+}
 
 W, H = 2475, 1155
 CX, CY = 640.0, 577.0
@@ -188,23 +248,17 @@ def svg_for(times, durs, born, name, headline, milestones=()):
     # dial, on the ring that already means that day, rather than floating off
     # the outside where nothing anchored them. They cross a few rays; a label
     # that lands where the story is beats one parked in empty space.
-    for label, t in milestones:
+    for kind, t in milestones:
         k = ring_for(t, t0, shift, n)
         a = clock_angle(t)
         r = rings[k]["base"]
         mx, my = CX + r * math.cos(a), CY + r * math.sin(a)
-        right = math.cos(a) >= 0
-        tx = mx + (20 if right else -20)
-        anchor = "start" if right else "end"
-        width = len(label) * 13.0 + 20
-        rx = tx - 10 if right else tx - width + 10
+        glyph = GLYPHS.get(kind, _sparkle_path)
+        # a ground of page colour so the mark reads clear of the rays it
+        # crosses — the symbol has to survive without a label to lean on
         out.append(
-            f'<rect x="{rx:.1f}" y="{my - 17:.1f}" width="{width:.1f}" height="30" rx="15" '
-            f'fill="{p.bg}" opacity="0.82"/>'
-            f'<circle cx="{mx:.1f}" cy="{my:.1f}" r="7" fill="{p.accent}"/>'
-            f'<text x="{tx:.1f}" y="{my + 6:.1f}" text-anchor="{anchor}" '
-            f'font-family="{p.body_font}" font-size="20" letter-spacing="3" '
-            f'fill="{p.ink}" opacity="0.62">{label}</text>'
+            f'<circle cx="{mx:.1f}" cy="{my:.1f}" r="30" fill="{p.bg}" opacity="0.9"/>'
+            f'<path d="{glyph(mx, my, 19)}" fill="{p.accent}" opacity="0.85"/>'
         )
 
     # the birth
@@ -233,9 +287,6 @@ def svg_for(times, durs, born, name, headline, milestones=()):
         f'stroke-width="{PM_WIDTH}" stroke-linecap="round" opacity="{PM_ALPHA}"/>'
         f'<text x="1500" y="892" font-family="{p.body_font}" font-size="26" '
         f'letter-spacing="3" fill="{p.ink}" opacity="0.5">PM</text>'
-        f'<text x="1368" y="948" font-family="{p.body_font}" font-size="24" '
-        f'letter-spacing="2" fill="{p.ink}" opacity="0.38">'
-        f'each ray, one contraction &#183; longer means longer</text>'
     )
 
     out.append("</svg>")
@@ -258,11 +309,12 @@ def make_milestones(start: datetime, born: datetime):
     has something on its inner rings, then the three near the birth."""
     ms = []
     if born - start > timedelta(hours=20):
-        ms.append(("EARLY LABOR", start + timedelta(hours=2)))
+        ms.append(("active_labor", start + timedelta(hours=2)))
     ms += [
-        ("WATER BROKE", born - timedelta(hours=6)),
-        ("ARRIVED", born - timedelta(hours=2, minutes=30)),
-        ("PUSHING", born - timedelta(minutes=40)),
+        ("water_broke", born - timedelta(hours=6)),
+        ("arrived", born - timedelta(hours=4)),
+        ("transition", born - timedelta(hours=2, minutes=30)),
+        ("pushing", born - timedelta(minutes=40)),
     ]
     return ms
 
