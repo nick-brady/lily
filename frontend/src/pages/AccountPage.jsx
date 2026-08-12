@@ -252,43 +252,53 @@ function NotifyPhoneField({ user, onSaved }) {
   if (!editing) {
     return (
       <div className="mt-1">
-        <p className="text-xs text-gray-500 dark:text-gray-400">
-          {user?.notify_phone ? (
-            <>
+        {user?.notify_phone ? (
+          <>
+            <p className="text-xs text-gray-500 dark:text-gray-400">
               We'll text{' '}
               <span className="font-medium text-gray-700 dark:text-gray-200">
                 {user.notify_phone}
               </span>{' '}
-              the moment labor begins — birth updates only, ever.
+              the moment labor begins for all births you&rsquo;re following —
+              birth updates only, ever.
+            </p>
+            {/* Their own line, not trailing the sentence. Two controls chasing
+                a wrapping paragraph left "Turn off" orphaned on the next line,
+                reading as part of the copy rather than as a thing to press. */}
+            <div className="mt-2 flex items-center justify-center gap-3 text-xs">
               <button
                 type="button"
                 onClick={() => setEditing(true)}
-                className="ml-2 text-primary-600 dark:text-primary-400 hover:underline"
+                className="text-primary-600 dark:text-primary-400 hover:underline"
               >
                 Change
               </button>
+              <span className="text-gray-300 dark:text-gray-600" aria-hidden="true">
+                |
+              </span>
               <button
                 type="button"
                 onClick={remove}
                 disabled={busy}
-                className="ml-2 text-gray-400 dark:text-gray-500 hover:underline"
+                className="text-gray-400 dark:text-gray-500 hover:underline"
               >
                 Turn off
               </button>
-            </>
-          ) : (
-            <>
-              Want a text the moment labor begins? Birth updates only, ever.
-              <button
-                type="button"
-                onClick={() => setEditing(true)}
-                className="ml-2 text-primary-600 dark:text-primary-400 hover:underline"
-              >
-                Add your number
-              </button>
-            </>
-          )}
-        </p>
+            </div>
+          </>
+        ) : (
+          <p className="text-xs text-gray-500 dark:text-gray-400">
+            Want a text the moment labor begins for all births you&rsquo;re
+            following? Birth updates only, ever.
+            <button
+              type="button"
+              onClick={() => setEditing(true)}
+              className="ml-2 text-primary-600 dark:text-primary-400 hover:underline"
+            >
+              Add your number
+            </button>
+          </p>
+        )}
         {error && <p className="mt-1 text-xs text-red-500">{error}</p>}
       </div>
     );
