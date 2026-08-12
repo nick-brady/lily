@@ -104,14 +104,21 @@ def build_rings(times: list[datetime], durs: list[int]):
             ring["label"] = "EARLIER"
         else:
             ring["label"] = f"DAY {k + 1 + shift}"
-    return rings, n, total_days
+    return rings, n, total_days, t0, shift
+
+
+def ring_for(t: datetime, t0: datetime, shift: int, n: int) -> int:
+    """Which day's ring a moment belongs on — same rolling-24h rule the
+    contractions use, so a milestone lands on the day it happened."""
+    d = int((t - t0).total_seconds()) // 86400
+    return max(0, min(n - 1, d - shift))
 
 
 # ── svg ──────────────────────────────────────────────────────────────────
 
-def svg_for(times, durs, born, name, headline):
+def svg_for(times, durs, born, name, headline, milestones=()):
     p = gift_themes.for_theme("lily")
-    rings, n, total_days = build_rings(times, durs)
+    rings, n, total_days, t0, shift = build_rings(times, durs)
     out = [
         f'<svg xmlns="http://www.w3.org/2000/svg" width="{W}" height="{H}" '
         f'viewBox="0 0 {W} {H}">',
@@ -144,13 +151,14 @@ def svg_for(times, durs, born, name, headline):
         )
 
     # the ground each day's rays stand on — the concentric circles that make
-    # the bands read as separate days instead of one fuzzy burst
-    if n > 1:
-        for ring in rings:
-            out.append(
-                f'<circle cx="{CX}" cy="{CY}" r="{ring["base"]:.1f}" fill="none" '
-                f'stroke="{p.ink}" stroke-width="1.4" opacity="0.13"/>'
-            )
+    # the bands read as separate days instead of one fuzzy burst, and the line
+    # the milestones hang on. Drawn even for a single day, so the one-ring mug
+    # has somewhere to put them too.
+    for ring in rings:
+        out.append(
+            f'<circle cx="{CX}" cy="{CY}" r="{ring["base"]:.1f}" fill="none" '
+            f'stroke="{p.ink}" stroke-width="1.4" opacity="0.13"/>'
+        )
 
     # the rays, AM light+fine / PM deep+heavy, translucent so overlaps stack
     for ring in rings:
@@ -175,6 +183,29 @@ def svg_for(times, durs, born, name, headline):
                 f'font-family="{p.body_font}" font-size="21" letter-spacing="3" '
                 f'fill="{p.ink}" opacity="0.55">{ring["label"]}</text>'
             )
+
+    # milestones ride the grey line of the day they happened on — inside the
+    # dial, on the ring that already means that day, rather than floating off
+    # the outside where nothing anchored them. They cross a few rays; a label
+    # that lands where the story is beats one parked in empty space.
+    for label, t in milestones:
+        k = ring_for(t, t0, shift, n)
+        a = clock_angle(t)
+        r = rings[k]["base"]
+        mx, my = CX + r * math.cos(a), CY + r * math.sin(a)
+        right = math.cos(a) >= 0
+        tx = mx + (20 if right else -20)
+        anchor = "start" if right else "end"
+        width = len(label) * 13.0 + 20
+        rx = tx - 10 if right else tx - width + 10
+        out.append(
+            f'<rect x="{rx:.1f}" y="{my - 17:.1f}" width="{width:.1f}" height="30" rx="15" '
+            f'fill="{p.bg}" opacity="0.82"/>'
+            f'<circle cx="{mx:.1f}" cy="{my:.1f}" r="7" fill="{p.accent}"/>'
+            f'<text x="{tx:.1f}" y="{my + 6:.1f}" text-anchor="{anchor}" '
+            f'font-family="{p.body_font}" font-size="20" letter-spacing="3" '
+            f'fill="{p.ink}" opacity="0.62">{label}</text>'
+        )
 
     # the birth
     sx, sy = CX + (R_RING - 6) * math.cos(star_a), CY + (R_RING - 6) * math.sin(star_a)
@@ -222,6 +253,20 @@ SCENES = [
 ]
 
 
+def make_milestones(start: datetime, born: datetime):
+    """A plausible set — one early marker on long labors so a multi-day mug
+    has something on its inner rings, then the three near the birth."""
+    ms = []
+    if born - start > timedelta(hours=20):
+        ms.append(("EARLY LABOR", start + timedelta(hours=2)))
+    ms += [
+        ("WATER BROKE", born - timedelta(hours=6)),
+        ("ARRIVED", born - timedelta(hours=2, minutes=30)),
+        ("PUSHING", born - timedelta(minutes=40)),
+    ]
+    return ms
+
+
 def main() -> None:
     OUT.mkdir(parents=True, exist_ok=True)
     for key, start, born, n, pauses in SCENES:
@@ -229,7 +274,9 @@ def main() -> None:
         hours = (born - start).total_seconds() / 3600
         span = f"{int(hours // 24)}D {int(hours % 24)}H" if hours >= 24 else f"{int(hours)}H {int(hours % 1 * 60)}M"
         headline = f"{len(times)} CONTRACTIONS · {span}"
-        svg, rings, days = svg_for(times, durs, born, "Lily", headline)
+        svg, rings, days = svg_for(
+            times, durs, born, "Lily", headline, milestones=make_milestones(start, born)
+        )
         path = OUT / f"{key}.png"
         path.write_bytes(cairosvg.svg2png(bytestring=svg.encode(), output_width=W, output_height=H))
         print(f"{key}: {len(times)} contractions, {days} day(s) -> {rings} ring(s)")
