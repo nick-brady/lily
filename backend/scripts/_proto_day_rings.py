@@ -319,8 +319,8 @@ def svg_for(times, durs, born, name, headline, milestones=()):
         # a ground of page colour so the mark reads clear of the rays it
         # crosses — the symbol has to survive without a label to lean on
         out.append(
-            f'<circle cx="{mx:.1f}" cy="{my:.1f}" r="26" fill="{p.bg}" opacity="0.9"/>'
-            f'<path d="{glyph(mx, my, 16)}" fill="{p.accent}" opacity="0.85"/>'
+            f'<circle cx="{mx:.1f}" cy="{my:.1f}" r="21" fill="{p.bg}" opacity="0.9"/>'
+            f'<path d="{glyph(mx, my, 13)}" fill="{p.accent}" opacity="0.85"/>'
         )
 
     # the birth — a heart, on the grey line with the rest. A sparkle is an
@@ -328,8 +328,8 @@ def svg_for(times, durs, born, name, headline, milestones=()):
     r_star = rings[-1]["base"]
     sx, sy = CX + r_star * math.cos(star_a), CY + r_star * math.sin(star_a)
     out.append(
-        f'<circle cx="{sx:.1f}" cy="{sy:.1f}" r="32" fill="{p.bg}" opacity="0.9"/>'
-        f'<path d="{_heart_path(sx, sy, 22)}" fill="{p.accent}"/>'
+        f'<circle cx="{sx:.1f}" cy="{sy:.1f}" r="26" fill="{p.bg}" opacity="0.9"/>'
+        f'<path d="{_heart_path(sx, sy, 18)}" fill="{p.accent}"/>'
     )
 
     # right face — name, date, and the AM/PM key
