@@ -60,23 +60,87 @@ def _chevrons_path(cx: float, cy: float, r: float) -> str:
 
 
 def _wave_path(cx: float, cy: float, r: float) -> str:
-    """A single swell (transition)."""
+    """Two stacked swells (transition). One on its own read as a tilde; the
+    pair reads as water, the way ≈ does."""
+    def swell(dy: float) -> str:
+        return (
+            f"M {cx - r:.1f},{cy + dy:.1f} "
+            f"Q {cx - r * 0.5:.1f},{cy + dy - r * 0.62:.1f} {cx:.1f},{cy + dy:.1f} "
+            f"Q {cx + r * 0.5:.1f},{cy + dy + r * 0.62:.1f} {cx + r:.1f},{cy + dy:.1f} "
+            f"L {cx + r:.1f},{cy + dy + r * 0.30:.1f} "
+            f"Q {cx + r * 0.5:.1f},{cy + dy + r * 0.92:.1f} {cx:.1f},{cy + dy + r * 0.30:.1f} "
+            f"Q {cx - r * 0.5:.1f},{cy + dy - r * 0.32:.1f} {cx - r:.1f},{cy + dy + r * 0.30:.1f} Z"
+        )
+    return f"{swell(-r * 0.44)} {swell(r * 0.42)}"
+
+
+def _car_path(cx: float, cy: float, r: float) -> str:
+    """A little car, side on (going home). The house is spoken for by
+    `arrived`, and the two shouldn't be the same mark — one is turning up,
+    the other is leaving with her."""
+    body = (
+        f"M {cx - r:.1f},{cy + r * 0.10:.1f} "
+        f"L {cx - r * 0.62:.1f},{cy + r * 0.10:.1f} "
+        f"L {cx - r * 0.34:.1f},{cy - r * 0.46:.1f} "
+        f"L {cx + r * 0.30:.1f},{cy - r * 0.46:.1f} "
+        f"L {cx + r * 0.62:.1f},{cy + r * 0.10:.1f} "
+        f"L {cx + r:.1f},{cy + r * 0.10:.1f} "
+        f"L {cx + r:.1f},{cy + r * 0.42:.1f} "
+        f"L {cx - r:.1f},{cy + r * 0.42:.1f} Z"
+    )
+    def wheel(dx: float) -> str:
+        w = r * 0.26
+        return (
+            f"M {cx + dx - w:.1f},{cy + r * 0.46:.1f} "
+            f"a {w:.1f},{w:.1f} 0 1 0 {w * 2:.1f},0 "
+            f"a {w:.1f},{w:.1f} 0 1 0 {-w * 2:.1f},0 Z"
+        )
+    return f"{body} {wheel(-r * 0.52)} {wheel(r * 0.52)}"
+
+
+def _hands_path(cx: float, cy: float, r: float) -> str:
+    """Two cupped palms, opening outward (first hold). Drawn as two separate
+    crescents with a gap down the middle — joined into one bowl they read as
+    an anchor, which is what the first attempt did."""
+    def palm(sign: float) -> str:
+        s = sign
+        return (
+            f"M {cx + s * r:.1f},{cy - r * 0.44:.1f} "
+            f"Q {cx + s * r * 1.06:.1f},{cy + r * 0.52:.1f} "
+            f"{cx + s * r * 0.16:.1f},{cy + r * 0.78:.1f} "
+            f"L {cx + s * r * 0.16:.1f},{cy + r * 0.44:.1f} "
+            f"Q {cx + s * r * 0.66:.1f},{cy + r * 0.24:.1f} "
+            f"{cx + s * r * 0.62:.1f},{cy - r * 0.44:.1f} Z"
+        )
+    return f"{palm(-1.0)} {palm(1.0)}"
+
+
+def _bottle_path(cx: float, cy: float, r: float) -> str:
+    """A baby bottle — teat, collar, body (first feed)."""
     return (
-        f"M {cx - r:.1f},{cy + r * 0.2:.1f} "
-        f"Q {cx - r * 0.5:.1f},{cy - r * 0.75:.1f} {cx:.1f},{cy + r * 0.1:.1f} "
-        f"Q {cx + r * 0.5:.1f},{cy + r * 0.95:.1f} {cx + r:.1f},{cy - r * 0.1:.1f} "
-        f"L {cx + r:.1f},{cy + r * 0.62:.1f} "
-        f"Q {cx + r * 0.5:.1f},{cy + r * 1.5:.1f} {cx:.1f},{cy + r * 0.62:.1f} "
-        f"Q {cx - r * 0.5:.1f},{cy - r * 0.2:.1f} {cx - r:.1f},{cy + r * 0.78:.1f} Z"
+        f"M {cx - r * 0.11:.1f},{cy - r * 0.98:.1f} "
+        f"Q {cx:.1f},{cy - r * 1.30:.1f} {cx + r * 0.11:.1f},{cy - r * 0.98:.1f} "
+        f"L {cx + r * 0.11:.1f},{cy - r * 0.80:.1f} "
+        f"L {cx + r * 0.32:.1f},{cy - r * 0.80:.1f} "
+        f"L {cx + r * 0.32:.1f},{cy - r * 0.58:.1f} "
+        f"Q {cx + r * 0.60:.1f},{cy - r * 0.44:.1f} {cx + r * 0.60:.1f},{cy - r * 0.14:.1f} "
+        f"L {cx + r * 0.60:.1f},{cy + r * 0.82:.1f} "
+        f"Q {cx + r * 0.60:.1f},{cy + r * 1.04:.1f} {cx + r * 0.38:.1f},{cy + r * 1.04:.1f} "
+        f"L {cx - r * 0.38:.1f},{cy + r * 1.04:.1f} "
+        f"Q {cx - r * 0.60:.1f},{cy + r * 1.04:.1f} {cx - r * 0.60:.1f},{cy + r * 0.82:.1f} "
+        f"L {cx - r * 0.60:.1f},{cy - r * 0.14:.1f} "
+        f"Q {cx - r * 0.60:.1f},{cy - r * 0.44:.1f} {cx - r * 0.32:.1f},{cy - r * 0.58:.1f} "
+        f"L {cx - r * 0.32:.1f},{cy - r * 0.80:.1f} "
+        f"L {cx - r * 0.11:.1f},{cy - r * 0.80:.1f} Z"
     )
 
 
 GLYPHS = {
     "water_broke": _droplet_path,
     "arrived": _house_path,
-    "going_home": _house_path,
-    "first_hold": _heart_path,
-    "first_feed": _heart_path,
+    "going_home": _car_path,
+    "first_hold": _hands_path,
+    "first_feed": _bottle_path,
     "active_labor": _sunrise_path,
     "transition": _wave_path,
     "pushing": _chevrons_path,
@@ -318,6 +382,10 @@ def make_milestones(start: datetime, born: datetime):
         ("arrived", born - timedelta(hours=4)),
         ("transition", born - timedelta(hours=2, minutes=30)),
         ("pushing", born - timedelta(minutes=40)),
+        # after the arrival — the mug doesn't stop at the birth
+        ("first_hold", born + timedelta(minutes=25)),
+        ("first_feed", born + timedelta(hours=1, minutes=20)),
+        ("going_home", born + timedelta(hours=7)),
     ]
     return ms
 
