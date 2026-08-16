@@ -182,6 +182,29 @@ one to name a length.
 
 **Where:** `_award` and the settle path in `backend/routes/engagement.py:461`.
 
+### The boy/girl call gets no medal, and stays off the keepsake
+*2026-08-10*
+
+The gender call is scored on the page (✓/✗ once settled) and appears nowhere in
+the artwork. Both stay that way.
+
+> "it's a 50-50 so a bunch of people would have it. it's fine as is"
+
+**Why:** every medal is awarded on a *distance* — `_award` takes the smallest
+delta. A call has no delta, so a fourth medal would land on roughly half the
+jar at once, and a medal half the room is wearing isn't one. It would also push
+🏆🥈🥉 the rest of the way into reading as 1st/2nd/3rd/4th place, which the
+medal set was shaped to avoid.
+
+**Considered and not built:** stating it on the keepsake as a fact rather than
+an award — *"Eleven of twelve said boy. She's a girl."* Still the right shape
+if this is ever revisited; it just isn't worth the two SVG templates yet.
+
+**Where:** `MEDALS` in `frontend/src/components/Predictions.jsx`;
+`_build_pool_scene` in `backend/gift_artwork.py` passes only name, weight and
+length per row. The `Call` column already hides itself when the gender pool is
+off, so a birth that was never a surprise renders correctly in both places.
+
 ### The pool's voice: intuition, not betting
 *2026-08-01*
 
@@ -422,6 +445,98 @@ at once, qty 2, two shipping addresses.
 
 The keepsake section works on the main page. Dropping it into the settings page
 as-is doesn't make sense — surfacing it elsewhere needs its own thought.
+
+### The labor clock is one 12-hour dial with a ring per day
+*2026-08-16*
+
+Every day of labor gets its own concentric ring, sharing the space a single
+ring used to have to itself. One day is one ring and looks the way the artwork
+always has; two days is two rings; past three, the oldest fold into the
+innermost rather than being dropped.
+
+> "if theirs had all their contractions in a day, then it would just show 1
+> ring. if they have 2 days, then 2.. etc."
+
+**Why:** the old geometry silently stopped meaning clock time past **11h 31m** —
+beyond that it swept the strokes linearly while still drawing a dial, so a long
+labor's artwork wasn't comparable to a short one and nothing on it said so.
+With a first baby, labor crossing days isn't the exception.
+
+**A "day" is a rolling 24h from the first contraction, not a calendar date.**
+On calendar days a 9h evening labor that crosses midnight would become two
+rings, which breaks the rule that one day looks like it always has.
+
+**Rejected — a 24-hour dial.** It would make one ring exactly one day and let
+the same time of day line up across rings. But 12 at the top is a watch face
+everybody can read without being taught, and a 24-hour dial is a foreign
+instrument. A day running past twelve hours wraps onto its own ring instead,
+and the overlap layers rather than lying.
+
+**Rejected — a ring per day distinguished by colour.** Unnecessary once the
+rings have their own radial bands: they don't touch, so colour was free to do
+a different job.
+
+**Where:** `build_hours_clock` and `_ring_layout` in `backend/gift_artwork.py`;
+`_clock.svg.j2`.
+
+### AM is pale and fine, PM is deep and heavy
+*2026-08-16*
+
+Colour on the clock encodes time of day, not which day. AM strokes take the
+lighter theme tone at low opacity and a finer width; PM takes the deeper tone,
+heavier and more opaque.
+
+**Why:** a 12-hour face can't tell 4am from 4pm, and that ambiguity was already
+in the artwork. Hue alone couldn't carry it — the two chromatic tokens in each
+palette are close to begin with, and a shared alpha washed the deep one out
+until it matched the light one. Three cues together do carry it.
+
+**Also:** the dial declares itself with `12 / 3 / 6 / 9`. Without numerals
+nobody read it as a clock, which made every angle on it decoration.
+
+### The milestones are marks, not words
+*2026-08-16*
+
+Each milestone is a small outlined symbol riding the grey circle of the day it
+happened on, inside the dial. No labels.
+
+> "no need to ever say what it is.. they'll figure it out and love it. and the
+> design is more elegant"
+
+**Why:** the labels were four tracked capitals crossing the rays where an
+eight-pixel mark would do. They were also placed in polar coordinates while
+the text block beside the clock is cartesian, with neither aware of the other
+— which is how `STARTED PUSHING` came to be printed through the rule under the
+date.
+
+**Only kinds with a real mark are drawn** — `has_mark()`. A generic diamond
+meaning "something happened, we won't say what" is noise on a keepsake, so
+`name_announced` (the name is already set in 175pt italic on the same artwork),
+`other`, and anything new draw nothing until someone gives them a mark.
+`first_hold` is out too: hands need fingers, fingers don't survive at ~26px in
+one flat colour, and it's the same moment as the arrival half an hour later.
+
+**The arrival is a heart, not a sparkle** — and it sits on the ring with the
+others rather than outside the dial. A sparkle is an ornament that could stand
+for anything; this is the one mark on the artwork that is a person.
+
+**All outlines.** Solid marks were the heaviest thing on a face otherwise made
+of hairlines.
+
+**Where:** `_STROKE_GLYPHS`, `_ICON_GLYPHS` and `has_mark` in
+`backend/gift_artwork.py`. `scripts/render_milestone_marks.py` draws the set at
+true print size — use it before adding a mark, because most ideas die at 26px.
+
+### The hero photo sits beside the name, not inside the clock
+*2026-08-16*
+
+On `card_hours_photo` the photo moved from the middle of the clock face to a
+circle beside the name.
+
+**Why:** it was holding the dial's inner radius open, which is exactly the
+space the day rings build inward into. Beside the name it reads as a portrait
+rather than a hole in the artwork, and `hours_photo` can take the same clock
+geometry as every other clock template.
 
 ---
 

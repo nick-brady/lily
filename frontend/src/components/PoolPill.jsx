@@ -95,7 +95,12 @@ export default function PoolPill({
           onClick={() => setOpen(false)}
         >
           <div
-            className="animate-slide-up w-full sm:max-w-lg max-h-[85vh] overflow-y-auto
+            // Widens with the screen. The board is a six-column table whose
+            // cells don't wrap, so a phone-width cap on a desktop squeezed
+            // every guess into two cramped lines while the page sat empty
+            // behind it. Still a bottom sheet on a phone, where full-width is
+            // the right shape.
+            className="animate-slide-up w-full sm:max-w-xl lg:max-w-3xl max-h-[85vh] overflow-y-auto
                        bg-white dark:bg-gray-900 rounded-t-2xl sm:rounded-2xl shadow-xl p-2"
             // The portal escapes the themed page root, so the theme's CSS
             // variables ride along explicitly.
