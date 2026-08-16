@@ -751,7 +751,21 @@ _ICON_GLYPHS = {
     "active_labor": (_FLAME_D, 2.2, "evenodd", (3.90, 0.0, 27.15, 31.65)),
 }
 
-_SKIP_MILESTONES = {"first_hold", "born"}
+def has_mark(kind: str | None) -> bool:
+    """Whether a milestone kind has a mark of its own to draw.
+
+    Only kinds we can actually say something with get drawn. `born` is handled
+    separately (the heart, larger, on the outermost ring). `first_hold` has no
+    mark on purpose: hands need fingers, fingers don't survive at this size,
+    and the heart half an hour earlier already says it. `name_announced` is
+    redundant — the name is set in 175pt italic on the same artwork.
+    `other` is unnameable by definition, and a generic diamond meaning
+    "something happened, we won't say what" is noise on a keepsake.
+
+    Anything new falls here too, and draws nothing until someone gives it a
+    mark — better a gap than a shape that means nothing.
+    """
+    return kind in _STROKE_GLYPHS or kind in _ICON_GLYPHS
 
 MARK_R = 13.0          # the marks, as drawn on the dial
 MARK_HALO_R = 21.0     # page-coloured ground so they clear the rays
@@ -784,7 +798,7 @@ def _mark_at(kind: str, mx: float, my: float) -> dict:
             "transform": transform, "rule": rule,
             "stroke": None, "halo": MARK_HALO_R,
         }
-    draw = _STROKE_GLYPHS.get(kind, _diamond_path)
+    draw = _STROKE_GLYPHS[kind]
     return {
         "x": round(mx, 1), "y": round(my, 1), "d": draw(mx, my, MARK_R),
         "transform": None, "rule": "nonzero",
@@ -1004,7 +1018,7 @@ def build_hours_clock(
 
     for m in milestones or []:
         kind = m.get("kind")
-        if kind in _SKIP_MILESTONES:
+        if not has_mark(kind):
             continue
         offset = int(m["offset_seconds"])
         when = at(offset)
