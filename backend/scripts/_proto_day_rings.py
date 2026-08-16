@@ -23,7 +23,6 @@ import gift_themes  # noqa: E402
 from gift_artwork import (  # noqa: E402
     _droplet_path,
     _heart_path,
-    _house_path,
     _sparkle_path,
 )
 
@@ -84,13 +83,23 @@ _CAR_D = (
 )
 
 
-def _car_markup(mx: float, my: float, r: float, fill: str) -> str:
-    s = (r * 2.4) / 90.0
-    return (
-        f'<g transform="translate({mx - 45 * s:.2f},{my - 45 * s:.2f}) '
-        f'scale({s:.4f})"><path d="{_CAR_D}" fill="{fill}" '
-        f'opacity="0.85"/></g>'
-    )
+_HOSPITAL_D = (
+    "M 84.114 85.185 V 18.44 H 59.038 V 1.816 H 30.962 V 18.44 H 5.886 v 66.744 H 0 v 3 h 38.314 h 13.371 H 90 v -3 H 84.114 z M 81.114 21.44 v 63.744 H 59.038 V 21.44 H 81.114 z M 8.886 21.44 h 22.076 v 63.744 H 8.886 V 21.44 z M 41.314 85.185 V 65.912 c 0 -2.032 1.653 -3.686 3.686 -3.686 s 3.686 1.653 3.686 3.686 v 19.272 H 41.314 z M 45 59.227 c -3.687 0 -6.686 2.999 -6.686 6.686 v 19.272 h -4.353 V 18.44 V 4.816 h 22.076 V 18.44 v 66.744 h -4.353 V 65.912 C 51.686 62.226 48.687 59.227 45 59.227 z M 51.686 25.122 H 38.314 v 13.372 h 13.371 V 25.122 z M 48.686 35.493 h -7.371 v -7.372 h 7.371 V 35.493 z M 51.686 42.174 H 38.314 v 13.372 h 13.371 V 42.174 z M 48.686 52.546 h -7.371 v -7.372 h 7.371 V 52.546 z M 76.762 25.122 H 63.391 v 13.372 h 13.371 V 25.122 z M 73.762 35.493 h -7.371 v -7.372 h 7.371 V 35.493 z M 76.762 42.174 H 63.391 v 13.372 h 13.371 V 42.174 z M 73.762 52.546 h -7.371 v -7.372 h 7.371 V 52.546 z M 76.762 59.227 H 63.391 v 13.372 h 13.371 V 59.227 z M 73.762 69.599 h -7.371 v -7.372 h 7.371 V 69.599 z M 13.238 25.122 v 13.372 H 26.61 V 25.122 H 13.238 z M 23.61 35.493 h -7.372 v -7.372 h 7.372 V 35.493 z M 13.238 55.546 H 26.61 V 42.174 H 13.238 V 55.546 z M 16.238 45.174 h 7.372 v 7.372 h -7.372 V 45.174 z M 13.238 72.599 H 26.61 V 59.227 H 13.238 V 72.599 z M 16.238 62.227 h 7.372 v 7.372 h -7.372 V 62.227 z"
+)
+
+
+def _icon(d: str, width_factor: float, rule: str = "nonzero"):
+    """Wrap an imported icon (90-unit box, centred at 45,45) so it can be
+    dropped on the dial like the hand-drawn glyphs. They need their own
+    transform, so these return markup rather than a bare `d`."""
+    def markup(mx: float, my: float, r: float, fill: str) -> str:
+        s = (r * width_factor) / 90.0
+        return (
+            f'<g transform="translate({mx - 45 * s:.2f},{my - 45 * s:.2f}) '
+            f'scale({s:.4f})"><path d="{d}" fill="{fill}" '
+            f'fill-rule="{rule}" opacity="0.85"/></g>'
+        )
+    return markup
 
 
 def _bottle_path(cx: float, cy: float, r: float) -> str:
@@ -113,15 +122,15 @@ def _bottle_path(cx: float, cy: float, r: float) -> str:
     )
 
 
-# `first_hold` is deliberately absent, the way `born` is absent from the
-# production registry. Hands don't survive at this size — they need fingers,
-# and fingers turn to mush at thirty pixels in one flat colour. It's also the
-# same moment as the arrival, half an hour later, so the heart already says it.
-GLYPH_MARKUP = {"going_home": _car_markup}
+# The house was standing in for a hospital; now it is one. A birth centre
+# is not a home, and `going_home` already has the car.
+GLYPH_MARKUP = {
+    "going_home": _icon(_CAR_D, 2.4),
+    "arrived": _icon(_HOSPITAL_D, 2.0, rule="evenodd"),
+}
 
 GLYPHS = {
     "water_broke": _droplet_path,
-    "arrived": _house_path,
     "first_feed": _bottle_path,
     "active_labor": _sunrise_path,
     "transition": _wave_path,
