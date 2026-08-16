@@ -137,6 +137,22 @@ GLYPHS = {
     "pushing": _chevrons_path,
 }
 
+# Drawn hollow, to match the imported icons. Solid marks were the heaviest
+# thing on a dial made of hairlines; outlined, they sit with the ticks and the
+# grey circles instead of punching through them. The abstract marks — the
+# swell, the chevrons, the sunrise — stay solid: they're line-work already,
+# and stroking a stroke reads as a mistake.
+HOLLOW = {"water_broke", "first_feed", "born"}
+STROKE = 2.6
+
+
+def _stroked(d: str, colour: str, width: float = STROKE) -> str:
+    return (
+        f'<path d="{d}" fill="none" stroke="{colour}" stroke-width="{width}" '
+        f'stroke-linejoin="round" stroke-linecap="round" opacity="0.9"/>'
+    )
+
+
 W, H = 2475, 1155
 CX, CY = 640.0, 577.0
 R_RING = 460.0          # the tick ring — fixed, so the dial never moves
@@ -308,12 +324,13 @@ def svg_for(times, durs, born, name, headline, milestones=()):
         mx, my = CX + r * math.cos(a), CY + r * math.sin(a)
         # a ground of page colour so the mark reads clear of the rays it
         # crosses — the symbol has to survive without a label to lean on
-        mark = (
-            GLYPH_MARKUP[kind](mx, my, 13, p.accent)
-            if kind in GLYPH_MARKUP
-            else f'<path d="{GLYPHS.get(kind, _sparkle_path)(mx, my, 13)}" '
-                 f'fill="{p.accent}" opacity="0.85"/>'
-        )
+        if kind in GLYPH_MARKUP:
+            mark = GLYPH_MARKUP[kind](mx, my, 13, p.accent)
+        else:
+            d = GLYPHS.get(kind, _sparkle_path)(mx, my, 13)
+            mark = _stroked(d, p.accent) if kind in HOLLOW else (
+                f'<path d="{d}" fill="{p.accent}" opacity="0.85"/>'
+            )
         out.append(
             f'<circle cx="{mx:.1f}" cy="{my:.1f}" r="21" fill="{p.bg}" opacity="0.9"/>'
             f'{mark}'
@@ -325,7 +342,7 @@ def svg_for(times, durs, born, name, headline, milestones=()):
     sx, sy = CX + r_star * math.cos(star_a), CY + r_star * math.sin(star_a)
     out.append(
         f'<circle cx="{sx:.1f}" cy="{sy:.1f}" r="26" fill="{p.bg}" opacity="0.9"/>'
-        f'<path d="{_heart_path(sx, sy, 18)}" fill="{p.accent}"/>'
+        f'{_stroked(_heart_path(sx, sy, 18), p.accent, 3.0)}'
     )
 
     # right face — name, date, and the AM/PM key
