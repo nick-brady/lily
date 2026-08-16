@@ -32,15 +32,29 @@ from gift_artwork import (  # noqa: E402
 # kind has its own, so these fill the gaps — flat, single-colour, legible at
 # the ~30px they're drawn at.
 
-def _sunrise_path(cx: float, cy: float, r: float) -> str:
-    """A half-disc over a baseline (active labor — it's begun in earnest)."""
+def _flame_path(cx: float, cy: float, r: float) -> str:
+    """A flame (active labor — things heating up). The sunrise it replaces was
+    borrowing the mug's own metaphor, so it read as a sunset and said nothing
+    about labor. Fire is mnemonic rather than pictorial, like the chevrons:
+    nobody thinks labor is literally on fire, and everybody knows what it
+    means."""
     return (
-        f"M {cx - r:.1f},{cy + r * 0.35:.1f} "
-        f"A {r:.1f},{r:.1f} 0 0 1 {cx + r:.1f},{cy + r * 0.35:.1f} Z "
-        f"M {cx - r * 1.25:.1f},{cy + r * 0.62:.1f} "
-        f"L {cx + r * 1.25:.1f},{cy + r * 0.62:.1f} "
-        f"L {cx + r * 1.25:.1f},{cy + r * 0.86:.1f} "
-        f"L {cx - r * 1.25:.1f},{cy + r * 0.86:.1f} Z"
+        f"M {cx:.1f},{cy - r * 1.12:.1f} "
+        f"C {cx + r * 0.20:.1f},{cy - r * 0.58:.1f} "
+        f"{cx + r * 0.64:.1f},{cy - r * 0.40:.1f} "
+        f"{cx + r * 0.64:.1f},{cy + r * 0.08:.1f} "
+        f"C {cx + r * 0.64:.1f},{cy + r * 0.64:.1f} "
+        f"{cx + r * 0.30:.1f},{cy + r * 1.00:.1f} "
+        f"{cx:.1f},{cy + r * 1.00:.1f} "
+        f"C {cx - r * 0.30:.1f},{cy + r * 1.00:.1f} "
+        f"{cx - r * 0.64:.1f},{cy + r * 0.64:.1f} "
+        f"{cx - r * 0.64:.1f},{cy + r * 0.08:.1f} "
+        f"C {cx - r * 0.64:.1f},{cy - r * 0.26:.1f} "
+        f"{cx - r * 0.36:.1f},{cy - r * 0.52:.1f} "
+        f"{cx - r * 0.20:.1f},{cy - r * 0.30:.1f} "
+        f"C {cx - r * 0.08:.1f},{cy - r * 0.60:.1f} "
+        f"{cx - r * 0.06:.1f},{cy - r * 0.88:.1f} "
+        f"{cx:.1f},{cy - r * 1.12:.1f} Z"
     )
 
 
@@ -132,7 +146,7 @@ GLYPH_MARKUP = {
 GLYPHS = {
     "water_broke": _droplet_path,
     "first_feed": _bottle_path,
-    "active_labor": _sunrise_path,
+    "active_labor": _flame_path,
     "transition": _wave_path,
     "pushing": _chevrons_path,
 }
@@ -142,7 +156,7 @@ GLYPHS = {
 # grey circles instead of punching through them. The abstract marks — the
 # swell, the chevrons, the sunrise — stay solid: they're line-work already,
 # and stroking a stroke reads as a mistake.
-HOLLOW = {"water_broke", "first_feed", "born"}
+HOLLOW = {"water_broke", "first_feed", "born", "active_labor"}
 STROKE = 2.6
 
 
