@@ -4,6 +4,7 @@ import { formatDuration } from '../utils/statistics';
 import { toLocalInputValue } from '../utils/relativeTime';
 import ReactionBar from './ReactionBar';
 import CommentThread from './CommentThread';
+import Lightbox from './Lightbox';
 
 const AUDIENCE_LABELS = {
   parents_only: { label: 'Parents', tone: 'bg-rose-100 text-rose-700 dark:bg-rose-900/30 dark:text-rose-300' },
@@ -531,30 +532,11 @@ export default function Timeline({
       )}
 
       {lightbox.open && (
-        <div
-          className="fixed inset-0 bg-black/90 z-50 flex items-center justify-center p-4"
-          onClick={closeLightbox}
-        >
-          <button
-            onClick={closeLightbox}
-            className="absolute top-4 right-4 p-2 text-white/80 hover:text-white"
-          >
-            <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-            </svg>
-          </button>
-          <img
-            src={lightbox.url}
-            alt={lightbox.caption || 'Photo'}
-            className="max-w-full max-h-[90vh] object-contain"
-            onClick={(e) => e.stopPropagation()}
-          />
-          {lightbox.caption && (
-            <p className="absolute bottom-4 left-0 right-0 text-center text-white/80 text-sm px-4">
-              {lightbox.caption}
-            </p>
-          )}
-        </div>
+        <Lightbox
+          url={lightbox.url}
+          caption={lightbox.caption}
+          onClose={closeLightbox}
+        />
       )}
 
       <div className="space-y-6">
