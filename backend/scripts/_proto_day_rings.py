@@ -32,32 +32,6 @@ from gift_artwork import (  # noqa: E402
 # kind has its own, so these fill the gaps — flat, single-colour, legible at
 # the ~30px they're drawn at.
 
-def _flame_path(cx: float, cy: float, r: float) -> str:
-    """A flame (active labor — things heating up). The sunrise it replaces was
-    borrowing the mug's own metaphor, so it read as a sunset and said nothing
-    about labor. Fire is mnemonic rather than pictorial, like the chevrons:
-    nobody thinks labor is literally on fire, and everybody knows what it
-    means."""
-    return (
-        f"M {cx:.1f},{cy - r * 1.12:.1f} "
-        f"C {cx + r * 0.20:.1f},{cy - r * 0.58:.1f} "
-        f"{cx + r * 0.64:.1f},{cy - r * 0.40:.1f} "
-        f"{cx + r * 0.64:.1f},{cy + r * 0.08:.1f} "
-        f"C {cx + r * 0.64:.1f},{cy + r * 0.64:.1f} "
-        f"{cx + r * 0.30:.1f},{cy + r * 1.00:.1f} "
-        f"{cx:.1f},{cy + r * 1.00:.1f} "
-        f"C {cx - r * 0.30:.1f},{cy + r * 1.00:.1f} "
-        f"{cx - r * 0.64:.1f},{cy + r * 0.64:.1f} "
-        f"{cx - r * 0.64:.1f},{cy + r * 0.08:.1f} "
-        f"C {cx - r * 0.64:.1f},{cy - r * 0.26:.1f} "
-        f"{cx - r * 0.36:.1f},{cy - r * 0.52:.1f} "
-        f"{cx - r * 0.20:.1f},{cy - r * 0.30:.1f} "
-        f"C {cx - r * 0.08:.1f},{cy - r * 0.60:.1f} "
-        f"{cx - r * 0.06:.1f},{cy - r * 0.88:.1f} "
-        f"{cx:.1f},{cy - r * 1.12:.1f} Z"
-    )
-
-
 def _chevrons_path(cx: float, cy: float, r: float) -> str:
     """Two stacked chevrons driving outward (pushing)."""
     def one(dy: float) -> str:
@@ -102,14 +76,26 @@ _HOSPITAL_D = (
 )
 
 
-def _icon(d: str, width_factor: float, rule: str = "nonzero"):
-    """Wrap an imported icon (90-unit box, centred at 45,45) so it can be
-    dropped on the dial like the hand-drawn glyphs. They need their own
-    transform, so these return markup rather than a bare `d`."""
+_FLAME_D = (
+    "M 15.514 31.528 c -6.405 0 -11.615 -5.211 -11.615 -11.615 c 0 -0.043 0.004 -0.085 0.011 -0.126 c 0.03 -1.599 0.633 -3.133 1.27 -4.754 c 1 -2.545 2.034 -5.177 0.899 -8.325 C 5.987 6.452 6.048 6.167 6.237 5.972 c 0.189 -0.195 0.472 -0.266 0.731 -0.183 c 2.041 0.66 3.475 1.832 4.752 3.94 c 2.009 -3.238 2.519 -5.743 2.015 -9.421 c -0.039 -0.287 0.099 -0.569 0.35 -0.713 c 0.251 -0.144 0.565 -0.123 0.793 0.055 c 3.044 2.37 4.743 5.412 5.073 9.07 c 0.95 -1.127 2.133 -1.852 3.254 -2.425 c 0.253 -0.129 0.557 -0.096 0.777 0.084 c 0.219 0.18 0.31 0.473 0.232 0.746 c -0.999 3.48 0.22 5.882 1.399 8.205 c 0.755 1.488 1.47 2.896 1.506 4.458 c 0.007 0.041 0.011 0.082 0.011 0.125 C 27.129 26.317 21.918 31.528 15.514 31.528 z M 5.322 20.028 c 0.062 5.567 4.61 10.077 10.191 10.077 c 5.582 0 10.13 -4.51 10.191 -10.078 c -0.006 -0.037 -0.009 -0.075 -0.009 -0.114 c 0 -1.271 -0.627 -2.507 -1.354 -3.938 c -1.017 -2.005 -2.249 -4.431 -1.834 -7.633 c -1.098 0.741 -2.065 1.739 -2.595 3.328 c -0.114 0.342 -0.464 0.546 -0.819 0.472 c -0.353 -0.073 -0.596 -0.399 -0.565 -0.758 c 0.331 -3.849 -0.722 -6.958 -3.21 -9.452 c 0.169 3.453 -0.721 6.132 -3.057 9.574 c -0.141 0.208 -0.383 0.325 -0.632 0.311 c -0.251 -0.015 -0.475 -0.161 -0.59 -0.385 c -0.961 -1.866 -1.926 -3.008 -3.213 -3.73 c 0.583 3.001 -0.422 5.558 -1.323 7.851 c -0.603 1.535 -1.173 2.985 -1.173 4.359 C 5.332 19.952 5.329 19.99 5.322 20.028 z"
+)
+
+
+def _icon(d: str, size: float, rule: str = "nonzero",
+          box: tuple[float, float, float, float] = (0.0, 0.0, 90.0, 90.0)):
+    """Wrap an imported icon so it can be dropped on the dial like the
+    hand-drawn glyphs. `box` is the ink's bounding box in the icon's own
+    space — several of these are crops out of a bigger artboard, so centring
+    on the artboard would hang them off the ring. `size` is the longer
+    dimension, in multiples of r."""
+    x0, y0, x1, y1 = box
+    span = max(x1 - x0, y1 - y0)
+    bcx, bcy = (x0 + x1) / 2, (y0 + y1) / 2
+
     def markup(mx: float, my: float, r: float, fill: str) -> str:
-        s = (r * width_factor) / 90.0
+        s = (r * size) / span
         return (
-            f'<g transform="translate({mx - 45 * s:.2f},{my - 45 * s:.2f}) '
+            f'<g transform="translate({mx - bcx * s:.2f},{my - bcy * s:.2f}) '
             f'scale({s:.4f})"><path d="{d}" fill="{fill}" '
             f'fill-rule="{rule}" opacity="0.85"/></g>'
         )
@@ -141,12 +127,14 @@ def _bottle_path(cx: float, cy: float, r: float) -> str:
 GLYPH_MARKUP = {
     "going_home": _icon(_CAR_D, 2.4),
     "arrived": _icon(_HOSPITAL_D, 2.0, rule="evenodd"),
+    "active_labor": _icon(
+        _FLAME_D, 2.2, rule="evenodd", box=(3.90, 0.0, 27.15, 31.65)
+    ),
 }
 
 GLYPHS = {
     "water_broke": _droplet_path,
     "first_feed": _bottle_path,
-    "active_labor": _flame_path,
     "transition": _wave_path,
     "pushing": _chevrons_path,
 }
@@ -156,7 +144,7 @@ GLYPHS = {
 # grey circles instead of punching through them. The abstract marks — the
 # swell, the chevrons, the sunrise — stay solid: they're line-work already,
 # and stroking a stroke reads as a mistake.
-HOLLOW = {"water_broke", "first_feed", "born", "active_labor"}
+HOLLOW = {"water_broke", "first_feed", "born"}
 STROKE = 2.6
 
 
