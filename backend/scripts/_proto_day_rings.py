@@ -46,18 +46,17 @@ def _chevrons_path(cx: float, cy: float, r: float) -> str:
 
 
 def _wave_path(cx: float, cy: float, r: float) -> str:
-    """Two stacked swells (transition). One on its own read as a tilde; the
-    pair reads as water, the way ≈ does."""
+    """Two swells (transition). Open S-curves rather than filled ribbons —
+    the last mark to stop being a silhouette, so the set is one language.
+    One swell alone read as a tilde; the pair reads as water, the way ≈ does."""
     def swell(dy: float) -> str:
         return (
-            f"M {cx - r:.1f},{cy + dy:.1f} "
-            f"Q {cx - r * 0.5:.1f},{cy + dy - r * 0.62:.1f} {cx:.1f},{cy + dy:.1f} "
-            f"Q {cx + r * 0.5:.1f},{cy + dy + r * 0.62:.1f} {cx + r:.1f},{cy + dy:.1f} "
-            f"L {cx + r:.1f},{cy + dy + r * 0.30:.1f} "
-            f"Q {cx + r * 0.5:.1f},{cy + dy + r * 0.92:.1f} {cx:.1f},{cy + dy + r * 0.30:.1f} "
-            f"Q {cx - r * 0.5:.1f},{cy + dy - r * 0.32:.1f} {cx - r:.1f},{cy + dy + r * 0.30:.1f} Z"
+            f"M {cx - r * 0.92:.1f},{cy + dy:.1f} "
+            f"Q {cx - r * 0.46:.1f},{cy + dy - r * 0.62:.1f} {cx:.1f},{cy + dy:.1f} "
+            f"Q {cx + r * 0.46:.1f},{cy + dy + r * 0.62:.1f} "
+            f"{cx + r * 0.92:.1f},{cy + dy:.1f}"
         )
-    return f"{swell(-r * 0.44)} {swell(r * 0.42)}"
+    return f"{swell(-r * 0.38)} {swell(r * 0.42)}"
 
 
 # A proper car, from an icon set — it reads as a car far better than the
@@ -143,7 +142,8 @@ GLYPHS = {
 # grey circles instead of punching through them. The abstract marks — the
 # swell, the chevrons, the sunrise — stay solid: they're line-work already,
 # and stroking a stroke reads as a mistake.
-HOLLOW = {"water_broke", "first_feed", "born", "pushing"}
+# Every mark is now an outline. Nothing on the dial is a silhouette.
+HOLLOW = {"water_broke", "first_feed", "born", "pushing", "transition"}
 STROKE = 2.6
 
 
