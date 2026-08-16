@@ -77,42 +77,44 @@ def _wave_path(cx: float, cy: float, r: float) -> str:
 def _car_path(cx: float, cy: float, r: float) -> str:
     """A little car, side on (going home). The house is spoken for by
     `arrived`, and the two shouldn't be the same mark — one is turning up,
-    the other is leaving with her."""
+    the other is leaving with her.
+
+    The arches are what make it read. A slab with two dots under it is a
+    slab; cut the wheel wells up into the body and the silhouette becomes a
+    car even at a couple of dozen pixels. Kept near 2:1 — the first attempt
+    was too tall and read as a van."""
+    ARCH = 0.22        # wheel-well radius
+    AX = 0.52          # axle offset from centre
     body = (
-        f"M {cx - r:.1f},{cy + r * 0.10:.1f} "
-        f"L {cx - r * 0.62:.1f},{cy + r * 0.10:.1f} "
-        f"L {cx - r * 0.34:.1f},{cy - r * 0.46:.1f} "
-        f"L {cx + r * 0.30:.1f},{cy - r * 0.46:.1f} "
-        f"L {cx + r * 0.62:.1f},{cy + r * 0.10:.1f} "
-        f"L {cx + r:.1f},{cy + r * 0.10:.1f} "
-        f"L {cx + r:.1f},{cy + r * 0.42:.1f} "
-        f"L {cx - r:.1f},{cy + r * 0.42:.1f} Z"
+        f"M {cx - r:.1f},{cy + r * 0.28:.1f} "
+        f"L {cx - r:.1f},{cy - r * 0.05:.1f} "
+        f"L {cx - r * 0.58:.1f},{cy - r * 0.20:.1f} "       # rear deck
+        f"L {cx - r * 0.36:.1f},{cy - r * 0.50:.1f} "       # c-pillar
+        f"Q {cx - r * 0.30:.1f},{cy - r * 0.57:.1f} "
+        f"{cx - r * 0.18:.1f},{cy - r * 0.57:.1f} "
+        f"L {cx + r * 0.06:.1f},{cy - r * 0.57:.1f} "       # roof
+        f"Q {cx + r * 0.18:.1f},{cy - r * 0.57:.1f} "
+        f"{cx + r * 0.25:.1f},{cy - r * 0.50:.1f} "
+        f"L {cx + r * 0.46:.1f},{cy - r * 0.20:.1f} "       # windscreen rake
+        f"L {cx + r * 0.84:.1f},{cy - r * 0.08:.1f} "       # bonnet
+        f"Q {cx + r:.1f},{cy - r * 0.04:.1f} {cx + r:.1f},{cy + r * 0.06:.1f} "
+        f"L {cx + r:.1f},{cy + r * 0.28:.1f} "
+        # underside, with a well cut up into it over each axle
+        f"L {cx + r * (AX + ARCH):.1f},{cy + r * 0.28:.1f} "
+        f"A {r * ARCH:.1f},{r * ARCH:.1f} 0 0 0 "
+        f"{cx + r * (AX - ARCH):.1f},{cy + r * 0.28:.1f} "
+        f"L {cx - r * (AX - ARCH):.1f},{cy + r * 0.28:.1f} "
+        f"A {r * ARCH:.1f},{r * ARCH:.1f} 0 0 0 "
+        f"{cx - r * (AX + ARCH):.1f},{cy + r * 0.28:.1f} Z"
     )
     def wheel(dx: float) -> str:
-        w = r * 0.26
+        w = r * 0.20
         return (
-            f"M {cx + dx - w:.1f},{cy + r * 0.46:.1f} "
+            f"M {cx + dx - w:.1f},{cy + r * 0.32:.1f} "
             f"a {w:.1f},{w:.1f} 0 1 0 {w * 2:.1f},0 "
             f"a {w:.1f},{w:.1f} 0 1 0 {-w * 2:.1f},0 Z"
         )
-    return f"{body} {wheel(-r * 0.52)} {wheel(r * 0.52)}"
-
-
-def _hands_path(cx: float, cy: float, r: float) -> str:
-    """Two cupped palms, opening outward (first hold). Drawn as two separate
-    crescents with a gap down the middle — joined into one bowl they read as
-    an anchor, which is what the first attempt did."""
-    def palm(sign: float) -> str:
-        s = sign
-        return (
-            f"M {cx + s * r:.1f},{cy - r * 0.44:.1f} "
-            f"Q {cx + s * r * 1.06:.1f},{cy + r * 0.52:.1f} "
-            f"{cx + s * r * 0.16:.1f},{cy + r * 0.78:.1f} "
-            f"L {cx + s * r * 0.16:.1f},{cy + r * 0.44:.1f} "
-            f"Q {cx + s * r * 0.66:.1f},{cy + r * 0.24:.1f} "
-            f"{cx + s * r * 0.62:.1f},{cy - r * 0.44:.1f} Z"
-        )
-    return f"{palm(-1.0)} {palm(1.0)}"
+    return f"{body} {wheel(-r * AX)} {wheel(r * AX)}"
 
 
 def _bottle_path(cx: float, cy: float, r: float) -> str:
@@ -135,11 +137,14 @@ def _bottle_path(cx: float, cy: float, r: float) -> str:
     )
 
 
+# `first_hold` is deliberately absent, the way `born` is absent from the
+# production registry. Hands don't survive at this size — they need fingers,
+# and fingers turn to mush at thirty pixels in one flat colour. It's also the
+# same moment as the arrival, half an hour later, so the heart already says it.
 GLYPHS = {
     "water_broke": _droplet_path,
     "arrived": _house_path,
     "going_home": _car_path,
-    "first_hold": _hands_path,
     "first_feed": _bottle_path,
     "active_labor": _sunrise_path,
     "transition": _wave_path,
@@ -383,7 +388,6 @@ def make_milestones(start: datetime, born: datetime):
         ("transition", born - timedelta(hours=2, minutes=30)),
         ("pushing", born - timedelta(minutes=40)),
         # after the arrival — the mug doesn't stop at the birth
-        ("first_hold", born + timedelta(minutes=25)),
         ("first_feed", born + timedelta(hours=1, minutes=20)),
         ("going_home", born + timedelta(hours=7)),
     ]
