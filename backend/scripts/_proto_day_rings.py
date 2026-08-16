@@ -74,47 +74,23 @@ def _wave_path(cx: float, cy: float, r: float) -> str:
     return f"{swell(-r * 0.44)} {swell(r * 0.42)}"
 
 
-def _car_path(cx: float, cy: float, r: float) -> str:
-    """A little car, side on (going home). The house is spoken for by
-    `arrived`, and the two shouldn't be the same mark — one is turning up,
-    the other is leaving with her.
+# A proper car, from an icon set — it reads as a car far better than the
+# silhouette I drew by hand. It lives in a 90-unit box with its ink between
+# y 22.6 and 67.4, so the centre is (45, 45) and the shape is about 2:1.
+# Unlike the other glyphs this needs its own transform, so it returns
+# markup rather than a bare `d`.
+_CAR_D = (
+    "M 84.99 37.498 l -16.835 -2.571 c -0.428 -0.065 -0.824 -0.277 -1.115 -0.597 l -8.952 -9.805 c -1.115 -1.222 -2.703 -1.922 -4.357 -1.922 H 25.005 c -1.991 0 -3.833 0.993 -4.928 2.656 l -5.862 8.905 c -0.234 0.356 -0.586 0.625 -0.992 0.759 l -9.169 3.022 C 1.629 38.744 0 40.996 0 43.548 v 9.404 c 0 3.254 2.647 5.9 5.9 5.9 h 3.451 c 0.969 4.866 5.269 8.545 10.416 8.545 s 9.447 -3.679 10.416 -8.545 h 30.139 c 0.969 4.866 5.27 8.545 10.416 8.545 s 9.446 -3.679 10.415 -8.545 H 84.1 c 3.254 0 5.9 -2.646 5.9 -5.9 v -9.622 C 90 40.394 87.893 37.941 84.99 37.498 z M 19.767 63.397 c -3.652 0 -6.623 -2.971 -6.623 -6.622 c 0 -3.652 2.971 -6.623 6.623 -6.623 s 6.623 2.971 6.623 6.623 C 26.39 60.427 23.419 63.397 19.767 63.397 z M 70.738 63.397 c -3.652 0 -6.623 -2.971 -6.623 -6.622 c 0 -3.652 2.971 -6.623 6.623 -6.623 c 3.651 0 6.622 2.971 6.622 6.623 C 77.36 60.427 74.39 63.397 70.738 63.397 z M 86 52.952 c 0 1.048 -0.853 1.9 -1.9 1.9 h -2.922 c -0.908 -4.941 -5.239 -8.7 -10.439 -8.7 s -9.531 3.759 -10.44 8.7 H 30.207 c -0.909 -4.941 -5.24 -8.7 -10.44 -8.7 s -9.531 3.759 -10.439 8.7 H 5.9 c -1.048 0 -1.9 -0.853 -1.9 -1.9 v -9.404 c 0 -0.822 0.524 -1.547 1.306 -1.805 l 9.168 -3.021 c 1.26 -0.415 2.354 -1.253 3.083 -2.36 l 5.861 -8.905 c 0.353 -0.536 0.946 -0.855 1.587 -0.855 H 53.73 c 0.532 0 1.044 0.226 1.403 0.62 l 8.952 9.805 c 0.907 0.993 2.139 1.652 3.467 1.854 l 16.834 2.571 C 85.321 41.595 86 42.385 86 43.331 V 52.952 z"
+)
 
-    The arches are what make it read. A slab with two dots under it is a
-    slab; cut the wheel wells up into the body and the silhouette becomes a
-    car even at a couple of dozen pixels. Kept near 2:1 — the first attempt
-    was too tall and read as a van."""
-    ARCH = 0.22        # wheel-well radius
-    AX = 0.52          # axle offset from centre
-    body = (
-        f"M {cx - r:.1f},{cy + r * 0.28:.1f} "
-        f"L {cx - r:.1f},{cy - r * 0.05:.1f} "
-        f"L {cx - r * 0.58:.1f},{cy - r * 0.20:.1f} "       # rear deck
-        f"L {cx - r * 0.36:.1f},{cy - r * 0.50:.1f} "       # c-pillar
-        f"Q {cx - r * 0.30:.1f},{cy - r * 0.57:.1f} "
-        f"{cx - r * 0.18:.1f},{cy - r * 0.57:.1f} "
-        f"L {cx + r * 0.06:.1f},{cy - r * 0.57:.1f} "       # roof
-        f"Q {cx + r * 0.18:.1f},{cy - r * 0.57:.1f} "
-        f"{cx + r * 0.25:.1f},{cy - r * 0.50:.1f} "
-        f"L {cx + r * 0.46:.1f},{cy - r * 0.20:.1f} "       # windscreen rake
-        f"L {cx + r * 0.84:.1f},{cy - r * 0.08:.1f} "       # bonnet
-        f"Q {cx + r:.1f},{cy - r * 0.04:.1f} {cx + r:.1f},{cy + r * 0.06:.1f} "
-        f"L {cx + r:.1f},{cy + r * 0.28:.1f} "
-        # underside, with a well cut up into it over each axle
-        f"L {cx + r * (AX + ARCH):.1f},{cy + r * 0.28:.1f} "
-        f"A {r * ARCH:.1f},{r * ARCH:.1f} 0 0 0 "
-        f"{cx + r * (AX - ARCH):.1f},{cy + r * 0.28:.1f} "
-        f"L {cx - r * (AX - ARCH):.1f},{cy + r * 0.28:.1f} "
-        f"A {r * ARCH:.1f},{r * ARCH:.1f} 0 0 0 "
-        f"{cx - r * (AX + ARCH):.1f},{cy + r * 0.28:.1f} Z"
+
+def _car_markup(mx: float, my: float, r: float, fill: str) -> str:
+    s = (r * 2.4) / 90.0
+    return (
+        f'<g transform="translate({mx - 45 * s:.2f},{my - 45 * s:.2f}) '
+        f'scale({s:.4f})"><path d="{_CAR_D}" fill="{fill}" '
+        f'opacity="0.85"/></g>'
     )
-    def wheel(dx: float) -> str:
-        w = r * 0.20
-        return (
-            f"M {cx + dx - w:.1f},{cy + r * 0.32:.1f} "
-            f"a {w:.1f},{w:.1f} 0 1 0 {w * 2:.1f},0 "
-            f"a {w:.1f},{w:.1f} 0 1 0 {-w * 2:.1f},0 Z"
-        )
-    return f"{body} {wheel(-r * AX)} {wheel(r * AX)}"
 
 
 def _bottle_path(cx: float, cy: float, r: float) -> str:
@@ -141,10 +117,11 @@ def _bottle_path(cx: float, cy: float, r: float) -> str:
 # production registry. Hands don't survive at this size — they need fingers,
 # and fingers turn to mush at thirty pixels in one flat colour. It's also the
 # same moment as the arrival, half an hour later, so the heart already says it.
+GLYPH_MARKUP = {"going_home": _car_markup}
+
 GLYPHS = {
     "water_broke": _droplet_path,
     "arrived": _house_path,
-    "going_home": _car_path,
     "first_feed": _bottle_path,
     "active_labor": _sunrise_path,
     "transition": _wave_path,
@@ -320,12 +297,17 @@ def svg_for(times, durs, born, name, headline, milestones=()):
         a = clock_angle(t)
         r = rings[k]["base"]
         mx, my = CX + r * math.cos(a), CY + r * math.sin(a)
-        glyph = GLYPHS.get(kind, _sparkle_path)
         # a ground of page colour so the mark reads clear of the rays it
         # crosses — the symbol has to survive without a label to lean on
+        mark = (
+            GLYPH_MARKUP[kind](mx, my, 13, p.accent)
+            if kind in GLYPH_MARKUP
+            else f'<path d="{GLYPHS.get(kind, _sparkle_path)(mx, my, 13)}" '
+                 f'fill="{p.accent}" opacity="0.85"/>'
+        )
         out.append(
             f'<circle cx="{mx:.1f}" cy="{my:.1f}" r="21" fill="{p.bg}" opacity="0.9"/>'
-            f'<path d="{glyph(mx, my, 13)}" fill="{p.accent}" opacity="0.85"/>'
+            f'{mark}'
         )
 
     # the birth — a heart, on the grey line with the rest. A sparkle is an
