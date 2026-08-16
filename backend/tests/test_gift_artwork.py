@@ -179,21 +179,73 @@ def test_sparkline_empty_for_short_series():
     assert gift_artwork._spark_path([]) == ""
 
 
-def test_hours_clock_star_and_strokes():
-    clock = gift_artwork.build_hours_clock(
-        durations=_DURATIONS,
-        offsets_seconds=_OFFSETS,
-        first_contraction_at=_FIRST_AT,
-        born_at=_BORN_AT,
+def _clock(durations, offsets, first_at=_FIRST_AT, born_at=_BORN_AT, **kw):
+    return gift_artwork.build_hours_clock(
+        durations=durations,
+        offsets_seconds=offsets,
+        first_contraction_at=first_at,
+        born_at=born_at,
         cx=750,
         cy=940,
+        **kw,
     )
-    assert len(clock["clock_strokes"]) == len(_DURATIONS)
-    assert clock["clock_star"] is not None
-    assert clock["clock_start_dot"] is not None
-    # opacity deepens as labor progresses
-    opacities = [s["o"] for s in clock["clock_strokes"]]
-    assert opacities == sorted(opacities)
+
+
+def test_hours_clock_one_day_is_one_ring():
+    clock = _clock(_DURATIONS, _OFFSETS)
+    assert len(clock["clock_rings"]) == 1
+    assert len(clock["clock_rings"][0]["strokes"]) == len(_DURATIONS)
+    assert clock["clock_born_mark"] is not None
+    # a single day doesn't name itself
+    assert clock["clock_day_labels"] is False
+    # the face declares itself a clock
+    assert [n["t"] for n in clock["clock_numerals"]] == ["12", "3", "6", "9"]
+
+
+def test_hours_clock_rings_follow_the_days():
+    """One ring per day of labor, newest outermost, and past three the oldest
+    fold inward rather than being dropped."""
+    for days, expected in ((1, 1), (2, 2), (3, 3), (5, 3)):
+        offsets = [i * 3600 for i in range(days * 24)]
+        durations = [60] * len(offsets)
+        rings = _clock(durations, offsets)["clock_rings"]
+        assert len(rings) == expected, days
+        # every contraction lands on a ring, whatever the fold
+        assert sum(len(r["strokes"]) for r in rings) == len(offsets)
+        # rings nest outward and never touch
+        bases = [r["base"] for r in rings]
+        assert bases == sorted(bases)
+
+    # beyond three days the innermost stops claiming to be day one
+    labels = [r["label"] for r in _clock([60] * 120, [i * 3600 for i in range(120)])["clock_rings"]]
+    assert labels[0] == "EARLIER"
+
+
+def test_hours_clock_keeps_clock_angles_past_twelve_hours():
+    """The old geometry silently stopped meaning clock time past 11h31m and
+    swept the strokes linearly instead. A moment's angle is now its angle on
+    the face however long the labor ran."""
+    long_offsets = [0, 30 * 3600]
+    clock = _clock([60, 60], long_offsets)
+    first, last = (s for r in clock["clock_rings"] for s in r["strokes"])
+    # 30h apart is 6h on a 12-hour face — a quarter turn, not a full sweep
+    import math
+
+    def angle(s):
+        return math.atan2(s["y1"] - 940, s["x1"] - 750)
+
+    gap = abs((angle(last) - angle(first) + math.pi) % (2 * math.pi) - math.pi)
+    assert abs(gap - math.pi) < 0.05
+
+
+def test_hours_clock_am_and_pm_are_told_apart():
+    # 8am and 8pm, same day
+    morning = _FIRST_AT.replace(hour=8, minute=0)
+    clock = _clock([60, 60], [0, 12 * 3600], first_at=morning)
+    strokes = [s for r in clock["clock_rings"] for s in r["strokes"]]
+    assert [s["am"] for s in strokes] == [True, False]
+    assert strokes[0]["w"] < strokes[1]["w"]      # AM finer
+    assert strokes[0]["o"] < strokes[1]["o"]      # AM paler
 
 
 def test_orbit_thumbs_keep_min_separation():
@@ -297,6 +349,8 @@ def test_hours_clock_handles_missing_times():
         cx=100,
         cy=100,
     )
-    assert clock["clock_strokes"] == []
-    assert clock["clock_star"] is None
-    assert clock["clock_start_dot"] is None
+    assert clock["clock_rings"] == [
+        {"base": clock["clock_rings"][0]["base"], "label": "DAY 1", "strokes": []}
+    ]
+    assert clock["clock_born_mark"] is None
+    assert clock["clock_marks"] == []

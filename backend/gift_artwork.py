@@ -10,7 +10,7 @@ import base64
 import io
 import math
 import os
-from datetime import datetime
+from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 
 import cairosvg
@@ -662,6 +662,136 @@ def _diamond_path(cx: float, cy: float, r: float) -> str:
     )
 
 
+def _chevrons_path(cx: float, cy: float, r: float) -> str:
+    """Two chevrons driving outward (pushing). Open polylines rather than
+    filled arrowheads — stroked they carry the same weight as the rest of the
+    set, where filled they were the heaviest mark on the dial."""
+    def one(dy: float) -> str:
+        return (
+            f"M {cx - r * 0.84:.1f},{cy + dy + r * 0.30:.1f} "
+            f"L {cx:.1f},{cy + dy - r * 0.34:.1f} "
+            f"L {cx + r * 0.84:.1f},{cy + dy + r * 0.30:.1f}"
+        )
+    return f"{one(-r * 0.34)} {one(r * 0.44)}"
+
+
+def _wave_path(cx: float, cy: float, r: float) -> str:
+    """Two swells (transition). Open S-curves rather than filled ribbons —
+    the last mark to stop being a silhouette, so the set is one language.
+    One swell alone read as a tilde; the pair reads as water, the way ≈ does."""
+    def swell(dy: float) -> str:
+        return (
+            f"M {cx - r * 0.92:.1f},{cy + dy:.1f} "
+            f"Q {cx - r * 0.46:.1f},{cy + dy - r * 0.62:.1f} {cx:.1f},{cy + dy:.1f} "
+            f"Q {cx + r * 0.46:.1f},{cy + dy + r * 0.62:.1f} "
+            f"{cx + r * 0.92:.1f},{cy + dy:.1f}"
+        )
+    return f"{swell(-r * 0.38)} {swell(r * 0.42)}"
+
+
+def _bottle_path(cx: float, cy: float, r: float) -> str:
+    """A baby bottle — teat, collar, body (first feed)."""
+    return (
+        f"M {cx - r * 0.11:.1f},{cy - r * 0.98:.1f} "
+        f"Q {cx:.1f},{cy - r * 1.30:.1f} {cx + r * 0.11:.1f},{cy - r * 0.98:.1f} "
+        f"L {cx + r * 0.11:.1f},{cy - r * 0.80:.1f} "
+        f"L {cx + r * 0.32:.1f},{cy - r * 0.80:.1f} "
+        f"L {cx + r * 0.32:.1f},{cy - r * 0.58:.1f} "
+        f"Q {cx + r * 0.60:.1f},{cy - r * 0.44:.1f} {cx + r * 0.60:.1f},{cy - r * 0.14:.1f} "
+        f"L {cx + r * 0.60:.1f},{cy + r * 0.82:.1f} "
+        f"Q {cx + r * 0.60:.1f},{cy + r * 1.04:.1f} {cx + r * 0.38:.1f},{cy + r * 1.04:.1f} "
+        f"L {cx - r * 0.38:.1f},{cy + r * 1.04:.1f} "
+        f"Q {cx - r * 0.60:.1f},{cy + r * 1.04:.1f} {cx - r * 0.60:.1f},{cy + r * 0.82:.1f} "
+        f"L {cx - r * 0.60:.1f},{cy - r * 0.14:.1f} "
+        f"Q {cx - r * 0.60:.1f},{cy - r * 0.44:.1f} {cx - r * 0.32:.1f},{cy - r * 0.58:.1f} "
+        f"L {cx - r * 0.32:.1f},{cy - r * 0.80:.1f} "
+        f"L {cx - r * 0.11:.1f},{cy - r * 0.80:.1f} Z"
+    )
+
+
+_CAR_D = (
+    "M 84.99 37.498 l -16.835 -2.571 c -0.428 -0.065 -0.824 -0.277 -1.115 -0.597 l -8.952 -9.805 c -1.115 -1.222 -2.703 -1.922 -4.357 -1.922 H 25.005 c -1.991 0 -3.833 0.993 -4.928 2.656 l -5.862 8.905 c -0.234 0.356 -0.586 0.625 -0.992 0.759 l -9.169 3.022 C 1.629 38.744 0 40.996 0 43.548 v 9.404 c 0 3.254 2.647 5.9 5.9 5.9 h 3.451 c 0.969 4.866 5.269 8.545 10.416 8.545 s 9.447 -3.679 10.416 -8.545 h 30.139 c 0.969 4.866 5.27 8.545 10.416 8.545 s 9.446 -3.679 10.415 -8.545 H 84.1 c 3.254 0 5.9 -2.646 5.9 -5.9 v -9.622 C 90 40.394 87.893 37.941 84.99 37.498 z M 19.767 63.397 c -3.652 0 -6.623 -2.971 -6.623 -6.622 c 0 -3.652 2.971 -6.623 6.623 -6.623 s 6.623 2.971 6.623 6.623 C 26.39 60.427 23.419 63.397 19.767 63.397 z M 70.738 63.397 c -3.652 0 -6.623 -2.971 -6.623 -6.622 c 0 -3.652 2.971 -6.623 6.623 -6.623 c 3.651 0 6.622 2.971 6.622 6.623 C 77.36 60.427 74.39 63.397 70.738 63.397 z M 86 52.952 c 0 1.048 -0.853 1.9 -1.9 1.9 h -2.922 c -0.908 -4.941 -5.239 -8.7 -10.439 -8.7 s -9.531 3.759 -10.44 8.7 H 30.207 c -0.909 -4.941 -5.24 -8.7 -10.44 -8.7 s -9.531 3.759 -10.439 8.7 H 5.9 c -1.048 0 -1.9 -0.853 -1.9 -1.9 v -9.404 c 0 -0.822 0.524 -1.547 1.306 -1.805 l 9.168 -3.021 c 1.26 -0.415 2.354 -1.253 3.083 -2.36 l 5.861 -8.905 c 0.353 -0.536 0.946 -0.855 1.587 -0.855 H 53.73 c 0.532 0 1.044 0.226 1.403 0.62 l 8.952 9.805 c 0.907 0.993 2.139 1.652 3.467 1.854 l 16.834 2.571 C 85.321 41.595 86 42.385 86 43.331 V 52.952 z"
+)
+
+
+_HOSPITAL_D = (
+    "M 51.948 73.273 H 38.052 c -1.104 0 -2 -0.896 -2 -2 v -9.621 h -9.621 c -1.104 0 -2 -0.896 -2 -2 V 45.757 c 0 -1.104 0.896 -2 2 -2 h 9.621 v -9.62 c 0 -1.104 0.896 -2 2 -2 h 13.896 c 1.104 0 2 0.896 2 2 v 9.62 h 9.62 c 1.104 0 2 0.896 2 2 v 13.895 c 0 1.104 -0.896 2 -2 2 h -9.62 v 9.621 C 53.948 72.378 53.053 73.273 51.948 73.273 z M 40.052 69.273 h 9.896 v -9.621 c 0 -1.104 0.896 -2 2 -2 h 9.62 v -9.895 h -9.62 c -1.104 0 -2 -0.896 -2 -2 v -9.62 h -9.896 v 9.62 c 0 1.104 -0.896 2 -2 2 h -9.621 v 9.895 h 9.621 c 1.104 0 2 0.896 2 2 V 69.273 z M 78.113 84.056 H 11.887 c -1.104 0 -2 -0.896 -2 -2 V 30.312 c 0 -1.104 0.896 -2 2 -2 s 2 0.896 2 2 v 49.745 h 62.226 V 30.067 c 0 -1.104 0.896 -2 2 -2 s 2 0.896 2 2 v 51.989 C 80.113 83.161 79.218 84.056 78.113 84.056 z M 2.002 38.835 c -0.65 0 -1.287 -0.316 -1.671 -0.898 c -0.608 -0.922 -0.354 -2.163 0.568 -2.771 L 44.687 6.274 c 0.679 -0.449 1.561 -0.439 2.231 0.019 L 89.13 35.184 c 0.911 0.624 1.145 1.869 0.521 2.78 c -0.624 0.912 -1.867 1.146 -2.78 0.521 L 45.768 10.353 L 3.102 38.504 C 2.762 38.728 2.38 38.835 2.002 38.835 z"
+)
+
+
+_FLAME_D = (
+    "M 15.514 31.528 c -6.405 0 -11.615 -5.211 -11.615 -11.615 c 0 -0.043 0.004 -0.085 0.011 -0.126 c 0.03 -1.599 0.633 -3.133 1.27 -4.754 c 1 -2.545 2.034 -5.177 0.899 -8.325 C 5.987 6.452 6.048 6.167 6.237 5.972 c 0.189 -0.195 0.472 -0.266 0.731 -0.183 c 2.041 0.66 3.475 1.832 4.752 3.94 c 2.009 -3.238 2.519 -5.743 2.015 -9.421 c -0.039 -0.287 0.099 -0.569 0.35 -0.713 c 0.251 -0.144 0.565 -0.123 0.793 0.055 c 3.044 2.37 4.743 5.412 5.073 9.07 c 0.95 -1.127 2.133 -1.852 3.254 -2.425 c 0.253 -0.129 0.557 -0.096 0.777 0.084 c 0.219 0.18 0.31 0.473 0.232 0.746 c -0.999 3.48 0.22 5.882 1.399 8.205 c 0.755 1.488 1.47 2.896 1.506 4.458 c 0.007 0.041 0.011 0.082 0.011 0.125 C 27.129 26.317 21.918 31.528 15.514 31.528 z M 5.322 20.028 c 0.062 5.567 4.61 10.077 10.191 10.077 c 5.582 0 10.13 -4.51 10.191 -10.078 c -0.006 -0.037 -0.009 -0.075 -0.009 -0.114 c 0 -1.271 -0.627 -2.507 -1.354 -3.938 c -1.017 -2.005 -2.249 -4.431 -1.834 -7.633 c -1.098 0.741 -2.065 1.739 -2.595 3.328 c -0.114 0.342 -0.464 0.546 -0.819 0.472 c -0.353 -0.073 -0.596 -0.399 -0.565 -0.758 c 0.331 -3.849 -0.722 -6.958 -3.21 -9.452 c 0.169 3.453 -0.721 6.132 -3.057 9.574 c -0.141 0.208 -0.383 0.325 -0.632 0.311 c -0.251 -0.015 -0.475 -0.161 -0.59 -0.385 c -0.961 -1.866 -1.926 -3.008 -3.213 -3.73 c 0.583 3.001 -0.422 5.558 -1.323 7.851 c -0.603 1.535 -1.173 2.985 -1.173 4.359 C 5.332 19.952 5.329 19.99 5.322 20.028 z"
+)
+
+
+# ── the milestone marks ──────────────────────────────────────────────────
+# Every mark is an outline, so nothing on the dial is heavier than the ticks
+# and rays it sits among. Two kinds: hand-drawn paths, which are open or
+# unthickened and get stroked; and imported icons, which carry their own
+# outline as a filled shape and need their own transform.
+#
+# `born` is a heart, drawn larger — it's the one mark on the artwork that is a
+# person. `first_hold` is deliberately absent: hands need fingers to read and
+# fingers turn to mush at this size, and it's the same moment as the arrival
+# half an hour later, so the heart already says it.
+
+_STROKE_GLYPHS = {
+    "water_broke": _droplet_path,
+    "first_feed": _bottle_path,
+    "pushing": _chevrons_path,
+    "transition": _wave_path,
+}
+
+# kind → (path, size in multiples of r, fill-rule, ink bounding box). Several
+# are crops out of a larger artboard, so centring on the artboard would hang
+# them off the ring — hence the box.
+_ICON_GLYPHS = {
+    "arrived": (_HOSPITAL_D, 2.0, "evenodd", (0.0, 0.0, 90.0, 90.0)),
+    "going_home": (_CAR_D, 2.4, "nonzero", (0.0, 22.6, 90.0, 67.4)),
+    "active_labor": (_FLAME_D, 2.2, "evenodd", (3.90, 0.0, 27.15, 31.65)),
+}
+
+_SKIP_MILESTONES = {"first_hold", "born"}
+
+MARK_R = 13.0          # the marks, as drawn on the dial
+MARK_HALO_R = 21.0     # page-coloured ground so they clear the rays
+BORN_MARK_R = 18.0
+BORN_HALO_R = 26.0
+MARK_STROKE = 2.6
+BORN_STROKE = 3.0
+
+
+def _icon_transform(kind: str, mx: float, my: float, r: float) -> tuple[str, str, str]:
+    """(d, transform, fill-rule) placing an imported icon centred on (mx, my)."""
+    d, size, rule, (x0, y0, x1, y1) = _ICON_GLYPHS[kind]
+    span = max(x1 - x0, y1 - y0)
+    scale = (r * size) / span
+    bcx, bcy = (x0 + x1) / 2, (y0 + y1) / 2
+    transform = (
+        f"translate({mx - bcx * scale:.2f},{my - bcy * scale:.2f}) "
+        f"scale({scale:.4f})"
+    )
+    return d, transform, rule
+
+
+def _mark_at(kind: str, mx: float, my: float) -> dict:
+    """One milestone mark, ready for the template: either a stroked path or an
+    imported icon with its own transform."""
+    if kind in _ICON_GLYPHS:
+        d, transform, rule = _icon_transform(kind, mx, my, MARK_R)
+        return {
+            "x": round(mx, 1), "y": round(my, 1), "d": d,
+            "transform": transform, "rule": rule,
+            "stroke": None, "halo": MARK_HALO_R,
+        }
+    draw = _STROKE_GLYPHS.get(kind, _diamond_path)
+    return {
+        "x": round(mx, 1), "y": round(my, 1), "d": draw(mx, my, MARK_R),
+        "transform": None, "rule": "nonzero",
+        "stroke": MARK_STROKE, "halo": MARK_HALO_R,
+    }
+
+
 # milestone kind → icon path builder (mirrors the app's MILESTONES registry;
 # 'born' is never drawn here — the sparkle star already marks it)
 _MILESTONE_ICONS = {
@@ -705,11 +835,31 @@ def _angle_mapper(offsets_seconds: list[int], first_contraction_at: datetime | N
 # photo thumbnails orbiting outside still clear the card edges.
 CLOCK_PRESETS: dict[str, dict] = {
     "hours": {"r_ring": 460.0, "r_in": 205.0, "len_lo": 80.0, "len_hi": 225.0},
-    "hours_photo": {"r_ring": 470.0, "r_in": 245.0, "len_lo": 70.0, "len_hi": 200.0},
+    # The photo left the middle of the face for a spot beside the name, so
+    # this variant no longer has to hold its inner radius open and can take
+    # the same geometry as the plain clock — which it needs, since the day
+    # rings are built inward from r_in.
+    "hours_photo": {"r_ring": 460.0, "r_in": 205.0, "len_lo": 80.0, "len_hi": 225.0},
     "orbit": {"r_ring": 420.0, "r_in": 190.0, "len_lo": 70.0, "len_hi": 190.0},
 }
 # Hero-photo radius inside the hours_photo face (hairline ring sits just out).
 CLOCK_PHOTO_R = 195.0
+
+
+RING_GAP = 14.0        # keeps adjacent day rings from touching
+MAX_RINGS = 3
+AM_ALPHA, PM_ALPHA = 0.34, 0.74
+AM_WIDTH, PM_WIDTH = 2.6, 4.2
+BUILD_ALPHA = 0.16     # late labor deepens, on top of the AM/PM tone
+
+
+def _ring_layout(n: int, r_in: float, r_out: float) -> tuple[float, float, float]:
+    """(innermost radius, band width, usable band) for `n` day rings sharing
+    the space a single ring used to have to itself. One ring keeps the old
+    geometry exactly; only multi-day artwork pays for the compression."""
+    inner = r_in / (n ** 0.75)
+    band = (r_out - inner) / n
+    return inner, band, band - (RING_GAP if n > 1 else 0.0)
 
 
 def build_hours_clock(
@@ -727,59 +877,95 @@ def build_hours_clock(
     milestones: list[dict] | None = None,
     canvas_w: float | None = None,
 ) -> dict:
-    """Geometry for the radial labor clock: every contraction is a fine
-    stroke radiating at the clock angle of the moment it happened, its length
-    the contraction's duration. A sparkle star sits on the ring at the minute
-    of birth. Pure function of the data — no DB — so previews and tests can
-    drive it directly.
+    """Geometry for the radial labor clock: one 12-hour dial, and a concentric
+    ring for every day of labor. Each contraction is a stroke at the clock
+    angle of the moment it happened, its length that contraction's duration
+    and its tone whether it fell before or after noon.
 
-    Labors longer than a lap of the clock fall back to a linear sweep (the
-    strokes would otherwise overlap themselves); the ring loses its clock
-    semantics but the shape stays honest.
+    One day is one ring and looks the way this artwork always has. Two days is
+    two rings, three is three, and the band divides between them — so only
+    multi-day labor pays for the extra. Past three days the oldest fold into
+    the innermost ring rather than being dropped.
+
+    This replaces a fallback that silently stopped meaning clock time past
+    11h31m and swept the strokes linearly instead, which made a long labor's
+    artwork incomparable to a short one with nothing saying so. A day that
+    runs past twelve hours now wraps onto its own ring and the overlap layers,
+    which is honest and happens to look better.
+
+    `len_lo`/`len_hi` are accepted for call compatibility; ray length is
+    derived from whatever band its ring actually gets.
     """
-    angle_at, _clock_true, total = _angle_mapper(
-        offsets_seconds, first_contraction_at
-    )
-    clock_true = _clock_true
+    r_out = r_ring - 30.0
+    marks: list[dict] = []
+
+    # ── which day each contraction belongs to ────────────────────────────
+    # Rolling 24h windows from the first contraction, not calendar dates: an
+    # evening labor that crosses midnight is one night, not two days.
+    if offsets_seconds:
+        day_of = [o // 86400 for o in offsets_seconds]
+        total_days = max(day_of) + 1
+    else:
+        day_of, total_days = [], 1
+    n = max(1, min(total_days, MAX_RINGS))
+    shift = total_days - n
+
+    inner, band, usable = _ring_layout(n, r_in, r_out)
+    rings = [
+        {
+            "base": round(inner + k * band, 1),
+            "label": (
+                "EARLIER" if (total_days > MAX_RINGS and k == 0)
+                else f"DAY {k + 1 + shift}"
+            ),
+            "strokes": [],
+        }
+        for k in range(n)
+    ]
+
+    def ring_index(offset: int) -> int:
+        return max(0, min(n - 1, offset // 86400 - shift))
+
+    def at(offset: int) -> datetime | None:
+        if first_contraction_at is None:
+            return None
+        return first_contraction_at + timedelta(seconds=offset)
 
     lo = min(durations) if durations else 0
     hi = max(durations) if durations else 1
     span = (hi - lo) or 1
+    total = offsets_seconds[-1] if offsets_seconds else 0
 
-    strokes = []
     for offset, duration in zip(offsets_seconds, durations):
-        a = angle_at(offset)
-        length = len_lo + ((duration - lo) / span) * (len_hi - len_lo)
+        when = at(offset)
+        # Without a real start time there are no clock angles to be had; fall
+        # back to sweeping the strokes evenly so the shape is still honest.
+        a = (
+            _clock_angle(when) if when is not None
+            else -math.pi / 2 + (offset / (total or 1)) * 2 * math.pi * 0.93
+        )
+        ring = rings[ring_index(offset)]
+        length = 0.36 * usable + ((duration - lo) / span) * (usable - 0.36 * usable)
+        r0 = ring["base"]
+        r1 = r0 + length
+        am = when is not None and when.hour < 12
         progress = offset / (total or 1)
-        strokes.append(
+        ring["strokes"].append(
             {
-                "x1": round(cx + r_in * math.cos(a), 1),
-                "y1": round(cy + r_in * math.sin(a), 1),
-                "x2": round(cx + (r_in + length) * math.cos(a), 1),
-                "y2": round(cy + (r_in + length) * math.sin(a), 1),
-                # the burst deepens as labor builds toward the star — capped
-                # well under 1.0 so overlapping strokes in a dense cluster
-                # stay soft instead of fusing into a solid saturated mass
-                "o": round(0.28 + 0.38 * progress, 2),
+                "x1": round(cx + r0 * math.cos(a), 1),
+                "y1": round(cy + r0 * math.sin(a), 1),
+                "x2": round(cx + r1 * math.cos(a), 1),
+                "y2": round(cy + r1 * math.sin(a), 1),
+                "am": am,
+                "w": AM_WIDTH if am else PM_WIDTH,
+                "o": round((AM_ALPHA if am else PM_ALPHA) + BUILD_ALPHA * progress, 3),
             }
         )
 
-    # The birth minute on the ring — where the star sits. The tick ring
-    # leaves a gap around it so the star reads as part of the clock.
-    star_angle = None
-    if born_at is not None:
-        if clock_true:
-            star_angle = _clock_angle(born_at)
-        elif offsets_seconds:
-            star_angle = angle_at(offsets_seconds[-1])
-
+    # ── the dial ─────────────────────────────────────────────────────────
     ticks = []
     for i in range(60):
         a = (i / 60) * 2 * math.pi - math.pi / 2
-        if star_angle is not None:
-            gap = abs((a - star_angle + math.pi) % (2 * math.pi) - math.pi)
-            if gap < 0.10:  # leave room for the star
-                continue
         is_hour = i % 5 == 0
         r0 = r_ring - (22 if is_hour else 10)
         ticks.append(
@@ -792,84 +978,68 @@ def build_hours_clock(
             }
         )
 
-    star = None
-    star_label = None
-    if star_angle is not None:
-        sx = cx + (r_ring - 6) * math.cos(star_angle)
-        sy = cy + (r_ring - 6) * math.sin(star_angle)
-        star = _sparkle_path(sx, sy, 40)
-        lx = cx + (r_ring + 78) * math.cos(star_angle)
-        ly = cy + (r_ring + 78) * math.sin(star_angle)
-        star_label = {"x": round(lx, 1), "y": round(ly + 10, 1)}
-
-    start_dot = None
-    start_label = None
-    if offsets_seconds:
-        a0 = angle_at(offsets_seconds[0])
-        start_dot = {
-            "x": round(cx + (r_ring - 6) * math.cos(a0), 1),
-            "y": round(cy + (r_ring - 6) * math.sin(a0), 1),
-        }
-        # closer in than the star's label — the dot is a small mark
-        lx = cx + (r_ring + 52) * math.cos(a0)
-        ly = cy + (r_ring + 52) * math.sin(a0)
-        start_label = {"x": round(lx, 1), "y": round(ly + 10, 1)}
-
-    # the milestones of the birth, anchored at their true clock angles —
-    # each an icon just outside the ring with a quiet label beyond it
-    clock_milestones = []
-    placed_angles: list[float] = []
-
-    def _gap(a: float, b: float) -> float:
-        return abs((a - b + math.pi) % (2 * math.pi) - math.pi)
-
-    for m in milestones or []:
-        a = angle_at(int(m["offset_seconds"]))
-        if star_angle is not None and _gap(a, star_angle) < 0.18:
-            continue  # the star owns the birth minute
-        # milestones minutes apart share an angle; their labels would garble
-        # each other, so the first one placed wins the spot
-        if any(_gap(a, b) < 0.35 for b in placed_angles):
-            continue
-        placed_angles.append(a)
-        icon = _MILESTONE_ICONS.get(m.get("kind"), _diamond_path)
-        ix = cx + (r_ring + 42) * math.cos(a)
-        iy = cy + (r_ring + 42) * math.sin(a)
-        # labels grow away from the face so they never run back over their
-        # icon: outward horizontally on the sides, stacked above/below at
-        # the top and bottom — and clamped to the canvas so a side label
-        # near an edge stacks instead of clipping (the mug's clock sits far
-        # off-center, so both edges are real)
-        cos_a, sin_a = math.cos(a), math.sin(a)
-        w = canvas_w if canvas_w is not None else cx * 2
-        est = len(m["label"]) * 17  # generous per-glyph advance at label size
-        anchor = None
-        if cos_a > 0.35 and ix + 36 + est <= w - 24:
-            anchor, lx, ly = "start", ix + 36, iy + 9
-        elif cos_a < -0.35 and ix - 36 - est >= 24:
-            anchor, lx, ly = "end", ix - 36, iy + 9
-        if anchor is None:
-            anchor = "middle"
-            lx = min(max(ix, est / 2 + 24), w - est / 2 - 24)
-            ly = iy - 40 if sin_a < 0 else iy + 58
-        clock_milestones.append(
+    # It wasn't obvious this was a clock at all, which made every angle on it
+    # decoration. Four numerals is enough to declare the face.
+    numerals = []
+    for text, a in (("12", -math.pi / 2), ("3", 0.0), ("6", math.pi / 2), ("9", math.pi)):
+        numerals.append(
             {
-                "d": icon(ix, iy, 17),
-                "lx": round(lx, 1),
-                "ly": round(ly, 1),
-                "anchor": anchor,
-                "label": m["label"],
+                "x": round(cx + (r_ring + 46) * math.cos(a), 1),
+                "y": round(cy + (r_ring + 46) * math.sin(a) + 13, 1),
+                "t": text,
             }
         )
 
+    # ── the marks ────────────────────────────────────────────────────────
+    # Each rides the grey circle of the day it happened on, inside the dial.
+    # They used to float outside it with nothing anchoring them, which is how
+    # a milestone label ended up crossing the text block beside the clock.
+    placed: list[tuple[int, float]] = []
+
+    def crowded(k: int, a: float) -> bool:
+        return any(
+            k == pk and abs((a - pa + math.pi) % (2 * math.pi) - math.pi) < 0.22
+            for pk, pa in placed
+        )
+
+    for m in milestones or []:
+        kind = m.get("kind")
+        if kind in _SKIP_MILESTONES:
+            continue
+        offset = int(m["offset_seconds"])
+        when = at(offset)
+        if when is None:
+            continue
+        a = _clock_angle(when)
+        k = ring_index(offset)
+        if crowded(k, a):
+            continue
+        placed.append((k, a))
+        r = rings[k]["base"]
+        marks.append(_mark_at(kind, cx + r * math.cos(a), cy + r * math.sin(a)))
+
+    # the arrival, on the outermost ring — the last mark of the story, and the
+    # only one that is a person rather than an event
+    born_mark = None
+    if born_at is not None:
+        a = _clock_angle(born_at)
+        r = rings[-1]["base"]
+        bx, by = cx + r * math.cos(a), cy + r * math.sin(a)
+        born_mark = {
+            "x": round(bx, 1), "y": round(by, 1),
+            "d": _heart_path(bx, by, BORN_MARK_R),
+            "transform": None, "rule": "nonzero",
+            "stroke": BORN_STROKE, "halo": BORN_HALO_R,
+        }
+
     return {
-        "clock_strokes": strokes,
+        "clock_rings": rings,
         "clock_ticks": ticks,
-        "clock_star": star,
-        "clock_star_label": star_label,
-        "clock_start_dot": start_dot,
-        "clock_start_label": start_label,
-        "clock_milestones": clock_milestones,
+        "clock_numerals": numerals,
+        "clock_marks": marks,
+        "clock_born_mark": born_mark,
+        # only worth naming the days when there is more than one
+        "clock_day_labels": n > 1,
     }
 
 
