@@ -33,17 +33,16 @@ from gift_artwork import (  # noqa: E402
 # the ~30px they're drawn at.
 
 def _chevrons_path(cx: float, cy: float, r: float) -> str:
-    """Two stacked chevrons driving outward (pushing)."""
+    """Two chevrons driving outward (pushing). Open polylines rather than
+    filled arrowheads — stroked they carry the same weight as the rest of the
+    set, where filled they were the heaviest mark on the dial."""
     def one(dy: float) -> str:
         return (
-            f"M {cx - r:.1f},{cy + dy + r * 0.34:.1f} "
-            f"L {cx:.1f},{cy + dy - r * 0.32:.1f} "
-            f"L {cx + r:.1f},{cy + dy + r * 0.34:.1f} "
-            f"L {cx + r * 0.72:.1f},{cy + dy + r * 0.6:.1f} "
-            f"L {cx:.1f},{cy + dy + r * 0.06:.1f} "
-            f"L {cx - r * 0.72:.1f},{cy + dy + r * 0.6:.1f} Z"
+            f"M {cx - r * 0.84:.1f},{cy + dy + r * 0.30:.1f} "
+            f"L {cx:.1f},{cy + dy - r * 0.34:.1f} "
+            f"L {cx + r * 0.84:.1f},{cy + dy + r * 0.30:.1f}"
         )
-    return f"{one(-r * 0.42)} {one(r * 0.42)}"
+    return f"{one(-r * 0.34)} {one(r * 0.44)}"
 
 
 def _wave_path(cx: float, cy: float, r: float) -> str:
@@ -144,7 +143,7 @@ GLYPHS = {
 # grey circles instead of punching through them. The abstract marks — the
 # swell, the chevrons, the sunrise — stay solid: they're line-work already,
 # and stroking a stroke reads as a mistake.
-HOLLOW = {"water_broke", "first_feed", "born"}
+HOLLOW = {"water_broke", "first_feed", "born", "pushing"}
 STROKE = 2.6
 
 
