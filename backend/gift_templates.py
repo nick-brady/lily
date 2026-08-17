@@ -32,6 +32,11 @@ class GiftTemplate:
     # framed box. Designs where the photo is an accent render fine without it,
     # and only those offer "remove" in the picker.
     photo_required: bool = False
+    # Where the photo sits in the artwork, as a fraction of the canvas
+    # (cx, cy, r). The editor lays a "change photo" hotspot over exactly this
+    # spot, so you click her face on the design instead of a link in a list.
+    # Fractions rather than pixels: the client is looking at a scaled image.
+    photo_spot: tuple[float, float, float] | None = None
     scene: str | None = None  # richer data scene: "hours" | "story" | None
     # center of the labor clock, for scene == "hours" (defaults to canvas center)
     clock_cx: float | None = None
@@ -50,6 +55,7 @@ TEMPLATES: dict[str, GiftTemplate] = {
         height=1155,
         dpi=300,
         photo=True,
+        photo_spot=(2235 / 2475, 545 / 1155, 150 / 2475),
         scene="hours",
         clock_cx=640,
         clock_cy=577,
@@ -101,6 +107,7 @@ TEMPLATES: dict[str, GiftTemplate] = {
         height=2100,
         dpi=300,
         photo=True,
+        photo_spot=(320 / 1500, 1700 / 2100, 150 / 1500),
         scene="hours_photo",
         clock_cx=750,
         clock_cy=940,
@@ -161,6 +168,9 @@ TEMPLATES: dict[str, GiftTemplate] = {
         height=2100,
         dpi=300,
         photo=True,
+        # The hero panel, not a circle — the spot is a hit area, and a
+        # generous one over a full-bleed photo is exactly right.
+        photo_spot=(0.5, 660 / 2100, 0.42),
         # The photo *is* this design — without one it's an empty keyline mat.
         photo_required=True,
     ),

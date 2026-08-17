@@ -447,3 +447,30 @@ def test_photo_optional_templates_render_without_one(template_id):
     ctx["photo_data_uri"] = None
     png = gift_artwork.render_context(template, ctx)
     assert png[:8] == b"\x89PNG\r\n\x1a\n"
+
+
+# ── the mockup budget ────────────────────────────────────────────────────
+# The fulfillment partner allows 2 mockups a minute for the whole store, so
+# they're generated once per design and then only on request.
+
+
+class _FakeRow:
+    def __init__(self, status, key=None):
+        self.mockup_status = status
+        self.mockup_s3_key = key
+
+
+def test_mockups_are_generated_once_then_only_on_request():
+    from repositories.gifts import should_generate_mockup
+
+    # the first render of a design — this is what fills the gallery
+    assert should_generate_mockup(_FakeRow("none")) is True
+
+    # every render after that leaves the partner alone
+    assert should_generate_mockup(_FakeRow("ready", "k.png")) is False
+    assert should_generate_mockup(_FakeRow("stale", "k.png")) is False
+    assert should_generate_mockup(_FakeRow("pending")) is False
+    assert should_generate_mockup(_FakeRow("failed")) is False
+
+    # a row that claims "none" but already has a file is not a first render
+    assert should_generate_mockup(_FakeRow("none", "k.png")) is False

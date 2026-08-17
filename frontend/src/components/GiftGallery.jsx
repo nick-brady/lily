@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { api } from '../api/client';
 import Lightbox from './Lightbox';
-import PhotoPickerSheet from './PhotoPickerSheet';
+import GiftWizard from './GiftWizard';
 
 function formatPrice(cents) {
   return `$${(cents / 100).toFixed(2)}`;
@@ -229,7 +229,6 @@ function GiftItemCard({ item, birthId, familyHasAddress, onPhotoChanged }) {
 }
 
 function StorageGiftCard({ item, birthId }) {
-  const [buyOpen, setBuyOpen] = useState(false);
   return (
     <div className="rounded-lg border overflow-hidden" style={{ borderColor: 'var(--t-soft-ring)' }}>
       <div
@@ -253,20 +252,13 @@ function StorageGiftCard({ item, birthId }) {
       {item.is_purchasable && !item.is_claimed_for_family && (
         <button
           type="button"
-          onClick={() => setBuyOpen(true)}
+          onClick={() => setWizardAt(2)}
           className="w-full px-3 py-2 text-sm font-medium text-left transition-colors t-btn-accent rounded-none"
         >
           Send this gift · {formatPrice(item.base_price_cents)}
         </button>
       )}
 
-      {buyOpen && (
-        <StorageGiftCheckoutSheet
-          birthId={birthId}
-          item={item}
-          onClose={() => setBuyOpen(false)}
-        />
-      )}
     </div>
   );
 }
@@ -357,10 +349,12 @@ function StorageGiftCheckoutSheet({ birthId, item, onClose }) {
 
 function RenderingTile({ rendering, birthId, item, familyHasAddress, onPhotoChanged }) {
   const [pickerOpen, setPickerOpen] = useState(false);
-  const [buyOpen, setBuyOpen] = useState(false);
   // Index into the gallery below, or null. One set of images, one viewer.
   const [zoom, setZoom] = useState(null);
-  const [photoOpen, setPhotoOpen] = useState(false);
+  // null, or the step to open the wizard at. The tile has two ways in: the
+  // design itself (customise) and the buy button (straight to sending), so
+  // someone happy with what they see doesn't have to click through.
+  const [wizardAt, setWizardAt] = useState(null);
 
   // The artwork leads: a mug mockup renders the design an inch wide on a
   // white cylinder, and the clock face — the reason to want any of this —
@@ -394,10 +388,10 @@ function RenderingTile({ rendering, birthId, item, familyHasAddress, onPhotoChan
         <>
           <button
             type="button"
-            onClick={() => setZoom(0)}
+            onClick={() => setWizardAt(0)}
             className="w-full block"
-            style={{ cursor: 'zoom-in' }}
-            aria-label="See the design full screen"
+            style={{ cursor: 'pointer' }}
+            aria-label="Customise this design"
           >
             <img
               src={hero}
@@ -439,21 +433,20 @@ function RenderingTile({ rendering, birthId, item, familyHasAddress, onPhotoChan
       {rendering.status === 'ready' && item?.is_purchasable && (
         <button
           type="button"
-          onClick={() => setBuyOpen(true)}
+          onClick={() => setWizardAt(2)}
           className="w-full px-3 py-2 text-sm font-medium text-left transition-colors t-btn-accent rounded-none"
         >
           Send this gift · {formatPrice(item.base_price_cents)}
         </button>
       )}
 
-      {/* Only designs that actually carry a photo offer to change it. */}
-      {rendering.status === 'ready' && rendering.has_photo && (
+      {rendering.status === 'ready' && (
         <button
           type="button"
-          onClick={() => setPhotoOpen(true)}
+          onClick={() => setWizardAt(0)}
           className="w-full px-3 py-2 text-xs t-muted hover:t-ink text-left transition-colors"
         >
-          {rendering.photo_removed ? 'Add a photo' : 'Change image'} →
+          Customise this design →
         </button>
       )}
 
@@ -467,16 +460,6 @@ function RenderingTile({ rendering, birthId, item, familyHasAddress, onPhotoChan
         </button>
       )}
 
-      {buyOpen && (
-        <GiftCheckoutSheet
-          birthId={birthId}
-          rendering={rendering}
-          item={item}
-          familyHasAddress={familyHasAddress}
-          onClose={() => setBuyOpen(false)}
-        />
-      )}
-
       {pickerOpen && (
         <ProductPickerDialog
           birthId={birthId}
@@ -485,12 +468,25 @@ function RenderingTile({ rendering, birthId, item, familyHasAddress, onPhotoChan
         />
       )}
 
-      {photoOpen && (
-        <PhotoPickerSheet
+      {wizardAt !== null && (
+        <GiftWizard
           birthId={birthId}
           rendering={rendering}
-          onClose={() => setPhotoOpen(false)}
+          item={item}
+          familyHasAddress={familyHasAddress}
+          startAt={wizardAt}
+          onClose={() => setWizardAt(null)}
           onChanged={onPhotoChanged}
+          renderCheckout={(current) => (
+            <GiftCheckoutSheet
+              embedded
+              birthId={birthId}
+              rendering={current}
+              item={item}
+              familyHasAddress={familyHasAddress}
+              onClose={() => setWizardAt(null)}
+            />
+          )}
         />
       )}
 
@@ -650,7 +646,17 @@ function ProductOption({ product, onRequest }) {
   );
 }
 
-function GiftCheckoutSheet({ birthId, rendering, item, familyHasAddress, onClose }) {
+// Recipient, note, pay. Its own sheet from the tile's fast lane, or the last
+// pane of the customise wizard — `embedded` drops the overlay and panel so it
+// can sit inside one that already exists.
+function GiftCheckoutSheet({
+  birthId,
+  rendering,
+  item,
+  familyHasAddress,
+  onClose,
+  embedded = false,
+}) {
   // not either/or — both copies at once is a normal purchase (qty 2)
   const [toFamily, setToFamily] = useState(!item.is_claimed_for_family);
   const [toSelf, setToSelf] = useState(item.is_claimed_for_family);
@@ -689,16 +695,8 @@ function GiftCheckoutSheet({ birthId, rendering, item, familyHasAddress, onClose
     }
   }
 
-  return (
-    <div
-      className="fixed inset-0 z-50 bg-black/40 flex items-end sm:items-center justify-center"
-      onClick={onClose}
-    >
-      <div
-        className="animate-slide-up w-full sm:max-w-lg bg-white dark:bg-gray-900
-                   rounded-t-2xl sm:rounded-2xl shadow-xl p-5 space-y-4 max-h-[85vh] overflow-y-auto"
-        onClick={(e) => e.stopPropagation()}
-      >
+  const content = (
+    <>
         <div className="text-center">
           <h2 className="text-base font-semibold text-gray-800 dark:text-white">
             {item.display_name} · {formatPrice(item.base_price_cents)}
@@ -803,6 +801,22 @@ function GiftCheckoutSheet({ birthId, rendering, item, familyHasAddress, onClose
         >
           Cancel
         </button>
+    </>
+  );
+
+  if (embedded) return content;
+
+  return (
+    <div
+      className="fixed inset-0 z-50 bg-black/40 flex items-end sm:items-center justify-center"
+      onClick={onClose}
+    >
+      <div
+        className="animate-slide-up w-full sm:max-w-lg bg-white dark:bg-gray-900
+                   rounded-t-2xl sm:rounded-2xl shadow-xl p-5 space-y-4 max-h-[85vh] overflow-y-auto"
+        onClick={(e) => e.stopPropagation()}
+      >
+        {content}
       </div>
     </div>
   );

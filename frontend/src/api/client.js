@@ -623,6 +623,14 @@ export const api = {
     return jsonOrThrow(res);
   },
 
+  async refreshGiftMockup(birthId, renderingId) {
+    const res = await fetch(
+      `${API_URL}/birth/${birthId}/gifts/${renderingId}/mockup`,
+      { method: 'POST' },
+    );
+    return jsonOrThrow(res);
+  },
+
   mediaUrl(mediaId) {
     return `${API_URL}/media/${mediaId}`;
   },

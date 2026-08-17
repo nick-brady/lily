@@ -76,6 +76,7 @@ def _serialize_rendering(rendering) -> GiftRenderingOut:
         # `card_welcome` is a full-bleed hero in a keyline mat — removing its
         # photo leaves an empty frame, so it doesn't get the option.
         photo_removable=shows_photo and not (template and template.photo_required),
+        photo_spot=template.photo_spot if template else None,
     )
 
 
@@ -402,13 +403,45 @@ def set_gift_photo(
     rendering.photo_removed = payload.removed
     db.commit()
 
-    # Same path the Regenerate button takes for a single design.
-    ids = gifts_repo.reset_to_pending(
-        db, birth_id=access.birth.id, rendering_id=rendering.id
+    # Rendered inline rather than queued. The artwork takes about half a
+    # second, and someone trying photos against a design shouldn't wait on a
+    # background task and a 2.5s poll to find out what they picked. No partner
+    # call happens here — only the flat artwork is redrawn — so this stays
+    # cheap however much they fiddle.
+    gifts_repo.render_rendering(rendering.id)
+    db.expire_all()
+    rendering = gifts_repo.get_rendering(
+        db, birth_id=access.birth.id, rendering_id=rendering_id
     )
-    for rid in gifts_repo.claim_renders(ids):
-        background_tasks.add_task(gifts_repo.render_rendering, rid)
-    db.refresh(rendering)
+    return _serialize_rendering(rendering)
+
+
+@router.post(
+    "/birth/{birth_id}/gifts/{rendering_id}/mockup", response_model=GiftRenderingOut
+)
+def refresh_gift_mockup(
+    rendering_id: uuid.UUID,
+    background_tasks: BackgroundTasks,
+    access: BirthAccess = Depends(require_parent_access),
+    db: Session = Depends(get_db),
+) -> GiftRenderingOut:
+    """Ask the fulfillment partner to photograph this design on the product.
+
+    Deliberately explicit. The partner allows 2 mockups a minute for the whole
+    store, so they're generated once per design automatically — that's what
+    fills the gallery — and after that only when someone asks, for the design
+    they actually settled on. Returns immediately with `mockup_status`
+    pending; the client polls.
+    """
+    rendering = gifts_repo.get_rendering(
+        db, birth_id=access.birth.id, rendering_id=rendering_id
+    )
+    if rendering is None:
+        raise HTTPException(status_code=404, detail="Rendering not found")
+    if rendering.status is not GiftRenderingStatus.ready:
+        raise HTTPException(status_code=409, detail="The design isn't ready yet")
+    if rendering.mockup_status != "pending":
+        background_tasks.add_task(gifts_repo.refresh_mockup, rendering.id)
     return _serialize_rendering(rendering)
 
 

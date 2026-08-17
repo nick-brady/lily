@@ -285,16 +285,23 @@ def artwork_url(rendering: GiftRendering) -> str | None:
     return presigned_get_url(rendering.artwork_s3_key)
 
 
+# A stale mockup is still a real photograph of the product — it just shows the
+# design as it was before the last edit. Keeping it visible beats emptying the
+# gallery every time someone changes a photo; the status rides along so the UI
+# can offer to refresh it.
+_MOCKUP_SHOWABLE = ("ready", "stale")
+
+
 def mockup_url(rendering: GiftRendering) -> str | None:
-    if rendering.mockup_status != "ready" or not rendering.mockup_s3_key:
+    if rendering.mockup_status not in _MOCKUP_SHOWABLE or not rendering.mockup_s3_key:
         return None
     return presigned_get_url(rendering.mockup_s3_key)
 
 
 def mockup_extras(rendering: GiftRendering) -> list[dict]:
     """Extra angle/view mockups alongside the primary one, presigned. Empty
-    when the mockup isn't ready or the product had none."""
-    if rendering.mockup_status != "ready":
+    when there's no usable mockup or the product had none."""
+    if rendering.mockup_status not in _MOCKUP_SHOWABLE:
         return []
     return [
         {"title": extra.get("title", ""), "url": presigned_get_url(extra["s3_key"])}
@@ -404,10 +411,22 @@ def render_rendering(rendering_id: uuid.UUID) -> None:
         rendering.failure_reason = None
         db.commit()
 
-        # Then try to turn the flat artwork into a product mockup via the
-        # fulfillment partner. Best-effort: a failure here never fails the
-        # rendering — the gallery just keeps showing the flat artwork.
-        _try_generate_mockup(db, rendering)
+        # Then the product mockup — but only the first time this design has
+        # ever had one. The partner rate-limits mockups to 2 per minute for
+        # the *whole store*, so they can't be spent on every re-render: a
+        # single birth's designs would otherwise eat minutes of a budget
+        # shared by every family on the site.
+        #
+        # The first one is worth it — that's what fills the gallery with
+        # pre-made product shots from our best guess, before anyone has asked
+        # for anything. After that a mockup is generated when a human asks to
+        # see one, in the customise flow, for the design they actually settled
+        # on. Re-renders just mark the existing shot stale.
+        if should_generate_mockup(rendering):
+            _try_generate_mockup(db, rendering)
+        elif rendering.mockup_status == "ready":
+            rendering.mockup_status = "stale"
+            db.commit()
     except Exception as exc:  # never let a background task crash silently
         db.rollback()
         rendering = db.get(GiftRendering, rendering_id)
@@ -416,6 +435,19 @@ def render_rendering(rendering_id: uuid.UUID) -> None:
     finally:
         db.close()
         _release_render(rendering_id)
+
+
+def should_generate_mockup(rendering: GiftRendering) -> bool:
+    """Whether a finished render should also ask the partner for a product
+    shot — true only the first time a design has ever had one.
+
+    The partner allows 2 mockups a minute for the whole store. One birth has
+    eleven designs, so generating on every render would spend minutes of a
+    budget shared by every family on the site, on artwork nobody has asked to
+    see on a product yet. The first one earns its place: it's what fills the
+    gallery with ready-made product shots. After that it's on request.
+    """
+    return rendering.mockup_status == "none" and not rendering.mockup_s3_key
 
 
 def _try_generate_mockup(db: Session, rendering: GiftRendering) -> None:
@@ -492,6 +524,29 @@ def _try_generate_mockup(db: Session, rendering: GiftRendering) -> None:
             rendering.mockup_status = "failed"
             db.commit()
         _record_mockup_retry(rendering_id, succeeded=False)
+
+
+def refresh_mockup(rendering_id: uuid.UUID) -> None:
+    """Generate a product mockup on request — the customise flow asking to see
+    this design on the real thing.
+
+    Separate from `retry_mockup`, which only picks up failures: this one is
+    deliberate, so it regenerates a stale shot too. It's the only path that
+    spends the partner's 2-per-minute store budget after a design's first
+    render, which is what keeps that budget meaningful.
+    """
+    db = SessionLocal()
+    try:
+        rendering = db.get(GiftRendering, rendering_id)
+        if (
+            rendering is None
+            or rendering.deleted_at is not None
+            or rendering.status is not GiftRenderingStatus.ready
+        ):
+            return
+        _try_generate_mockup(db, rendering)
+    finally:
+        db.close()
 
 
 def retry_mockup(rendering_id: uuid.UUID) -> None:

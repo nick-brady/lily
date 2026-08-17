@@ -664,6 +664,9 @@ class GiftRenderingOut(BaseModel):
     photo_auto: bool = True
     photo_removed: bool = False
     photo_removable: bool = False
+    # (cx, cy, r) as fractions of the artwork, so the editor can lay a
+    # "change photo" hotspot over the photo itself.
+    photo_spot: Optional[tuple[float, float, float]] = None
 
 
 class GiftPhotoIn(BaseModel):
