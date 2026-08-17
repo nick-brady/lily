@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { api } from '../api/client';
+import Lightbox from './Lightbox';
 
 function formatPrice(cents) {
   return `$${(cents / 100).toFixed(2)}`;
@@ -466,6 +467,11 @@ function GiftDetailDialog({ rendering, onClose }) {
   const views = rendering.mockup_url
     ? [{ title: 'Front', url: rendering.mockup_url }, ...(rendering.mockup_extras || [])]
     : [];
+  // Which image is blown up, if any. The artwork is the one you actually want
+  // to read — at dialog width the clock face is a couple of hundred pixels
+  // across, which is smaller than it prints.
+  const [zoom, setZoom] = useState(null);
+
   return (
     <div
       className="fixed inset-0 z-50 bg-black/40 flex items-end sm:items-center justify-center"
@@ -491,7 +497,8 @@ function GiftDetailDialog({ rendering, onClose }) {
           <img
             src={rendering.artwork_url}
             alt={`${rendering.template_id} full design`}
-            className="w-full rounded-lg"
+            onClick={() => setZoom({ url: rendering.artwork_url, caption: 'The artwork' })}
+            className="w-full rounded-lg cursor-zoom-in"
             style={{ backgroundColor: 'var(--t-soft-bg)' }}
           />
         )}
@@ -503,7 +510,8 @@ function GiftDetailDialog({ rendering, onClose }) {
                 key={i}
                 src={v.url}
                 alt={v.title ? `${rendering.template_id} — ${v.title}` : `${rendering.template_id} view`}
-                className="w-full aspect-square object-cover rounded-lg"
+                onClick={() => setZoom({ url: v.url, caption: v.title || '' })}
+                className="w-full aspect-square object-cover rounded-lg cursor-zoom-in"
                 style={{ backgroundColor: 'var(--t-soft-bg)' }}
               />
             ))}
@@ -512,7 +520,8 @@ function GiftDetailDialog({ rendering, onClose }) {
           <img
             src={views[0].url}
             alt={`${rendering.template_id} design`}
-            className="w-full rounded-lg"
+            onClick={() => setZoom({ url: views[0].url, caption: views[0].title || '' })}
+            className="w-full rounded-lg cursor-zoom-in"
             style={{ backgroundColor: 'var(--t-soft-bg)' }}
           />
         ) : null}
@@ -526,6 +535,12 @@ function GiftDetailDialog({ rendering, onClose }) {
           Close
         </button>
       </div>
+
+      {/* Closes only itself — the design dialog stays open behind it, so you
+          can go straight from one angle to the next. */}
+      {zoom && (
+        <Lightbox url={zoom.url} caption={zoom.caption} onClose={() => setZoom(null)} />
+      )}
     </div>
   );
 }
