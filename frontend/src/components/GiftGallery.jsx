@@ -133,7 +133,6 @@ export default function GiftGallery({ birthId, isParent = true }) {
         </p>
       ) : (
         <div className="space-y-6">
-          <HeroArtwork items={items} />
           {items
             // once storage is forever there's nothing left to sell there
             .filter((item) => !(storageLifetime && item.kind === 'storage_gift'))
@@ -143,38 +142,6 @@ export default function GiftGallery({ birthId, isParent = true }) {
         </div>
       )}
     </section>
-  );
-}
-
-// The hero is the "oh wow" slot: their artwork big and flat before any
-// product framing. Wide-format pieces only — they genuinely fill the slot;
-// a portrait card floating in a wide box reads as dead space, so if no wide
-// artwork is ready there's simply no hero.
-const HERO_TEMPLATE_ORDER = ['mug_reel', 'mug_hours'];
-
-function HeroArtwork({ items }) {
-  const ready = (items || [])
-    .flatMap((item) => item.renderings || [])
-    .filter(
-      (r) =>
-        r.status === 'ready' &&
-        (r.artwork_url || r.mockup_url) &&
-        HERO_TEMPLATE_ORDER.includes(r.template_id),
-    );
-  if (ready.length === 0) return null;
-  const hero = [...ready].sort(
-    (a, b) =>
-      HERO_TEMPLATE_ORDER.indexOf(a.template_id) -
-      HERO_TEMPLATE_ORDER.indexOf(b.template_id),
-  )[0];
-  return (
-    <figure className="rounded-xl overflow-hidden">
-      <img
-        src={hero.artwork_url || hero.mockup_url}
-        alt="Keepsake artwork made from this birth's story"
-        className="w-full block"
-      />
-    </figure>
   );
 }
 
@@ -378,16 +345,20 @@ function RenderingTile({ rendering, birthId, item, familyHasAddress }) {
   const [pickerOpen, setPickerOpen] = useState(false);
   const [buyOpen, setBuyOpen] = useState(false);
   const [detailOpen, setDetailOpen] = useState(false);
-  // Prefer the product mockup (artwork on the real mug/card) when ready;
-  // otherwise show the flat artwork.
-  const src = rendering.mockup_url || rendering.artwork_url;
-  // Tapping the mockup opens a detail view with the full artwork plus any
-  // extra angle mockups the partner returned — only worth a modal when
-  // there's something beyond the one image already on the card.
+  // Lead with the artwork, not the product shot. A mug mockup renders the
+  // design an inch wide on a white cylinder — the clock face, which is the
+  // reason to want any of this, arrives as a smudge. The mockup answers
+  // "what will it be", which only matters once you've wanted the thing;
+  // it's a tap away in the detail view, with every angle.
+  const src = rendering.artwork_url || rendering.mockup_url;
+  // A modal earns itself when there's more to show than the tile already
+  // does — the product shots. With nothing but the artwork, the modal would
+  // be a box around the same image, so those go straight to full screen.
   const hasDetail = Boolean(
-    (rendering.artwork_url && rendering.mockup_url) ||
-      (rendering.mockup_extras || []).length > 0,
+    rendering.mockup_url || (rendering.mockup_extras || []).length > 0,
   );
+  const [zoomOpen, setZoomOpen] = useState(false);
+  const canOpen = hasDetail || Boolean(rendering.artwork_url);
   return (
     <div
       className="rounded-lg border overflow-hidden"
@@ -396,10 +367,13 @@ function RenderingTile({ rendering, birthId, item, familyHasAddress }) {
       {rendering.status === 'ready' && src ? (
         <button
           type="button"
-          onClick={() => hasDetail && setDetailOpen(true)}
+          onClick={() => (hasDetail ? setDetailOpen(true) : setZoomOpen(true))}
+          disabled={!canOpen}
           className="w-full block"
-          style={{ cursor: hasDetail ? 'zoom-in' : 'default' }}
-          aria-label={hasDetail ? 'See the full design and more views' : undefined}
+          style={{ cursor: canOpen ? 'zoom-in' : 'default' }}
+          aria-label={
+            hasDetail ? 'See the full design and more views' : 'See the design full screen'
+          }
         >
           <img
             src={src}
@@ -455,6 +429,10 @@ function RenderingTile({ rendering, birthId, item, familyHasAddress }) {
 
       {detailOpen && (
         <GiftDetailDialog rendering={rendering} onClose={() => setDetailOpen(false)} />
+      )}
+
+      {zoomOpen && (
+        <Lightbox url={rendering.artwork_url} onClose={() => setZoomOpen(false)} />
       )}
     </div>
   );
