@@ -1,35 +1,71 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 
 // Full-screen image view, shared by the timeline's photos and the keepsake
-// design dialog. Both had the same job — get a small image out of its box so
-// it can actually be looked at — and only one of them had an implementation.
+// designs. Takes either a single `url` or a set of `images` — a set gets
+// arrow-key navigation and on-screen chevrons, so the mug's artwork and its
+// angles are one gallery rather than four separate trips through a modal.
 //
-// `z-[60]` rather than `z-50`: the design dialog is itself a z-50 overlay, and
-// a lightbox opened from inside it has to land on top of the thing that opened
-// it. Escape closes it, which matters more here than in a dialog with a
-// visible Close button — full-screen with a dark ground gives you nothing else
-// to reach for.
-export default function Lightbox({ url, caption = '', onClose }) {
+// Every handler stops propagation. This renders *inside* the design dialog,
+// whose backdrop closes it on click — without this, dismissing the image
+// would bubble up and close the dialog underneath it, which is never what
+// someone flicking through angles meant.
+export default function Lightbox({
+  url,
+  caption = '',
+  images,
+  startIndex = 0,
+  onClose,
+}) {
+  const slides = images?.length ? images : url ? [{ url, caption }] : [];
+  const [i, setI] = useState(() => Math.min(Math.max(startIndex, 0), Math.max(slides.length - 1, 0)));
+
+  const many = slides.length > 1;
+
   useEffect(() => {
+    if (!slides.length) return undefined;
     const onKey = (e) => {
-      if (e.key === 'Escape') onClose();
+      if (e.key === 'Escape') {
+        onClose();
+      } else if (many && (e.key === 'ArrowRight' || e.key === 'ArrowLeft')) {
+        // wraps: with four angles, stopping dead at either end just makes
+        // you reverse over ground you've already seen
+        const step = e.key === 'ArrowRight' ? 1 : -1;
+        setI((n) => (n + step + slides.length) % slides.length);
+      } else {
+        return;
+      }
+      e.preventDefault();
+      e.stopPropagation();
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [onClose]);
+  }, [onClose, many, slides.length]);
 
-  if (!url) return null;
+  if (!slides.length) return null;
+  const slide = slides[Math.min(i, slides.length - 1)];
+
+  const stop = (e) => e.stopPropagation();
+  const go = (step) => (e) => {
+    e.stopPropagation();
+    setI((n) => (n + step + slides.length) % slides.length);
+  };
 
   return (
     <div
       className="fixed inset-0 bg-black/90 z-[60] flex items-center justify-center p-4"
-      onClick={onClose}
+      onClick={(e) => {
+        e.stopPropagation();
+        onClose();
+      }}
       role="dialog"
       aria-modal="true"
     >
       <button
         type="button"
-        onClick={onClose}
+        onClick={(e) => {
+          e.stopPropagation();
+          onClose();
+        }}
         aria-label="Close"
         className="absolute top-4 right-4 p-2 text-white/80 hover:text-white"
       >
@@ -37,15 +73,45 @@ export default function Lightbox({ url, caption = '', onClose }) {
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
         </svg>
       </button>
+
+      {/* Arrow keys are the fast path, but a phone hasn't got any. */}
+      {many && (
+        <>
+          <button
+            type="button"
+            onClick={go(-1)}
+            aria-label="Previous image"
+            className="absolute left-2 sm:left-4 p-3 text-white/70 hover:text-white"
+          >
+            <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+            </svg>
+          </button>
+          <button
+            type="button"
+            onClick={go(1)}
+            aria-label="Next image"
+            className="absolute right-2 sm:right-4 p-3 text-white/70 hover:text-white"
+          >
+            <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+            </svg>
+          </button>
+        </>
+      )}
+
       <img
-        src={url}
-        alt={caption || 'Full size'}
+        src={slide.url}
+        alt={slide.caption || 'Full size'}
         className="max-w-full max-h-[90vh] object-contain"
-        onClick={(e) => e.stopPropagation()}
+        onClick={stop}
       />
-      {caption && (
+
+      {(slide.caption || many) && (
         <p className="absolute bottom-4 left-0 right-0 text-center text-white/80 text-sm px-4">
-          {caption}
+          {slide.caption}
+          {slide.caption && many ? ' · ' : ''}
+          {many ? `${i + 1} / ${slides.length}` : ''}
         </p>
       )}
     </div>

@@ -133,7 +133,6 @@ export default function GiftGallery({ birthId, isParent = true }) {
         </p>
       ) : (
         <div className="space-y-6">
-          <HeroArtwork items={items} />
           {items
             // once storage is forever there's nothing left to sell there
             .filter((item) => !(storageLifetime && item.kind === 'storage_gift'))
@@ -143,38 +142,6 @@ export default function GiftGallery({ birthId, isParent = true }) {
         </div>
       )}
     </section>
-  );
-}
-
-// The hero is the "oh wow" slot: their artwork big and flat before any
-// product framing. Wide-format pieces only — they genuinely fill the slot;
-// a portrait card floating in a wide box reads as dead space, so if no wide
-// artwork is ready there's simply no hero.
-const HERO_TEMPLATE_ORDER = ['mug_reel', 'mug_hours'];
-
-function HeroArtwork({ items }) {
-  const ready = (items || [])
-    .flatMap((item) => item.renderings || [])
-    .filter(
-      (r) =>
-        r.status === 'ready' &&
-        (r.artwork_url || r.mockup_url) &&
-        HERO_TEMPLATE_ORDER.includes(r.template_id),
-    );
-  if (ready.length === 0) return null;
-  const hero = [...ready].sort(
-    (a, b) =>
-      HERO_TEMPLATE_ORDER.indexOf(a.template_id) -
-      HERO_TEMPLATE_ORDER.indexOf(b.template_id),
-  )[0];
-  return (
-    <figure className="rounded-xl overflow-hidden">
-      <img
-        src={hero.artwork_url || hero.mockup_url}
-        alt="Keepsake artwork made from this birth's story"
-        className="w-full block"
-      />
-    </figure>
   );
 }
 
@@ -377,37 +344,76 @@ function StorageGiftCheckoutSheet({ birthId, item, onClose }) {
 function RenderingTile({ rendering, birthId, item, familyHasAddress }) {
   const [pickerOpen, setPickerOpen] = useState(false);
   const [buyOpen, setBuyOpen] = useState(false);
-  const [detailOpen, setDetailOpen] = useState(false);
-  // Prefer the product mockup (artwork on the real mug/card) when ready;
-  // otherwise show the flat artwork.
-  const src = rendering.mockup_url || rendering.artwork_url;
-  // Tapping the mockup opens a detail view with the full artwork plus any
-  // extra angle mockups the partner returned — only worth a modal when
-  // there's something beyond the one image already on the card.
-  const hasDetail = Boolean(
-    (rendering.artwork_url && rendering.mockup_url) ||
-      (rendering.mockup_extras || []).length > 0,
-  );
+  // Index into the gallery below, or null. One set of images, one viewer.
+  const [zoom, setZoom] = useState(null);
+
+  // The artwork leads: a mug mockup renders the design an inch wide on a
+  // white cylinder, and the clock face — the reason to want any of this —
+  // arrives as a smudge. But the product shots still have to be *visible*,
+  // not a tap away: "what will it be" is the second question everyone asks,
+  // and answering it shouldn't cost a click. So the angles sit under the
+  // artwork as thumbnails, and any of them opens the whole set full screen.
+  const angles = rendering.mockup_url
+    ? [
+        { url: rendering.mockup_url, caption: 'Front' },
+        ...(rendering.mockup_extras || []).map((v) => ({
+          url: v.url,
+          caption: v.title || '',
+        })),
+      ]
+    : [];
+  const gallery = [
+    ...(rendering.artwork_url
+      ? [{ url: rendering.artwork_url, caption: 'The artwork' }]
+      : []),
+    ...angles,
+  ];
+  const hero = rendering.artwork_url || rendering.mockup_url;
+
   return (
     <div
       className="rounded-lg border overflow-hidden"
       style={{ borderColor: 'var(--t-soft-ring)' }}
     >
-      {rendering.status === 'ready' && src ? (
-        <button
-          type="button"
-          onClick={() => hasDetail && setDetailOpen(true)}
-          className="w-full block"
-          style={{ cursor: hasDetail ? 'zoom-in' : 'default' }}
-          aria-label={hasDetail ? 'See the full design and more views' : undefined}
-        >
-          <img
-            src={src}
-            alt={`${rendering.template_id} design`}
+      {rendering.status === 'ready' && hero ? (
+        <>
+          <button
+            type="button"
+            onClick={() => setZoom(0)}
             className="w-full block"
-            style={{ backgroundColor: 'var(--t-soft-bg)' }}
-          />
-        </button>
+            style={{ cursor: 'zoom-in' }}
+            aria-label="See the design full screen"
+          >
+            <img
+              src={hero}
+              alt={`${rendering.template_id} design`}
+              className="w-full block"
+              style={{ backgroundColor: 'var(--t-soft-bg)' }}
+            />
+          </button>
+
+          {angles.length > 0 && rendering.artwork_url && (
+            <div className="flex gap-1.5 p-1.5">
+              {angles.map((a, i) => (
+                <button
+                  key={a.url}
+                  type="button"
+                  onClick={() => setZoom(i + 1)}
+                  className="flex-1 block rounded overflow-hidden"
+                  style={{ cursor: 'zoom-in' }}
+                  aria-label={a.caption ? `See ${a.caption} full screen` : 'See this view full screen'}
+                >
+                  <img
+                    src={a.url}
+                    alt={a.caption || `${rendering.template_id} view`}
+                    className="w-full aspect-square object-cover block"
+                    style={{ backgroundColor: 'var(--t-soft-bg)' }}
+                  />
+                </button>
+              ))}
+            </div>
+          )}
+        </>
       ) : (
         <div className="aspect-[2/1] flex items-center justify-center text-xs t-muted gap-2">
           <span className="w-3 h-3 rounded-full animate-pulse" style={{ backgroundColor: 'var(--t-dot)' }} />
@@ -453,93 +459,8 @@ function RenderingTile({ rendering, birthId, item, familyHasAddress }) {
         />
       )}
 
-      {detailOpen && (
-        <GiftDetailDialog rendering={rendering} onClose={() => setDetailOpen(false)} />
-      )}
-    </div>
-  );
-}
-
-// The full flat artwork (so you can actually read the design), plus the
-// product mockup and any extra angle shots the partner returned — as a
-// small tile gallery underneath.
-function GiftDetailDialog({ rendering, onClose }) {
-  const views = rendering.mockup_url
-    ? [{ title: 'Front', url: rendering.mockup_url }, ...(rendering.mockup_extras || [])]
-    : [];
-  // Which image is blown up, if any. The artwork is the one you actually want
-  // to read — at dialog width the clock face is a couple of hundred pixels
-  // across, which is smaller than it prints.
-  const [zoom, setZoom] = useState(null);
-
-  return (
-    <div
-      className="fixed inset-0 z-50 bg-black/40 flex items-end sm:items-center justify-center"
-      onClick={onClose}
-    >
-      <div
-        className="animate-slide-up w-full sm:max-w-2xl bg-white dark:bg-gray-900
-                   rounded-t-2xl sm:rounded-2xl shadow-xl p-6 space-y-5 max-h-[90vh] overflow-y-auto"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="text-center">
-          <h2 className="text-lg font-semibold text-gray-800 dark:text-white">
-            The full design
-          </h2>
-          <p className="text-sm t-muted mt-1">
-            {views.length > 1
-              ? 'The artwork, and the mug from every angle.'
-              : 'The artwork this design is printed from.'}
-          </p>
-        </div>
-
-        {rendering.artwork_url && (
-          <img
-            src={rendering.artwork_url}
-            alt={`${rendering.template_id} full design`}
-            onClick={() => setZoom({ url: rendering.artwork_url, caption: 'The artwork' })}
-            className="w-full rounded-lg cursor-zoom-in"
-            style={{ backgroundColor: 'var(--t-soft-bg)' }}
-          />
-        )}
-
-        {views.length > 1 ? (
-          <div className="grid grid-cols-3 gap-3">
-            {views.map((v, i) => (
-              <img
-                key={i}
-                src={v.url}
-                alt={v.title ? `${rendering.template_id} — ${v.title}` : `${rendering.template_id} view`}
-                onClick={() => setZoom({ url: v.url, caption: v.title || '' })}
-                className="w-full aspect-square object-cover rounded-lg cursor-zoom-in"
-                style={{ backgroundColor: 'var(--t-soft-bg)' }}
-              />
-            ))}
-          </div>
-        ) : views.length === 1 && !rendering.artwork_url ? (
-          <img
-            src={views[0].url}
-            alt={`${rendering.template_id} design`}
-            onClick={() => setZoom({ url: views[0].url, caption: views[0].title || '' })}
-            className="w-full rounded-lg cursor-zoom-in"
-            style={{ backgroundColor: 'var(--t-soft-bg)' }}
-          />
-        ) : null}
-
-        <button
-          type="button"
-          onClick={onClose}
-          className="w-full py-3 rounded-xl text-sm font-medium text-gray-600 dark:text-gray-300
-                     bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors"
-        >
-          Close
-        </button>
-      </div>
-
-      {/* Closes only itself — the design dialog stays open behind it, so you
-          can go straight from one angle to the next. */}
-      {zoom && (
-        <Lightbox url={zoom.url} caption={zoom.caption} onClose={() => setZoom(null)} />
+      {zoom !== null && gallery.length > 0 && (
+        <Lightbox images={gallery} startIndex={zoom} onClose={() => setZoom(null)} />
       )}
     </div>
   );
