@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { api } from '../api/client';
 import Lightbox from './Lightbox';
+import PhotoPickerSheet from './PhotoPickerSheet';
 
 function formatPrice(cents) {
   return `$${(cents / 100).toFixed(2)}`;
@@ -137,7 +138,13 @@ export default function GiftGallery({ birthId, isParent = true }) {
             // once storage is forever there's nothing left to sell there
             .filter((item) => !(storageLifetime && item.kind === 'storage_gift'))
             .map((item) => (
-              <GiftItemCard key={item.id} item={item} birthId={birthId} familyHasAddress={familyHasAddress} />
+              <GiftItemCard
+                key={item.id}
+                item={item}
+                birthId={birthId}
+                familyHasAddress={familyHasAddress}
+                onPhotoChanged={load}
+              />
           ))}
         </div>
       )}
@@ -160,7 +167,7 @@ const DESIGN_ORDER = [
   'card_welcome',
 ];
 
-function GiftItemCard({ item, birthId, familyHasAddress }) {
+function GiftItemCard({ item, birthId, familyHasAddress, onPhotoChanged }) {
   const [showAll, setShowAll] = useState(false);
   const designRank = (r) => {
     const i = DESIGN_ORDER.indexOf(r.template_id);
@@ -195,7 +202,14 @@ function GiftItemCard({ item, birthId, familyHasAddress }) {
         <>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             {visible.map((r) => (
-              <RenderingTile key={r.id} rendering={r} birthId={birthId} item={item} familyHasAddress={familyHasAddress} />
+              <RenderingTile
+                key={r.id}
+                rendering={r}
+                birthId={birthId}
+                item={item}
+                familyHasAddress={familyHasAddress}
+                onPhotoChanged={onPhotoChanged}
+              />
             ))}
           </div>
           {usable.length > VISIBLE_DESIGNS && !showAll && (
@@ -341,11 +355,12 @@ function StorageGiftCheckoutSheet({ birthId, item, onClose }) {
   );
 }
 
-function RenderingTile({ rendering, birthId, item, familyHasAddress }) {
+function RenderingTile({ rendering, birthId, item, familyHasAddress, onPhotoChanged }) {
   const [pickerOpen, setPickerOpen] = useState(false);
   const [buyOpen, setBuyOpen] = useState(false);
   // Index into the gallery below, or null. One set of images, one viewer.
   const [zoom, setZoom] = useState(null);
+  const [photoOpen, setPhotoOpen] = useState(false);
 
   // The artwork leads: a mug mockup renders the design an inch wide on a
   // white cylinder, and the clock face — the reason to want any of this —
@@ -431,6 +446,17 @@ function RenderingTile({ rendering, birthId, item, familyHasAddress }) {
         </button>
       )}
 
+      {/* Only designs that actually carry a photo offer to change it. */}
+      {rendering.status === 'ready' && rendering.has_photo && (
+        <button
+          type="button"
+          onClick={() => setPhotoOpen(true)}
+          className="w-full px-3 py-2 text-xs t-muted hover:t-ink text-left transition-colors"
+        >
+          {rendering.photo_removed ? 'Add a photo' : 'Change image'} →
+        </button>
+      )}
+
       {rendering.status === 'ready' && (
         <button
           type="button"
@@ -456,6 +482,15 @@ function RenderingTile({ rendering, birthId, item, familyHasAddress }) {
           birthId={birthId}
           rendering={rendering}
           onClose={() => setPickerOpen(false)}
+        />
+      )}
+
+      {photoOpen && (
+        <PhotoPickerSheet
+          birthId={birthId}
+          rendering={rendering}
+          onClose={() => setPhotoOpen(false)}
+          onChanged={onPhotoChanged}
         />
       )}
 

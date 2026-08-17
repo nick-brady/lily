@@ -591,6 +591,38 @@ export const api = {
     return jsonOrThrow(res);
   },
 
+  async listGiftPhotos(birthId) {
+    const res = await fetch(`${API_URL}/birth/${birthId}/gifts/photos`, {});
+    return jsonOrThrow(res);
+  },
+
+  async uploadGiftPhoto(birthId, file) {
+    const body = new FormData();
+    body.append('file', file);
+    const res = await fetch(`${API_URL}/birth/${birthId}/gifts/photos`, {
+      method: 'POST',
+      body,
+    });
+    return jsonOrThrow(res);
+  },
+
+  // `choice` is { mediaId } to pick one, { removed: true } to take it off,
+  // or {} to hand the decision back to the auto-pick.
+  async setGiftPhoto(birthId, renderingId, choice = {}) {
+    const res = await fetch(
+      `${API_URL}/birth/${birthId}/gifts/${renderingId}/photo`,
+      {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          media_id: choice.mediaId ?? null,
+          removed: Boolean(choice.removed),
+        }),
+      },
+    );
+    return jsonOrThrow(res);
+  },
+
   mediaUrl(mediaId) {
     return `${API_URL}/media/${mediaId}`;
   },

@@ -26,7 +26,12 @@ class GiftTemplate:
     width: int
     height: int
     dpi: int
-    photo: bool  # embed the single auto-selected hero photo
+    photo: bool  # this design shows a photo of the baby
+    # Whether it can render *without* one. `card_welcome` can't — it's a
+    # full-bleed hero in a keyline mat, so removing the photo leaves an empty
+    # framed box. Designs where the photo is an accent render fine without it,
+    # and only those offer "remove" in the picker.
+    photo_required: bool = False
     scene: str | None = None  # richer data scene: "hours" | "story" | None
     # center of the labor clock, for scene == "hours" (defaults to canvas center)
     clock_cx: float | None = None
@@ -35,7 +40,8 @@ class GiftTemplate:
 
 TEMPLATES: dict[str, GiftTemplate] = {
     # ── mugs — wrap print area ≈ 2475 × 1155 px at 300 DPI ────────────────
-    # The labor clock on one face, name and one quiet data line on the other.
+    # The labor clock on one face, name, one quiet data line and her picture
+    # on the other. The right third of the wrap was empty.
     "mug_hours": GiftTemplate(
         template_id="mug_hours",
         product_kind="mug",
@@ -43,7 +49,7 @@ TEMPLATES: dict[str, GiftTemplate] = {
         width=2475,
         height=1155,
         dpi=300,
-        photo=False,
+        photo=True,
         scene="hours",
         clock_cx=640,
         clock_cy=577,
@@ -155,6 +161,8 @@ TEMPLATES: dict[str, GiftTemplate] = {
         height=2100,
         dpi=300,
         photo=True,
+        # The photo *is* this design — without one it's an empty keyline mat.
+        photo_required=True,
     ),
     # The story of the day: a thread rising from "where it began" through
     # Polaroid moments to a star, with the family's own words beneath.

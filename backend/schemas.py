@@ -655,6 +655,34 @@ class GiftRenderingOut(BaseModel):
     mockup_status: str = "none"
     mockup_extras: list[MockupExtraOut] = []
     is_visible_to_viewers: bool
+    # This design's own photo. `photo_media_id` is the override, `photo_auto`
+    # says nobody has chosen yet (so what's shown is our guess), and
+    # `photo_removable` is false where the photo *is* the design and taking it
+    # off would leave an empty frame.
+    has_photo: bool = False
+    photo_media_id: Optional[uuid.UUID] = None
+    photo_auto: bool = True
+    photo_removed: bool = False
+    photo_removable: bool = False
+
+
+class GiftPhotoIn(BaseModel):
+    """Pick this design's photo. Exactly one of these is meaningful:
+    a media id to use it, `removed` to take the photo off, or neither to hand
+    the choice back to the auto-pick."""
+
+    media_id: Optional[uuid.UUID] = None
+    removed: bool = False
+
+
+class GiftPhotoOptionOut(BaseModel):
+    """A photo the parent could put on a keepsake."""
+
+    # No URL: the client already builds one with `api.mediaUrl(id)`, the same
+    # way the timeline renders its photos. One place that knows the shape.
+    media_id: uuid.UUID
+    occurred_at: Optional[datetime] = None
+    caption: Optional[str] = None
 
 
 class GiftItemOut(BaseModel):

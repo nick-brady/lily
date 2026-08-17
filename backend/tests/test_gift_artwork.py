@@ -354,3 +354,96 @@ def test_hours_clock_handles_missing_times():
     ]
     assert clock["clock_born_mark"] is None
     assert clock["clock_marks"] == []
+
+
+# ── per-design photos ────────────────────────────────────────────────────
+# The photo on a keepsake is chosen per design, Shutterfly-style: you're
+# editing this mug, not every keepsake at once. Three states, because "guess
+# for me, but let me override" needs all three.
+
+
+class _FakeRendering:
+    def __init__(self, media_id=None, removed=False):
+        self.photo_media_id = media_id
+        self.photo_removed = removed
+
+
+class _FakeAsset:
+    def __init__(self, ident):
+        self.id = ident
+        self.archived_at = None
+
+
+class _FakeDB:
+    """Just enough session for `_photo_for` — it only ever does a `get`."""
+
+    def __init__(self, assets=None):
+        self._assets = assets or {}
+
+    def get(self, _model, ident):
+        return self._assets.get(ident)
+
+
+def test_photo_choice_falls_back_to_the_guess(monkeypatch):
+    """Nothing chosen means we still show something — a keepsake shouldn't be
+    blank while it waits for someone to have an opinion."""
+    guess = _FakeAsset("guessed")
+    monkeypatch.setattr(gift_artwork, "_select_hero_photo", lambda db, birth: guess)
+    template = TEMPLATES["mug_hours"]
+
+    assert gift_artwork._photo_for(_FakeDB(), None, template, None) is guess
+    assert (
+        gift_artwork._photo_for(_FakeDB(), None, template, _FakeRendering()) is guess
+    )
+
+
+def test_photo_choice_uses_the_chosen_photo(monkeypatch):
+    guess = _FakeAsset("guessed")
+    chosen = _FakeAsset("chosen")
+    monkeypatch.setattr(gift_artwork, "_select_hero_photo", lambda db, birth: guess)
+    db = _FakeDB({"chosen": chosen})
+
+    got = gift_artwork._photo_for(
+        db, None, TEMPLATES["mug_hours"], _FakeRendering(media_id="chosen")
+    )
+    assert got is chosen
+
+
+def test_photo_choice_survives_a_deleted_photo(monkeypatch):
+    """A photo removed from the birth after it was chosen must not break the
+    render — fall back to the guess rather than failing."""
+    guess = _FakeAsset("guessed")
+    monkeypatch.setattr(gift_artwork, "_select_hero_photo", lambda db, birth: guess)
+
+    got = gift_artwork._photo_for(
+        _FakeDB(), None, TEMPLATES["mug_hours"], _FakeRendering(media_id="gone")
+    )
+    assert got is guess
+
+
+def test_removal_is_honoured_only_where_the_design_survives_it(monkeypatch):
+    """`card_welcome` is a full-bleed hero in a keyline mat — without a photo
+    it's an empty frame, so a removal flag there falls back to the guess
+    instead of rendering nothing."""
+    guess = _FakeAsset("guessed")
+    monkeypatch.setattr(gift_artwork, "_select_hero_photo", lambda db, birth: guess)
+    removed = _FakeRendering(removed=True)
+
+    assert TEMPLATES["mug_hours"].photo_required is False
+    assert gift_artwork._photo_for(_FakeDB(), None, TEMPLATES["mug_hours"], removed) is None
+
+    assert TEMPLATES["card_welcome"].photo_required is True
+    assert (
+        gift_artwork._photo_for(_FakeDB(), None, TEMPLATES["card_welcome"], removed)
+        is guess
+    )
+
+
+@pytest.mark.parametrize("template_id", ["mug_hours", "card_hours_photo"])
+def test_photo_optional_templates_render_without_one(template_id):
+    """The designs that offer "remove" have to lay out around the absence."""
+    template = TEMPLATES[template_id]
+    ctx = _context(template)
+    ctx["photo_data_uri"] = None
+    png = gift_artwork.render_context(template, ctx)
+    assert png[:8] == b"\x89PNG\r\n\x1a\n"

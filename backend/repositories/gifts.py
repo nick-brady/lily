@@ -387,7 +387,7 @@ def render_rendering(rendering_id: uuid.UUID) -> None:
             _fail(db, rendering, "missing-birth-or-template")
             return
         try:
-            png, metadata = gift_artwork.render(birth, template, db)
+            png, metadata = gift_artwork.render(birth, template, db, rendering)
         except gift_artwork.ArtworkError as exc:
             _fail(db, rendering, str(exc))
             return

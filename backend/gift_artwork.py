@@ -72,9 +72,14 @@ _env.globals["sparkle"] = lambda cx, cy, r: _sparkle_path(cx, cy, r)
 
 
 def render(
-    birth: Birth, template: GiftTemplate, db: Session
+    birth: Birth, template: GiftTemplate, db: Session, rendering=None
 ) -> tuple[bytes, dict]:
-    """Render `template` for `birth`. Returns (png_bytes, rendering_metadata)."""
+    """Render `template` for `birth`. Returns (png_bytes, rendering_metadata).
+
+    `rendering` carries this design's own photo choice. It's optional so the
+    preview script and the tests can render a template without a row behind
+    it; without one the photo is simply the auto-pick.
+    """
     events = list(
         db.scalars(
             select(TimelineEvent).where(
@@ -86,9 +91,11 @@ def render(
     stats = gift_stats.compute(birth, events)
     palette = gift_themes.for_theme(birth.theme)
 
-    photo = _select_hero_photo(db, birth) if template.photo else None
+    photo = _photo_for(db, birth, template, rendering) if template.photo else None
     photo_data_uri = _photo_data_uri(photo) if photo else None
-    if template.photo and photo_data_uri is None:
+    # Only designs that can't stand without a photo refuse to render. The rest
+    # lay out around its absence, which is what makes "remove" possible.
+    if template.photo_required and photo_data_uri is None:
         raise ArtworkError("missing-photo")
 
     when = _localize(birth.child_dob or birth.birth_completed_at)
@@ -177,6 +184,29 @@ def render_context(template: GiftTemplate, context: dict) -> bytes:
 
 
 # ── photo selection ──────────────────────────────────────────────────────
+
+
+def _photo_for(
+    db: Session, birth: Birth, template: GiftTemplate, rendering
+) -> MediaAsset | None:
+    """This design's photo. Three states: a chosen one, deliberately none, or
+    — the default — whatever `_select_hero_photo` guesses, so a keepsake
+    always shows something before anyone has made a decision.
+
+    A design that can't render photoless ignores a removal: `card_welcome`
+    without its hero is an empty frame, so the picker doesn't offer removal
+    there and a stale flag falls back to the guess rather than failing.
+    """
+    if rendering is not None:
+        if rendering.photo_removed and not template.photo_required:
+            return None
+        chosen_id = rendering.photo_media_id
+        if chosen_id is not None:
+            chosen = db.get(MediaAsset, chosen_id)
+            # A photo deleted since it was chosen shouldn't break the render.
+            if chosen is not None and chosen.archived_at is None:
+                return chosen
+    return _select_hero_photo(db, birth)
 
 
 def _select_hero_photo(db: Session, birth: Birth) -> MediaAsset | None:
