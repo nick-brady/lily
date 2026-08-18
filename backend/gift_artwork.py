@@ -77,6 +77,7 @@ def render(
     db: Session,
     rendering=None,
     photo_max_px: int | None = None,
+    output_width: int | None = None,
 ) -> tuple[bytes, dict]:
     """Render `template` for `birth`. Returns (png_bytes, rendering_metadata).
 
@@ -168,7 +169,7 @@ def render(
     elif template.scene == "pool":
         context.update(_build_pool_scene(db, birth, template))
 
-    png = render_context(template, context)
+    png = render_context(template, context, output_width=output_width)
 
     metadata = {
         "template_id": template.template_id,
@@ -184,16 +185,27 @@ def render(
     return png, metadata
 
 
-def render_context(template: GiftTemplate, context: dict) -> bytes:
+def render_context(
+    template: GiftTemplate, context: dict, output_width: int | None = None
+) -> bytes:
     """Render a template's SVG with `context` and rasterize to PNG at the
     template's exact pixels. Split out from `render` so the template +
-    rasterization path is testable without a DB or S3."""
+    rasterization path is testable without a DB or S3.
+
+    `output_width` rasterizes smaller for previews. It must not be done by
+    shrinking the template: every coordinate in these SVGs is absolute at full
+    size — the clock sits at cx=640 with a 460 radius, the name at x=1360 — so
+    a smaller canvas doesn't scale the drawing, it crops it. cairosvg scales
+    the finished picture instead, which is what "smaller" should mean.
+    """
     svg = _env.get_template(template.svg).render(**context)
+    width = output_width or template.width
+    height = max(1, round(template.height * (width / template.width)))
     try:
         return cairosvg.svg2png(
             bytestring=svg.encode("utf-8"),
-            output_width=template.width,
-            output_height=template.height,
+            output_width=width,
+            output_height=height,
         )
     except Exception as exc:  # cairosvg raises a grab-bag of errors
         raise ArtworkError(f"rasterize: {exc}") from exc

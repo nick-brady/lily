@@ -474,3 +474,29 @@ def test_mockups_are_generated_once_then_only_on_request():
 
     # a row that claims "none" but already has a file is not a first render
     assert should_generate_mockup(_FakeRow("none", "k.png")) is False
+
+
+def test_preview_scales_the_picture_not_the_canvas():
+    """A preview must show the whole design, smaller — not a corner of it.
+
+    Every coordinate in these SVGs is absolute at full size: the clock sits at
+    cx=640 with a 460 radius, the name at x=1360. Shrinking the template's
+    width/height shrinks the *viewBox*, which crops rather than scales, so
+    previews have to go through cairosvg's output size instead.
+    """
+    from PIL import Image
+    import io
+
+    template = TEMPLATES["mug_hours"]
+    ctx = _context(template)
+    ctx["photo_data_uri"] = None
+
+    full = Image.open(io.BytesIO(gift_artwork.render_context(template, ctx)))
+    small = Image.open(
+        io.BytesIO(gift_artwork.render_context(template, ctx, output_width=900))
+    )
+
+    assert full.size == (template.width, template.height)
+    assert small.size[0] == 900
+    # same picture, fewer pixels — the aspect ratio is the tell for a crop
+    assert abs(small.size[0] / small.size[1] - full.size[0] / full.size[1]) < 0.01

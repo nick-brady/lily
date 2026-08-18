@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import uuid
 
-from dataclasses import replace
 from pathlib import Path
 
 from fastapi import (
@@ -434,17 +433,14 @@ def preview_gift_design(
     """
     rendering, template = _load_editable(db, access, rendering_id)
     _check_photo(db, access, payload, template)
-    scale = _PREVIEW_W / template.width
-    small = replace(
-        template, width=_PREVIEW_W, height=max(1, round(template.height * scale))
-    )
     try:
         png, _meta = gift_artwork.render(
             access.birth,
-            small,
+            template,
             db,
             _Draft(rendering, payload),
             photo_max_px=_PREVIEW_PHOTO_PX,
+            output_width=_PREVIEW_W,
         )
     except gift_artwork.ArtworkError as exc:
         raise HTTPException(status_code=422, detail=str(exc))
