@@ -46,6 +46,7 @@ export default function GiftWizard({
   const [previewUrl, setPreviewUrl] = useState(null);
   const [previewing, setPreviewing] = useState(false);
   const [photos, setPhotos] = useState(null);
+  const [photosError, setPhotosError] = useState('');
   const [saving, setSaving] = useState(false);
   const [mockupBusy, setMockupBusy] = useState(false);
   const [error, setError] = useState('');
@@ -67,7 +68,19 @@ export default function GiftWizard({
   const anglesBehind = dirty || rendering.mockup_status === 'stale';
 
   useEffect(() => {
-    api.listGiftPhotos(birthId).then(setPhotos).catch(() => setPhotos([]));
+    // Don't swallow this. An empty grid and "no photos yet" is a claim about
+    // the family's story, and getting it wrong because a request failed is
+    // worse than saying the request failed.
+    api
+      .listGiftPhotos(birthId)
+      .then((rows) => {
+        setPhotos(rows);
+        setPhotosError('');
+      })
+      .catch((err) => {
+        setPhotos([]);
+        setPhotosError(err.message || 'Could not load your photos');
+      });
     // Blank product photos, straight from the partner's catalogue. Choosing a
     // mug costs no mockups at all — only the one you settle on gets
     // photographed with your design on it, at the next step.
@@ -343,9 +356,13 @@ export default function GiftWizard({
                       an unlabelled grid of thumbnails reads as "some photos"
                       rather than "yours, pick one". */}
                   <p className="text-[11px] t-faint mt-0.5">
-                    {(photos || []).length > 0
-                      ? `From your story — ${photos.length} photo${photos.length === 1 ? '' : 's'}`
-                      : 'No photos yet'}
+                    {photosError
+                      ? photosError
+                      : photos === null
+                        ? 'Loading your photos…'
+                        : photos.length > 0
+                          ? `From your story — ${photos.length} photo${photos.length === 1 ? '' : 's'}`
+                          : 'No photos yet'}
                   </p>
                   <div className="mt-1.5 grid grid-cols-4 gap-1.5 max-h-56 overflow-y-auto">
                     {(photos || []).map((photo) => (
