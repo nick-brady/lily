@@ -716,6 +716,10 @@ class GiftRendering(Base):
     text_overrides: Mapped[dict] = mapped_column(
         JSONB, nullable=False, server_default=sa.text("'{}'::jsonb")
     )
+    # Which product in the shortlist this design is for (e.g. a 15oz black
+    # mug). NULL means the default for its kind — every rendering that existed
+    # before people could choose.
+    product_key: Mapped[str | None] = mapped_column(sa.Text, nullable=True)
     is_visible_to_viewers: Mapped[bool] = mapped_column(
         sa.Boolean, nullable=False, server_default=sa.text("true")
     )

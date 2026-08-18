@@ -290,7 +290,12 @@ def submit_shipment(shipment_id: uuid.UUID) -> None:
         if shipment.address is None:
             fail("missing address")
             return
-        product = fulfillment_products.default_for_product_kind(item.product_kind)
+        # What the buyer actually picked in the editor. Before this the order
+        # always took the kind's default, so someone could approve a mockup of
+        # a black 15oz mug and be shipped a white 11oz.
+        product = fulfillment_products.for_rendering(
+            getattr(rendering, "product_key", None), item.product_kind
+        )
         if product is None:
             fail(f"no fulfillment product mapped for {item.product_kind}")
             return

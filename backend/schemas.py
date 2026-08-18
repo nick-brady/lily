@@ -670,6 +670,7 @@ class GiftRenderingOut(BaseModel):
     # Slots this design lets a parent edit, and what they currently say.
     editable_text: list[str] = []
     text_overrides: dict[str, str] = {}
+    product_key: Optional[str] = None
 
 
 class GiftDesignIn(BaseModel):
@@ -684,6 +685,7 @@ class GiftDesignIn(BaseModel):
     media_id: Optional[uuid.UUID] = None
     removed: bool = False
     text: dict[str, str] = Field(default_factory=dict)
+    product_key: Optional[str] = None
 
 
 class GiftPhotoOptionOut(BaseModel):
@@ -740,6 +742,9 @@ class ProductMockupOut(BaseModel):
     display_name: str
     status: str = "none"
     mockup_url: Optional[str] = None
+    # The blank product photo, so the chooser costs no mockups at all.
+    blank_image_url: str = ""
+    surcharge_cents: int = 0
 
 
 class RenderingProductsOut(BaseModel):

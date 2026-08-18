@@ -1,11 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { api } from '../api/client';
+import { formatPrice } from '../utils/money';
 import Lightbox from './Lightbox';
 import GiftWizard from './GiftWizard';
-
-function formatPrice(cents) {
-  return `$${(cents / 100).toFixed(2)}`;
-}
 
 function formatDate(timestamp) {
   return new Date(timestamp).toLocaleDateString([], { dateStyle: 'long' });
@@ -348,7 +345,6 @@ function StorageGiftCheckoutSheet({ birthId, item, onClose }) {
 }
 
 function RenderingTile({ rendering, birthId, item, familyHasAddress, onPhotoChanged }) {
-  const [pickerOpen, setPickerOpen] = useState(false);
   // Index into the gallery below, or null. One set of images, one viewer.
   const [zoom, setZoom] = useState(null);
   // null, or the step to open the wizard at. The tile has two ways in: the
@@ -440,24 +436,6 @@ function RenderingTile({ rendering, birthId, item, familyHasAddress, onPhotoChan
         </button>
       )}
 
-      {rendering.status === 'ready' && (
-        <button
-          type="button"
-          onClick={() => setPickerOpen(true)}
-          className="w-full px-3 py-2 text-xs t-muted hover:t-ink text-left transition-colors"
-        >
-          See this design on another product →
-        </button>
-      )}
-
-      {pickerOpen && (
-        <ProductPickerDialog
-          birthId={birthId}
-          rendering={rendering}
-          onClose={() => setPickerOpen(false)}
-        />
-      )}
-
       {wizardAt !== null && (
         <GiftWizard
           birthId={birthId}
@@ -482,113 +460,6 @@ function RenderingTile({ rendering, birthId, item, familyHasAddress, onPhotoChan
       {zoom !== null && gallery.length > 0 && (
         <Lightbox images={gallery} startIndex={zoom} onClose={() => setZoom(null)} />
       )}
-    </div>
-  );
-}
-
-function ProductPickerDialog({ birthId, rendering, onClose }) {
-  const [products, setProducts] = useState(null);
-  const [error, setError] = useState('');
-  const pollRef = useRef(null);
-
-  const load = useCallback(async () => {
-    try {
-      const data = await api.listRenderingProducts(birthId, rendering.id);
-      setProducts(data.products);
-      setError('');
-      return data.products;
-    } catch (err) {
-      setError(err.message || 'Could not load products');
-      return null;
-    }
-  }, [birthId, rendering.id]);
-
-  useEffect(() => {
-    load();
-    return () => clearTimeout(pollRef.current);
-  }, [load]);
-
-  // Poll while any requested mockup is still generating.
-  useEffect(() => {
-    const pending = (products || []).some((p) => p.status === 'pending');
-    if (!pending) return undefined;
-    pollRef.current = setTimeout(load, 2500);
-    return () => clearTimeout(pollRef.current);
-  }, [products, load]);
-
-  const requestMockup = async (productKey) => {
-    // Optimistically flip to pending so the tile shows the designing state.
-    setProducts((prev) =>
-      (prev || []).map((p) =>
-        p.product_key === productKey ? { ...p, status: 'pending' } : p,
-      ),
-    );
-    try {
-      const updated = await api.requestRenderingProductMockup(
-        birthId,
-        rendering.id,
-        productKey,
-      );
-      setProducts((prev) =>
-        (prev || []).map((p) => (p.product_key === productKey ? updated : p)),
-      );
-    } catch (err) {
-      setError(err.message || 'Could not start the preview');
-    }
-  };
-
-  return (
-    <div
-      className="fixed inset-0 z-50 bg-black/40 flex items-end sm:items-center justify-center"
-      onClick={onClose}
-    >
-      <div
-        className="animate-slide-up w-full sm:max-w-lg bg-white dark:bg-gray-900
-                   rounded-t-2xl sm:rounded-2xl shadow-xl p-5 space-y-4 max-h-[85vh] overflow-y-auto"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="text-center">
-          <h2 className="text-base font-semibold text-gray-800 dark:text-white">
-            Put this design on another product
-          </h2>
-          <p className="text-xs t-muted mt-1">
-            Tap a product to preview this design on it.
-          </p>
-        </div>
-
-        {error && (
-          <div className="p-3 rounded-lg bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-300 text-sm">
-            {error}
-          </div>
-        )}
-
-        {products === null ? (
-          <p className="text-sm t-muted text-center py-6">Loading products…</p>
-        ) : products.length === 0 ? (
-          <p className="text-sm t-muted text-center py-6">
-            No other products available for this design yet.
-          </p>
-        ) : (
-          <div className="grid grid-cols-2 gap-3">
-            {products.map((p) => (
-              <ProductOption
-                key={p.product_key}
-                product={p}
-                onRequest={() => requestMockup(p.product_key)}
-              />
-            ))}
-          </div>
-        )}
-
-        <button
-          type="button"
-          onClick={onClose}
-          className="w-full py-3 rounded-xl text-sm font-medium text-gray-600 dark:text-gray-300
-                     bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors"
-        >
-          Done
-        </button>
-      </div>
     </div>
   );
 }

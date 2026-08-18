@@ -151,6 +151,12 @@ def create_gift_checkout(
                 gift_message=None if wants_family else message,
             )
         )
+    # Bigger and darker mugs cost us more, so the choice carries a flat
+    # surcharge. Priced off the rendering rather than the request: what ships
+    # is what the design says, so what's charged should be too.
+    amount_cents = item.base_price_cents + fulfillment_products.surcharge_for(
+        getattr(rendering, "product_key", None)
+    )
     collect_shipping = wants_self or access.birth.shipping_address is None
     try:
         session = stripe.create_gift_checkout_session(
@@ -159,7 +165,7 @@ def create_gift_checkout(
             user_id=str(current_user.id),
             slug=access.birth.slug,
             product_name=item.display_name,
-            amount_cents=item.base_price_cents,
+            amount_cents=amount_cents,
             collect_shipping=collect_shipping,
             allowed_countries=payments.gift_shipping_countries(),
             quantity=len(orders),

@@ -80,6 +80,7 @@ def _serialize_rendering(rendering) -> GiftRenderingOut:
         photo_spot=template.photo_spot if template else None,
         editable_text=list(template.editable_text) if template else [],
         text_overrides=dict(rendering.text_overrides or {}),
+        product_key=rendering.product_key,
     )
 
 
@@ -374,12 +375,21 @@ class _Draft:
         self.photo_removed = payload.removed
         self.text_overrides = dict(payload.text or {})
         self.template_id = rendering.template_id
+        self.product_key = payload.product_key
 
 
 def _apply_draft(rendering, payload: GiftDesignIn) -> None:
     rendering.photo_media_id = None if payload.removed else payload.media_id
     rendering.photo_removed = payload.removed
     rendering.text_overrides = dict(payload.text or {})
+    # Unknown keys are ignored rather than rejected: the shortlist is a code
+    # registry, and a design pointing at a product we've since retired should
+    # fall back to the default, not fail to save.
+    rendering.product_key = (
+        payload.product_key
+        if payload.product_key in fulfillment_products.SHORTLIST
+        else None
+    )
 
 
 def _load_editable(db, access, rendering_id):
@@ -532,6 +542,8 @@ def _serialize_product_mockup(product, mockup) -> ProductMockupOut:
         mockup_url=(
             gifts_repo.product_mockup_url(mockup) if mockup is not None else None
         ),
+        blank_image_url=product.blank_image_url,
+        surcharge_cents=product.surcharge_cents,
     )
 
 

@@ -617,6 +617,7 @@ export const api = {
       media_id: draft.mediaId ?? null,
       removed: Boolean(draft.removed),
       text: draft.text || {},
+      product_key: draft.productKey ?? null,
     });
   },
 

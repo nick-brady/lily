@@ -500,3 +500,56 @@ def test_preview_scales_the_picture_not_the_canvas():
     assert small.size[0] == 900
     # same picture, fewer pixels — the aspect ratio is the tell for a crop
     assert abs(small.size[0] / small.size[1] - full.size[0] / full.size[1]) < 0.01
+
+
+# ── the product choice ───────────────────────────────────────────────────
+# Which mug a design is for. It has to reach both the order and the charge:
+# approving a mockup of a black 15oz and being shipped a white 11oz is the
+# bug this closed.
+
+
+def test_chosen_product_is_what_ships():
+    from fulfillment import products as fp
+
+    default = fp.default_for_product_kind("mug")
+    assert fp.for_rendering(None, "mug") is default
+    assert fp.for_rendering("black_glossy_15oz", "mug").key == "black_glossy_15oz"
+    # a key we've since retired falls back rather than failing
+    assert fp.for_rendering("no_such_mug", "mug") is default
+    # a mug key can't leak into another kind — it falls back to that kind's
+    # own default, which today is None: the shortlist is mugs only, so cards
+    # have nothing mapped to fulfil them.
+    assert fp.for_rendering("black_glossy_15oz", "birth_announcement_cards") is None
+
+
+def test_only_the_default_mug_is_free():
+    from fulfillment import products as fp
+
+    default = fp.default_for_product_kind("mug")
+    assert fp.surcharge_for(default.key) == 0
+    assert fp.surcharge_for(None) == 0
+    assert fp.surcharge_for("no_such_mug") == 0
+    for key, product in fp.SHORTLIST.items():
+        if key != default.key:
+            assert fp.surcharge_for(key) == 300, key
+
+
+def test_every_shortlist_product_is_profitable():
+    """The surcharge exists so the bigger mugs don't eat the margin — this
+    pins that none of them is sold below cost."""
+    from fulfillment import products as fp
+
+    item_price = 1800  # the Birth Story Mug's list price
+    for product in fp.SHORTLIST.values():
+        charged = item_price + product.surcharge_cents
+        assert product.cost_cents > 0, product.key
+        assert charged > product.cost_cents, product.key
+
+
+def test_shortlist_products_have_a_blank_photo():
+    """The chooser shows blank product photos so picking a mug costs no
+    mockups. A missing one would silently render an empty tile."""
+    from fulfillment import products as fp
+
+    for product in fp.SHORTLIST.values():
+        assert product.blank_image_url.startswith("https://"), product.key

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { api } from '../api/client';
+import { formatPrice } from '../utils/money';
 
 // Customise → see it on the product → send.
 //
@@ -38,7 +39,9 @@ export default function GiftWizard({
     mediaId: initialRendering.photo_media_id || null,
     removed: Boolean(initialRendering.photo_removed),
     text: { ...(initialRendering.text_overrides || {}) },
+    productKey: initialRendering.product_key || null,
   }));
+  const [products, setProducts] = useState(null);
   const [dirty, setDirty] = useState(false);
   const [previewUrl, setPreviewUrl] = useState(null);
   const [previewing, setPreviewing] = useState(false);
@@ -65,7 +68,14 @@ export default function GiftWizard({
 
   useEffect(() => {
     api.listGiftPhotos(birthId).then(setPhotos).catch(() => setPhotos([]));
-  }, [birthId]);
+    // Blank product photos, straight from the partner's catalogue. Choosing a
+    // mug costs no mockups at all — only the one you settle on gets
+    // photographed with your design on it, at the next step.
+    api
+      .listRenderingProducts(birthId, initialRendering.id)
+      .then((res) => setProducts(res.products || []))
+      .catch(() => setProducts([]));
+  }, [birthId, initialRendering.id]);
 
   useEffect(
     () => () => {
@@ -291,6 +301,39 @@ export default function GiftWizard({
                   />
                 </label>
               ))}
+
+              {(products || []).length > 1 && (
+                <div>
+                  <span className="text-xs font-medium t-muted">Mug</span>
+                  <div className="mt-1 grid grid-cols-3 gap-1.5">
+                    {products.map((product, i) => {
+                      const chosen = (draft.productKey || products[0].product_key)
+                        === product.product_key;
+                      return (
+                        <button
+                          key={product.product_key}
+                          type="button"
+                          onClick={() => edit({ productKey: product.product_key })}
+                          title={product.display_name}
+                          className="block rounded border-2 overflow-hidden text-left"
+                          style={{ borderColor: chosen ? 'var(--t-accent)' : 'transparent' }}
+                        >
+                          <img
+                            src={product.blank_image_url}
+                            alt={product.display_name}
+                            className="w-full aspect-square object-contain block bg-white"
+                          />
+                          {product.surcharge_cents > 0 && (
+                            <span className="block text-[10px] text-center py-0.5 t-faint">
+                              +{formatPrice(product.surcharge_cents)}
+                            </span>
+                          )}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
 
               {rendering.has_photo && (
                 <div>
