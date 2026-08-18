@@ -338,7 +338,16 @@ export default function GiftWizard({
               {rendering.has_photo && (
                 <div>
                   <span className="text-xs font-medium t-muted">Photo</span>
-                  <div className="mt-1 grid grid-cols-4 gap-1.5 max-h-40 overflow-y-auto">
+                  {/* These are the birth's photos — everything posted to the
+                      story, plus anything uploaded here. Worth saying so:
+                      an unlabelled grid of thumbnails reads as "some photos"
+                      rather than "yours, pick one". */}
+                  <p className="text-[11px] t-faint mt-0.5">
+                    {(photos || []).length > 0
+                      ? `From your story — ${photos.length} photo${photos.length === 1 ? '' : 's'}`
+                      : 'No photos yet'}
+                  </p>
+                  <div className="mt-1.5 grid grid-cols-4 gap-1.5 max-h-56 overflow-y-auto">
                     {(photos || []).map((photo) => (
                       <button
                         key={photo.media_id}
