@@ -443,16 +443,6 @@ function RenderingTile({ rendering, birthId, item, familyHasAddress, onPhotoChan
       {rendering.status === 'ready' && (
         <button
           type="button"
-          onClick={() => setWizardAt(0)}
-          className="w-full px-3 py-2 text-xs t-muted hover:t-ink text-left transition-colors"
-        >
-          Customise this design →
-        </button>
-      )}
-
-      {rendering.status === 'ready' && (
-        <button
-          type="button"
           onClick={() => setPickerOpen(true)}
           className="w-full px-3 py-2 text-xs t-muted hover:t-ink text-left transition-colors"
         >
