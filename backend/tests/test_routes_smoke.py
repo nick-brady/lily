@@ -95,3 +95,22 @@ def test_legacy_uploads_static_mount_is_gone() -> None:
 def test_legacy_login_route_is_gone() -> None:
     response = _client().post("/login", json={"username": "admin", "password": "x"})
     assert response.status_code == 404
+
+
+def test_literal_gift_paths_are_matched_before_the_uuid_one():
+    """`/gifts/photos` must be registered before `/gifts/{rendering_id}`.
+
+    Starlette matches routes in registration order, so with the parameterised
+    one first the literal path never gets a chance: FastAPI tries to parse the
+    word "photos" as a UUID and answers 422 "invalid character: found `p` at
+    1". It looks like a client bug and isn't one, so this pins the order.
+    """
+    from main import app
+
+    order = [getattr(r, "path", "") for r in app.routes]
+    literal = order.index("/birth/{birth_id}/gifts/photos")
+    parameterised = order.index("/birth/{birth_id}/gifts/{rendering_id}")
+    assert literal < parameterised, (
+        "the literal /gifts/photos route must come first, or requests to it "
+        "are parsed as a rendering id"
+    )

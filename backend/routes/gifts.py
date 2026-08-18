@@ -242,38 +242,6 @@ def load_rendering_for_products(db, access, rendering_id):
 
 
 @router.get(
-    "/birth/{birth_id}/gifts/{rendering_id}", response_model=GiftRenderingOut
-)
-def get_gift_rendering(
-    rendering_id: uuid.UUID,
-    access: BirthAccess = Depends(require_birth_access),
-    db: Session = Depends(get_db),
-) -> GiftRenderingOut:
-    rendering = load_rendering_for_products(db, access, rendering_id)
-    return _serialize_rendering(rendering)
-
-
-@router.patch(
-    "/birth/{birth_id}/gifts/{rendering_id}", response_model=GiftRenderingOut
-)
-def patch_gift_rendering(
-    rendering_id: uuid.UUID,
-    payload: GiftRenderingPatchIn,
-    access: BirthAccess = Depends(require_parent_access),
-    db: Session = Depends(get_db),
-) -> GiftRenderingOut:
-    rendering = gifts_repo.get_rendering(
-        db, birth_id=access.birth.id, rendering_id=rendering_id
-    )
-    if rendering is None:
-        raise HTTPException(status_code=404, detail="Rendering not found")
-    rendering.is_visible_to_viewers = payload.is_visible_to_viewers
-    db.commit()
-    db.refresh(rendering)
-    return _serialize_rendering(rendering)
-
-
-@router.get(
     "/birth/{birth_id}/gifts/photos", response_model=list[GiftPhotoOptionOut]
 )
 def list_gift_photos(
@@ -363,6 +331,38 @@ async def upload_gift_photo(
         occurred_at=asset.created_at,
         caption=None,
     )
+
+
+@router.get(
+    "/birth/{birth_id}/gifts/{rendering_id}", response_model=GiftRenderingOut
+)
+def get_gift_rendering(
+    rendering_id: uuid.UUID,
+    access: BirthAccess = Depends(require_birth_access),
+    db: Session = Depends(get_db),
+) -> GiftRenderingOut:
+    rendering = load_rendering_for_products(db, access, rendering_id)
+    return _serialize_rendering(rendering)
+
+
+@router.patch(
+    "/birth/{birth_id}/gifts/{rendering_id}", response_model=GiftRenderingOut
+)
+def patch_gift_rendering(
+    rendering_id: uuid.UUID,
+    payload: GiftRenderingPatchIn,
+    access: BirthAccess = Depends(require_parent_access),
+    db: Session = Depends(get_db),
+) -> GiftRenderingOut:
+    rendering = gifts_repo.get_rendering(
+        db, birth_id=access.birth.id, rendering_id=rendering_id
+    )
+    if rendering is None:
+        raise HTTPException(status_code=404, detail="Rendering not found")
+    rendering.is_visible_to_viewers = payload.is_visible_to_viewers
+    db.commit()
+    db.refresh(rendering)
+    return _serialize_rendering(rendering)
 
 
 class _Draft:
