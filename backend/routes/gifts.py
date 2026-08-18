@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import uuid
 
+from dataclasses import replace
 from pathlib import Path
 
 from fastapi import (
@@ -20,6 +21,7 @@ from sqlalchemy.orm import Session
 
 import artwork_links
 import fulfillment
+import gift_artwork
 import gift_templates
 from auth import get_current_user
 from db import get_db
@@ -42,7 +44,7 @@ from repositories import media as media_repo
 from routes.deps import BirthAccess, require_birth_access, require_parent_access
 from schemas import (
     GiftPhotoOptionOut,
-    GiftPhotoIn,
+    GiftDesignIn,
     GiftGalleryOut,
     GiftItemOut,
     GiftRenderingOut,
@@ -77,6 +79,8 @@ def _serialize_rendering(rendering) -> GiftRenderingOut:
         # photo leaves an empty frame, so it doesn't get the option.
         photo_removable=shows_photo and not (template and template.photo_required),
         photo_spot=template.photo_spot if template else None,
+        editable_text=list(template.editable_text) if template else [],
+        text_overrides=dict(rendering.text_overrides or {}),
     )
 
 
@@ -361,31 +365,38 @@ async def upload_gift_photo(
     )
 
 
-@router.patch(
-    "/birth/{birth_id}/gifts/{rendering_id}/photo",
-    response_model=GiftRenderingOut,
-)
-def set_gift_photo(
-    rendering_id: uuid.UUID,
-    payload: GiftPhotoIn,
-    background_tasks: BackgroundTasks,
-    access: BirthAccess = Depends(require_parent_access),
-    db: Session = Depends(get_db),
-) -> GiftRenderingOut:
-    """Set the photo on one design, and re-render just that one.
+class _Draft:
+    """An unsaved design, shaped like a GiftRendering for the renderer's
+    benefit. Previews never touch the database or S3, so a parent can try
+    five photos and three names and walk away having changed nothing."""
 
-    Per-design on purpose: you're changing this mug, not every keepsake at
-    once. Sending neither a media id nor `removed` hands the choice back to
-    the auto-pick, so there's always a way back to "just pick something".
-    """
+    def __init__(self, rendering, payload: GiftDesignIn):
+        self.photo_media_id = None if payload.removed else payload.media_id
+        self.photo_removed = payload.removed
+        self.text_overrides = dict(payload.text or {})
+        self.template_id = rendering.template_id
+
+
+def _apply_draft(rendering, payload: GiftDesignIn) -> None:
+    rendering.photo_media_id = None if payload.removed else payload.media_id
+    rendering.photo_removed = payload.removed
+    rendering.text_overrides = dict(payload.text or {})
+
+
+def _load_editable(db, access, rendering_id):
+    """A rendering plus its template, checked for editability."""
     rendering = gifts_repo.get_rendering(
         db, birth_id=access.birth.id, rendering_id=rendering_id
     )
     if rendering is None:
         raise HTTPException(status_code=404, detail="Rendering not found")
     template = gift_templates.get(rendering.template_id)
-    if template is None or not template.photo:
-        raise HTTPException(status_code=400, detail="This design has no photo")
+    if template is None:
+        raise HTTPException(status_code=400, detail="Unknown design")
+    return rendering, template
+
+
+def _check_photo(db, access, payload: GiftDesignIn, template) -> None:
     if payload.removed and template.photo_required:
         raise HTTPException(
             status_code=400, detail="This design can't be rendered without a photo"
@@ -399,15 +410,72 @@ def set_gift_photo(
         ):
             raise HTTPException(status_code=404, detail="Photo not found")
 
-    rendering.photo_media_id = None if payload.removed else payload.media_id
-    rendering.photo_removed = payload.removed
+
+# Wide enough to read, small enough to be instant: a preview costs ~107ms and
+# 13KB against ~500ms and 304KB for the print-resolution render. Most of that
+# saving is the photo, not the raster — hence the max_px.
+_PREVIEW_W = 900
+_PREVIEW_PHOTO_PX = 500
+
+
+@router.post("/birth/{birth_id}/gifts/{rendering_id}/preview")
+def preview_gift_design(
+    rendering_id: uuid.UUID,
+    payload: GiftDesignIn,
+    access: BirthAccess = Depends(require_parent_access),
+    db: Session = Depends(get_db),
+) -> Response:
+    """Render a draft and hand back the PNG. Nothing is saved.
+
+    This is what makes the editor feel live: the client debounces keystrokes
+    onto it and swaps the image. No partner call, no storage write, no row
+    touched — so trying things costs nothing and abandoning them costs
+    nothing either.
+    """
+    rendering, template = _load_editable(db, access, rendering_id)
+    _check_photo(db, access, payload, template)
+    scale = _PREVIEW_W / template.width
+    small = replace(
+        template, width=_PREVIEW_W, height=max(1, round(template.height * scale))
+    )
+    try:
+        png, _meta = gift_artwork.render(
+            access.birth,
+            small,
+            db,
+            _Draft(rendering, payload),
+            photo_max_px=_PREVIEW_PHOTO_PX,
+        )
+    except gift_artwork.ArtworkError as exc:
+        raise HTTPException(status_code=422, detail=str(exc))
+    return Response(
+        content=png,
+        media_type="image/png",
+        headers={"Cache-Control": "no-store"},
+    )
+
+
+@router.patch(
+    "/birth/{birth_id}/gifts/{rendering_id}/design", response_model=GiftRenderingOut
+)
+def save_gift_design(
+    rendering_id: uuid.UUID,
+    payload: GiftDesignIn,
+    access: BirthAccess = Depends(require_parent_access),
+    db: Session = Depends(get_db),
+) -> GiftRenderingOut:
+    """Commit the draft and re-render at print resolution.
+
+    Rendered inline rather than queued: half a second doesn't need a
+    background task, a pending status and a poll. No partner call happens
+    here — the product mockup is asked for separately, and only when someone
+    wants to see one.
+    """
+    rendering, template = _load_editable(db, access, rendering_id)
+    _check_photo(db, access, payload, template)
+    _apply_draft(rendering, payload)
     db.commit()
 
-    # Rendered inline rather than queued. The artwork takes about half a
-    # second, and someone trying photos against a design shouldn't wait on a
-    # background task and a 2.5s poll to find out what they picked. No partner
-    # call happens here — only the flat artwork is redrawn — so this stays
-    # cheap however much they fiddle.
     gifts_repo.render_rendering(rendering.id)
     db.expire_all()
     rendering = gifts_repo.get_rendering(

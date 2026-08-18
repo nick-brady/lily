@@ -37,6 +37,13 @@ class GiftTemplate:
     # spot, so you click her face on the design instead of a link in a list.
     # Fractions rather than pixels: the client is looking at a scaled image.
     photo_spot: tuple[float, float, float] | None = None
+    # Text slots a parent may edit on this design, by key. Deliberately short:
+    # everything else on a keepsake is derived from the birth, and "97
+    # CONTRACTIONS · 26H 56M" is a fact — making it a text field would invite
+    # someone to type a number that isn't true, which is the one thing these
+    # are for. The name can be shortened to the one people actually use, and
+    # anything else they want to say goes on a line that was always theirs.
+    editable_text: tuple[str, ...] = ()
     scene: str | None = None  # richer data scene: "hours" | "story" | None
     # center of the labor clock, for scene == "hours" (defaults to canvas center)
     clock_cx: float | None = None
@@ -56,6 +63,7 @@ TEMPLATES: dict[str, GiftTemplate] = {
         dpi=300,
         photo=True,
         photo_spot=(2235 / 2475, 545 / 1155, 150 / 2475),
+        editable_text=("child_name", "custom_line"),
         scene="hours",
         clock_cx=640,
         clock_cy=577,
@@ -108,6 +116,7 @@ TEMPLATES: dict[str, GiftTemplate] = {
         dpi=300,
         photo=True,
         photo_spot=(320 / 1500, 1700 / 2100, 150 / 1500),
+        editable_text=("child_name", "custom_line"),
         scene="hours_photo",
         clock_cx=750,
         clock_cy=940,

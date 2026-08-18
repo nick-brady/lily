@@ -50,6 +50,13 @@
         font-size="38" letter-spacing="2" fill="{{ p.ink }}"
         opacity="0.62">born {{ birth_date }} at {{ birth_time }}</text>
 
+  {# The parent's own line, above the derived footer. #}
+  {% if custom_line %}
+  <text x="{{ w // 2 }}" y="1862" text-anchor="middle"
+        font-family="{{ p.display_font }}" font-size="46" font-style="italic"
+        fill="{{ p.ink }}" opacity="0.72">{{ custom_line }}</text>
+  {% endif %}
+
   <!-- footer -->
   <line x1="{{ w // 2 - 80 }}" y1="1895" x2="{{ w // 2 + 80 }}" y2="1895"
         stroke="{{ p.ink }}" stroke-width="2" opacity="0.25"/>

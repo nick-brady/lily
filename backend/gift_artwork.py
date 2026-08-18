@@ -72,13 +72,23 @@ _env.globals["sparkle"] = lambda cx, cy, r: _sparkle_path(cx, cy, r)
 
 
 def render(
-    birth: Birth, template: GiftTemplate, db: Session, rendering=None
+    birth: Birth,
+    template: GiftTemplate,
+    db: Session,
+    rendering=None,
+    photo_max_px: int | None = None,
 ) -> tuple[bytes, dict]:
     """Render `template` for `birth`. Returns (png_bytes, rendering_metadata).
 
-    `rendering` carries this design's own photo choice. It's optional so the
-    preview script and the tests can render a template without a row behind
-    it; without one the photo is simply the auto-pick.
+    `rendering` carries this design's own photo and text choices. It's optional
+    so the preview script and the tests can render a template without a row
+    behind it; without one the photo is the auto-pick and no text is
+    overridden.
+
+    `photo_max_px` shrinks the embedded photo. Most of a render's cost is the
+    photo — 131ms to decode and re-encode it, and most of the rest is cairosvg
+    chewing the 399KB data URI that produces. At 500px that drops to 52ms and
+    61KB, which is what makes a live preview feel live.
     """
     events = list(
         db.scalars(
@@ -92,7 +102,7 @@ def render(
     palette = gift_themes.for_theme(birth.theme)
 
     photo = _photo_for(db, birth, template, rendering) if template.photo else None
-    photo_data_uri = _photo_data_uri(photo) if photo else None
+    photo_data_uri = _photo_data_uri(photo, max_px=photo_max_px) if photo else None
     # Only designs that can't stand without a photo refuse to render. The rest
     # lay out around its absence, which is what makes "remove" possible.
     if template.photo_required and photo_data_uri is None:
@@ -101,11 +111,17 @@ def render(
     when = _localize(birth.child_dob or birth.birth_completed_at)
     first_at_local = _localize(stats.first_contraction_at)
     spark_last = _spark_last(stats.durations)
+    overrides = _text_overrides(template, rendering)
     context = {
         "w": template.width,
         "h": template.height,
         "p": palette,
-        "child_name": (birth.child_name or "").strip() or "Baby",
+        "child_name": overrides.get("child_name")
+        or (birth.child_name or "").strip()
+        or "Baby",
+        # A line of the parent's own. Empty unless they wrote one — the
+        # templates that have a slot for it simply skip it when it's blank.
+        "custom_line": overrides.get("custom_line", ""),
         "birth_date": _fmt_date(when),
         "birth_time": _fmt_time(when),
         "count": stats.contraction_count,
@@ -184,6 +200,27 @@ def render_context(template: GiftTemplate, context: dict) -> bytes:
 
 
 # ── photo selection ──────────────────────────────────────────────────────
+
+
+def _text_overrides(template: GiftTemplate, rendering) -> dict:
+    """This design's text edits, filtered to what the template actually lets
+    a parent change. Anything else on the artwork is derived from the birth
+    and isn't up for editing — a keepsake that can be made to say something
+    untrue isn't worth much.
+
+    Blank values are dropped, so clearing a field falls back to the derived
+    value rather than printing an empty line.
+    """
+    if rendering is None or not template.editable_text:
+        return {}
+    raw = getattr(rendering, "text_overrides", None) or {}
+    return {
+        key: value.strip()
+        for key, value in raw.items()
+        if key in template.editable_text
+        and isinstance(value, str)
+        and value.strip()
+    }
 
 
 def _photo_for(

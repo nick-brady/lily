@@ -1,52 +1,129 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { api } from '../api/client';
-import PhotoPickerSheet from './PhotoPickerSheet';
 
-// Customise → see it on the mug → send.
+// Customise → see it on the product → send.
 //
-// The split exists because the two halves cost wildly different things. The
-// flat artwork re-renders in about half a second and costs us nothing, so you
-// can try photos all day. The product shot comes from the fulfillment partner,
-// which allows two mockups a minute for the *whole store* — so it's generated
-// once per design automatically (that's the gallery you browse), and after
-// that only when someone asks, for the design they actually settled on.
+// The split follows what the two halves cost. The flat artwork renders in
+// ~107ms at preview size and costs us nothing, so step one updates as you
+// type. The product shot comes from the fulfillment partner, which allows two
+// mockups a minute for the *whole store* — so it's generated once per design
+// automatically (that's the gallery you browse) and after that only when
+// someone asks, for the design they actually settled on.
 //
-// Hiding that behind a live preview would either lie or run us out of budget.
-// Making it a step is honest: this is the moment you ask to see the real thing.
+// Pretending the mug could update live would either lie or exhaust that
+// budget. So the mug shots sit under the artwork, real but honest: the moment
+// you change something they dim and say they're behind.
 const STEPS = ['Customise', 'See it', 'Send'];
+const DEBOUNCE_MS = 300;
+
+const SLOT_LABELS = { child_name: 'Name', custom_line: 'Your own line' };
+const SLOT_PLACEHOLDERS = { child_name: 'Lily Wren', custom_line: 'worth every hour' };
+const SLOT_MAX = { child_name: 40, custom_line: 60 };
 
 export default function GiftWizard({
   birthId,
   rendering: initialRendering,
   item,
   familyHasAddress,
-  startAt = 0,
   onClose,
   onChanged,
   renderCheckout,
 }) {
-  const [step, setStep] = useState(startAt);
+  const [step, setStep] = useState(0);
   const [rendering, setRendering] = useState(initialRendering);
-  const [photoOpen, setPhotoOpen] = useState(false);
+
+  // The draft lives here and nowhere else until Next. Previews don't persist,
+  // so trying things costs nothing and backing out costs nothing either.
+  const [draft, setDraft] = useState(() => ({
+    mediaId: initialRendering.photo_media_id || null,
+    removed: Boolean(initialRendering.photo_removed),
+    text: { ...(initialRendering.text_overrides || {}) },
+  }));
+  const [dirty, setDirty] = useState(false);
+  const [previewUrl, setPreviewUrl] = useState(null);
+  const [previewing, setPreviewing] = useState(false);
+  const [photos, setPhotos] = useState(null);
+  const [saving, setSaving] = useState(false);
   const [mockupBusy, setMockupBusy] = useState(false);
   const [error, setError] = useState('');
+
+  const fileRef = useRef(null);
+  const abortRef = useRef(null);
+  const timerRef = useRef(null);
   const pollRef = useRef(null);
+  const urlRef = useRef(null);
 
   const angles = rendering.mockup_url
     ? [
         { url: rendering.mockup_url, caption: 'Front' },
-        ...(rendering.mockup_extras || []).map((v) => ({
-          url: v.url,
-          caption: v.title || '',
-        })),
+        ...(rendering.mockup_extras || []).map((v) => ({ url: v.url, caption: v.title || '' })),
       ]
     : [];
-  // A mockup made before the last edit still shows the old photo. It's a real
-  // photograph of the product, so it's worth showing — but it has to say so.
-  const stale = rendering.mockup_status === 'stale';
-  const needsMockup = stale || !rendering.mockup_url;
+  // Behind either because we've edited since it was taken, or because the
+  // last save marked it so.
+  const anglesBehind = dirty || rendering.mockup_status === 'stale';
 
-  useEffect(() => () => clearTimeout(pollRef.current), []);
+  useEffect(() => {
+    api.listGiftPhotos(birthId).then(setPhotos).catch(() => setPhotos([]));
+  }, [birthId]);
+
+  useEffect(
+    () => () => {
+      clearTimeout(timerRef.current);
+      clearTimeout(pollRef.current);
+      abortRef.current?.abort();
+      if (urlRef.current) URL.revokeObjectURL(urlRef.current);
+    },
+    [],
+  );
+
+  // Debounced preview. An in-flight render is abandoned the moment the draft
+  // moves on — typing shouldn't queue a render per keystroke.
+  const schedulePreview = useCallback(
+    (next) => {
+      setDirty(true);
+      clearTimeout(timerRef.current);
+      timerRef.current = setTimeout(async () => {
+        abortRef.current?.abort();
+        const controller = new AbortController();
+        abortRef.current = controller;
+        setPreviewing(true);
+        try {
+          const url = await api.previewGiftDesign(birthId, rendering.id, next, {
+            signal: controller.signal,
+          });
+          if (urlRef.current) URL.revokeObjectURL(urlRef.current);
+          urlRef.current = url;
+          setPreviewUrl(url);
+          setError('');
+        } catch (err) {
+          if (err.name !== 'AbortError') setError(err.message || 'Preview failed');
+        } finally {
+          if (abortRef.current === controller) setPreviewing(false);
+        }
+      }, DEBOUNCE_MS);
+    },
+    [birthId, rendering.id],
+  );
+
+  const edit = (patch) => {
+    const next = { ...draft, ...patch, text: { ...draft.text, ...(patch.text || {}) } };
+    setDraft(next);
+    schedulePreview(next);
+  };
+
+  const uploadPhoto = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setError('');
+    try {
+      const added = await api.uploadGiftPhoto(birthId, file);
+      setPhotos((rows) => [...(rows || []), added]);
+      edit({ mediaId: added.media_id, removed: false });
+    } catch (err) {
+      setError(err.message || "We couldn't add that photo");
+    }
+  };
 
   const refetch = async () => {
     const gallery = await api.listGifts(birthId);
@@ -58,52 +135,77 @@ export default function GiftWizard({
     return fresh;
   };
 
-  // Ask the partner for a product shot, then watch for it. Deliberately not
-  // automatic on entering the step — see the note at the top of the file.
   const makeMockup = async () => {
     setMockupBusy(true);
-    setError('');
     try {
       await api.refreshGiftMockup(birthId, rendering.id);
       const tick = async () => {
         const fresh = await refetch();
-        if (fresh && fresh.mockup_status === 'pending') {
+        if (fresh?.mockup_status === 'pending') {
           pollRef.current = setTimeout(tick, 3000);
         } else {
           setMockupBusy(false);
-          if (fresh && fresh.mockup_status === 'failed') {
-            setError("The mockup didn't come back — the design itself is fine.");
+          if (fresh?.mockup_status === 'failed') {
+            setError("The photo of the product didn't come back — your design is fine.");
           }
         }
       };
       pollRef.current = setTimeout(tick, 3000);
     } catch (err) {
-      setError(err.message || 'Could not start the mockup');
+      setError(err.message || 'Could not photograph the design');
       setMockupBusy(false);
     }
   };
 
+  // Next commits the draft and re-renders at print resolution. Only then does
+  // the mockup question arise — and only if something actually changed, so
+  // someone who liked what they saw spends none of the partner's budget.
+  const goToProduct = async () => {
+    if (!dirty) {
+      setStep(1);
+      return;
+    }
+    setSaving(true);
+    setError('');
+    try {
+      const saved = await api.saveGiftDesign(birthId, rendering.id, draft);
+      setRendering(saved);
+      setDirty(false);
+      onChanged?.();
+      setStep(1);
+      makeMockup();
+    } catch (err) {
+      setError(err.message || 'Could not save the design');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const shown = previewUrl || rendering.artwork_url;
+  const slots = rendering.editable_text || [];
+
   return (
     <div
-      className="fixed inset-0 z-50 bg-black/50 flex items-end sm:items-center justify-center"
+      className="fixed inset-0 z-50 bg-black/60 flex items-end sm:items-center justify-center sm:p-6"
       onClick={onClose}
     >
       <div
-        className="animate-slide-up w-full sm:max-w-3xl bg-white dark:bg-gray-900
-                   rounded-t-2xl sm:rounded-2xl shadow-xl max-h-[92vh] overflow-y-auto"
+        className="animate-slide-up w-full sm:max-w-6xl bg-white dark:bg-gray-900
+                   rounded-t-2xl sm:rounded-2xl shadow-xl max-h-[94vh] flex flex-col"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="flex items-center gap-2 px-5 pt-5">
+        <header
+          className="flex items-center gap-3 px-5 py-4 border-b"
+          style={{ borderColor: 'var(--t-soft-ring)' }}
+        >
           {STEPS.map((label, i) => (
             <button
               key={label}
               type="button"
-              // Going back is always allowed; skipping ahead isn't, because
-              // step 2 is where the mockup gets asked for.
               onClick={() => i < step && setStep(i)}
-              className={`text-xs tracking-wide uppercase px-2 py-1 rounded ${
+              className={`text-xs tracking-wide uppercase ${
                 i === step ? 'font-semibold t-ink' : 't-muted'
-              } ${i < step ? 'hover:t-ink' : ''}`}
+              }`}
             >
               {i + 1}. {label}
             </button>
@@ -118,7 +220,7 @@ export default function GiftWizard({
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
             </svg>
           </button>
-        </div>
+        </header>
 
         {error && (
           <div className="mx-5 mt-4 p-3 rounded-lg bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-300 text-sm">
@@ -127,129 +229,168 @@ export default function GiftWizard({
         )}
 
         {step === 0 && (
-          <div className="p-5 grid gap-5 sm:grid-cols-[1.6fr_1fr]">
-            <div>
-              {/* The artwork, with a hotspot over the photo itself. You click
-                  her face on the design rather than a link in a list — the
-                  template tells us where it sits. */}
-              <div className="relative">
-                <img
-                  src={rendering.artwork_url}
-                  alt="Your design"
-                  className="w-full rounded-lg block"
-                  style={{ backgroundColor: 'var(--t-soft-bg)' }}
-                />
-                {rendering.has_photo && rendering.photo_spot && (
-                  <button
-                    type="button"
-                    onClick={() => setPhotoOpen(true)}
-                    aria-label="Change the photo"
-                    className="absolute rounded-full border-2 border-dashed opacity-0 hover:opacity-100
-                               focus:opacity-100 transition-opacity flex items-center justify-center"
-                    style={{
-                      // Centre-anchored: the radius is a fraction of the
-                      // artwork's *width*, so it can't be measured against
-                      // height. Translate off the centre and let aspect-ratio
-                      // keep it square whatever shape the canvas is.
-                      left: `${rendering.photo_spot[0] * 100}%`,
-                      top: `${rendering.photo_spot[1] * 100}%`,
-                      transform: 'translate(-50%, -50%)',
-                      width: `${rendering.photo_spot[2] * 200}%`,
-                      aspectRatio: '1 / 1',
-                      borderColor: 'var(--t-accent)',
-                      backgroundColor: 'rgba(0,0,0,0.35)',
-                    }}
-                  >
-                    <span className="text-[11px] font-medium text-white px-2 text-center leading-tight">
-                      Change photo
-                    </span>
-                  </button>
+          <div className="flex-1 overflow-y-auto grid sm:grid-cols-[3fr_1fr]">
+            {/* The artwork leads and updates as you type; the product shots sit
+                beneath it, real but honest about being behind. */}
+            <div
+              className="flex flex-col justify-center items-center gap-5 p-6"
+              style={{ backgroundColor: 'var(--t-soft-bg)' }}
+            >
+              <div className="relative w-full">
+                <img src={shown} alt="Your design" className="w-full rounded-lg block shadow-sm bg-white" />
+                {previewing && (
+                  <span className="absolute top-3 right-3 text-[11px] px-2 py-1 rounded-full bg-black/60 text-white">
+                    updating…
+                  </span>
                 )}
               </div>
-              {rendering.has_photo && (
-                <p className="text-xs t-muted mt-2">
-                  {rendering.photo_removed
-                    ? 'No photo on this one.'
-                    : rendering.photo_auto
-                      ? 'Photo chosen for you — tap it to pick another.'
-                      : 'Tap the photo to change it.'}
-                </p>
+
+              {angles.length > 0 && (
+                <div className="w-full">
+                  <div className={`grid grid-cols-3 gap-3 ${anglesBehind ? 'opacity-40' : ''}`}>
+                    {angles.map((a) => (
+                      <img
+                        key={a.url}
+                        src={a.url}
+                        alt={a.caption || 'On the product'}
+                        className="w-full aspect-square object-cover rounded-lg block bg-white"
+                      />
+                    ))}
+                  </div>
+                  <p className="text-[11px] t-muted text-center mt-2">
+                    {anglesBehind
+                      ? 'Shows your design before this change — refreshed at the next step.'
+                      : 'On the mug.'}
+                  </p>
+                </div>
               )}
             </div>
 
-            <div className="space-y-3">
+            <div
+              className="p-5 space-y-4 border-t sm:border-t-0 sm:border-l"
+              style={{ borderColor: 'var(--t-soft-ring)' }}
+            >
               <div>
                 <h2 className="text-base font-semibold t-ink">{item.display_name}</h2>
                 <p className="text-xs t-muted mt-1">
-                  Everything else is drawn from the birth itself, so it stays true.
+                  The rest is drawn from the birth itself, so it stays true.
                 </p>
               </div>
 
-              {rendering.has_photo ? (
-                <button
-                  type="button"
-                  onClick={() => setPhotoOpen(true)}
-                  className="w-full py-2.5 rounded-xl text-sm font-medium border t-ink"
-                  style={{ borderColor: 'var(--t-soft-ring)' }}
-                >
-                  {rendering.photo_removed ? 'Add a photo' : 'Change the photo'}
-                </button>
-              ) : (
-                <p className="text-xs t-muted">This design has no photo to change.</p>
+              {slots.map((slot) => (
+                <label key={slot} className="block">
+                  <span className="text-xs font-medium t-muted">{SLOT_LABELS[slot] || slot}</span>
+                  <input
+                    type="text"
+                    value={draft.text[slot] ?? ''}
+                    maxLength={SLOT_MAX[slot] || 60}
+                    placeholder={SLOT_PLACEHOLDERS[slot] || ''}
+                    onChange={(e) => edit({ text: { [slot]: e.target.value } })}
+                    className="mt-1 w-full px-3 py-2 rounded-lg border text-sm bg-white dark:bg-gray-800 t-ink"
+                    style={{ borderColor: 'var(--t-soft-ring)' }}
+                  />
+                </label>
+              ))}
+
+              {rendering.has_photo && (
+                <div>
+                  <span className="text-xs font-medium t-muted">Photo</span>
+                  <div className="mt-1 grid grid-cols-4 gap-1.5 max-h-40 overflow-y-auto">
+                    {(photos || []).map((photo) => (
+                      <button
+                        key={photo.media_id}
+                        type="button"
+                        onClick={() => edit({ mediaId: photo.media_id, removed: false })}
+                        className="block rounded overflow-hidden border-2"
+                        style={{
+                          borderColor:
+                            draft.mediaId === photo.media_id && !draft.removed
+                              ? 'var(--t-accent)'
+                              : 'transparent',
+                        }}
+                      >
+                        <img
+                          src={api.mediaUrl(photo.media_id)}
+                          alt=""
+                          className="w-full aspect-square object-cover block"
+                        />
+                      </button>
+                    ))}
+                  </div>
+                  <input type="file" ref={fileRef} accept="image/*" onChange={uploadPhoto} className="hidden" />
+                  <div className="flex gap-2 mt-2">
+                    <button
+                      type="button"
+                      onClick={() => fileRef.current?.click()}
+                      className="flex-1 py-2 rounded-lg text-xs border t-ink"
+                      style={{ borderColor: 'var(--t-soft-ring)' }}
+                    >
+                      Upload
+                    </button>
+                    {rendering.photo_removable && (
+                      <button
+                        type="button"
+                        onClick={() => edit({ mediaId: null, removed: !draft.removed })}
+                        className="flex-1 py-2 rounded-lg text-xs border t-muted"
+                        style={{ borderColor: 'var(--t-soft-ring)' }}
+                      >
+                        {draft.removed ? 'Put it back' : 'No photo'}
+                      </button>
+                    )}
+                  </div>
+                </div>
               )}
 
               <button
                 type="button"
-                onClick={() => setStep(1)}
-                className="w-full py-3 rounded-xl text-sm font-medium t-btn-accent"
+                onClick={goToProduct}
+                disabled={saving}
+                className="w-full py-3 rounded-xl text-sm font-medium t-btn-accent disabled:opacity-50"
               >
-                Next — see it on the {item.display_name.toLowerCase().includes('mug') ? 'mug' : 'product'}
+                {saving ? 'Saving…' : 'Next — see it on the product'}
               </button>
             </div>
           </div>
         )}
 
         {step === 1 && (
-          <div className="p-5 space-y-4">
-            {angles.length > 0 ? (
-              <div className="grid grid-cols-3 gap-3">
+          <div className="flex-1 overflow-y-auto p-6 space-y-5">
+            {mockupBusy ? (
+              <div className="py-12 flex flex-col items-center gap-4">
+                <span
+                  className="w-10 h-10 rounded-full border-2 animate-spin"
+                  style={{ borderColor: 'var(--t-accent)', borderTopColor: 'transparent' }}
+                />
+                <p className="text-sm t-muted text-center">
+                  Photographing your design on the mug — about a minute.
+                </p>
+              </div>
+            ) : angles.length > 0 ? (
+              <div className="grid grid-cols-3 gap-4">
                 {angles.map((a) => (
                   <img
                     key={a.url}
                     src={a.url}
-                    alt={a.caption || 'Product view'}
+                    alt={a.caption || 'On the product'}
                     className="w-full aspect-square object-cover rounded-lg block"
                     style={{ backgroundColor: 'var(--t-soft-bg)' }}
                   />
                 ))}
               </div>
             ) : (
-              <p className="text-sm t-muted text-center py-10">
-                No product photo yet.
-              </p>
+              <p className="text-sm t-muted text-center py-12">No product photo yet.</p>
             )}
 
-            {mockupBusy ? (
-              <p className="text-sm t-muted text-center">
-                Photographing your design… this takes about a minute.
-              </p>
-            ) : needsMockup ? (
-              <div className="space-y-2">
-                <p className="text-sm t-muted text-center">
-                  {stale
-                    ? 'These show the design before your last change.'
-                    : 'We haven’t photographed this design yet.'}
-                </p>
-                <button
-                  type="button"
-                  onClick={makeMockup}
-                  className="w-full py-2.5 rounded-xl text-sm font-medium border t-ink"
-                  style={{ borderColor: 'var(--t-soft-ring)' }}
-                >
-                  {stale ? 'Refresh the photos' : 'Photograph it'}
-                </button>
-              </div>
-            ) : null}
+            {!mockupBusy && rendering.mockup_status === 'stale' && (
+              <button
+                type="button"
+                onClick={makeMockup}
+                className="w-full py-2.5 rounded-xl text-sm border t-ink"
+                style={{ borderColor: 'var(--t-soft-ring)' }}
+              >
+                Refresh these
+              </button>
+            )}
 
             <button
               type="button"
@@ -262,23 +403,9 @@ export default function GiftWizard({
         )}
 
         {step === 2 && (
-          <div className="p-5">
-            {renderCheckout?.(rendering)}
-          </div>
+          <div className="flex-1 overflow-y-auto p-5">{renderCheckout?.(rendering)}</div>
         )}
       </div>
-
-      {photoOpen && (
-        <PhotoPickerSheet
-          birthId={birthId}
-          rendering={rendering}
-          onClose={() => setPhotoOpen(false)}
-          onChanged={(updated) => {
-            setRendering(updated);
-            onChanged?.();
-          }}
-        />
-      )}
     </div>
   );
 }

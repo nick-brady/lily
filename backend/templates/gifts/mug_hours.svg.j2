@@ -29,6 +29,14 @@
         letter-spacing="5" fill="{{ p.ink }}"
         opacity="0.5">{{ count }} CONTRACTIONS · {{ labor_duration|upper }} · EVERY {{ avg_interval|upper }}</text>
 
+  {# A line of the parent's own, under the derived one. Skipped entirely when
+     they haven't written anything — nothing should hold space for a line that
+     isn't there. #}
+  {% if custom_line %}
+  <text x="1366" y="862" font-family="{{ p.display_font }}" font-size="42"
+        font-style="italic" fill="{{ p.ink }}" opacity="0.72">{{ custom_line }}</text>
+  {% endif %}
+
   <!-- her, at the far end of the wrap -->
   {% if photo_data_uri %}
   <g clip-path="url(#mugPhoto)">

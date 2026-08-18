@@ -38,24 +38,28 @@ function detailMessage(body) {
   return null;
 }
 
-async function jsonOrThrow(res) {
-  if (!res.ok) {
-    let detail = res.statusText;
-    let code;
-    try {
-      const body = await res.json();
-      detail = detailMessage(body) || JSON.stringify(body);
-      // Machine-readable half of a structured detail, e.g. 'name_required'.
-      // Callers that need to branch shouldn't have to match on prose.
-      if (typeof body?.detail?.code === 'string') code = body.detail.code;
-    } catch {
-      // empty body, keep statusText
-    }
-    const err = new Error(detail);
-    err.status = res.status;
-    if (code) err.code = code;
-    throw err;
+// The error half of `jsonOrThrow`, split out so responses that aren't JSON —
+// the design preview returns a PNG — can fail the same way.
+async function throwFrom(res) {
+  let detail = res.statusText;
+  let code;
+  try {
+    const body = await res.json();
+    detail = detailMessage(body) || JSON.stringify(body);
+    // Machine-readable half of a structured detail, e.g. 'name_required'.
+    // Callers that need to branch shouldn't have to match on prose.
+    if (typeof body?.detail?.code === 'string') code = body.detail.code;
+  } catch {
+    // empty or non-JSON body, keep statusText
   }
+  const err = new Error(detail);
+  err.status = res.status;
+  if (code) err.code = code;
+  throw err;
+}
+
+async function jsonOrThrow(res) {
+  if (!res.ok) await throwFrom(res);
   if (res.status === 204) return null;
   return res.json();
 }
@@ -606,18 +610,39 @@ export const api = {
     return jsonOrThrow(res);
   },
 
-  // `choice` is { mediaId } to pick one, { removed: true } to take it off,
-  // or {} to hand the decision back to the auto-pick.
-  async setGiftPhoto(birthId, renderingId, choice = {}) {
+  // A design draft: { mediaId, removed, text }. `mediaId` picks a photo,
+  // `removed` takes it off, neither hands the choice back to the auto-pick.
+  _designBody(draft = {}) {
+    return JSON.stringify({
+      media_id: draft.mediaId ?? null,
+      removed: Boolean(draft.removed),
+      text: draft.text || {},
+    });
+  },
+
+  // Renders the draft and returns an object URL. Nothing is saved — this is
+  // what the editor debounces onto while someone types.
+  async previewGiftDesign(birthId, renderingId, draft, { signal } = {}) {
     const res = await fetch(
-      `${API_URL}/birth/${birthId}/gifts/${renderingId}/photo`,
+      `${API_URL}/birth/${birthId}/gifts/${renderingId}/preview`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: this._designBody(draft),
+        signal,
+      },
+    );
+    if (!res.ok) await throwFrom(res);
+    return URL.createObjectURL(await res.blob());
+  },
+
+  async saveGiftDesign(birthId, renderingId, draft) {
+    const res = await fetch(
+      `${API_URL}/birth/${birthId}/gifts/${renderingId}/design`,
       {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          media_id: choice.mediaId ?? null,
-          removed: Boolean(choice.removed),
-        }),
+        body: this._designBody(draft),
       },
     );
     return jsonOrThrow(res);

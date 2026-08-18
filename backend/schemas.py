@@ -667,15 +667,23 @@ class GiftRenderingOut(BaseModel):
     # (cx, cy, r) as fractions of the artwork, so the editor can lay a
     # "change photo" hotspot over the photo itself.
     photo_spot: Optional[tuple[float, float, float]] = None
+    # Slots this design lets a parent edit, and what they currently say.
+    editable_text: list[str] = []
+    text_overrides: dict[str, str] = {}
 
 
-class GiftPhotoIn(BaseModel):
-    """Pick this design's photo. Exactly one of these is meaningful:
-    a media id to use it, `removed` to take the photo off, or neither to hand
-    the choice back to the auto-pick."""
+class GiftDesignIn(BaseModel):
+    """A draft of one design: its photo and any text the template allows.
+
+    Photo: a media id to use it, `removed` to take it off, or neither to hand
+    the choice back to the auto-pick. Text is keyed by slot, and keys the
+    template doesn't list as editable are dropped at render — a keepsake's
+    derived lines aren't up for editing.
+    """
 
     media_id: Optional[uuid.UUID] = None
     removed: bool = False
+    text: dict[str, str] = Field(default_factory=dict)
 
 
 class GiftPhotoOptionOut(BaseModel):

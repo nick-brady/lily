@@ -710,6 +710,12 @@ class GiftRendering(Base):
     photo_removed: Mapped[bool] = mapped_column(
         sa.Boolean, nullable=False, server_default=sa.text("false")
     )
+    # Per-design text edits, keyed by slot ("child_name", "custom_line").
+    # Only what a template lists as editable is honoured; everything else on a
+    # keepsake is derived from the birth and stays that way.
+    text_overrides: Mapped[dict] = mapped_column(
+        JSONB, nullable=False, server_default=sa.text("'{}'::jsonb")
+    )
     is_visible_to_viewers: Mapped[bool] = mapped_column(
         sa.Boolean, nullable=False, server_default=sa.text("true")
     )

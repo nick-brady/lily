@@ -252,7 +252,7 @@ function StorageGiftCard({ item, birthId }) {
       {item.is_purchasable && !item.is_claimed_for_family && (
         <button
           type="button"
-          onClick={() => setWizardAt(2)}
+          onClick={() => setWizardAt(0)}
           className="w-full px-3 py-2 text-sm font-medium text-left transition-colors t-btn-accent rounded-none"
         >
           Send this gift · {formatPrice(item.base_price_cents)}
@@ -433,7 +433,7 @@ function RenderingTile({ rendering, birthId, item, familyHasAddress, onPhotoChan
       {rendering.status === 'ready' && item?.is_purchasable && (
         <button
           type="button"
-          onClick={() => setWizardAt(2)}
+          onClick={() => setWizardAt(0)}
           className="w-full px-3 py-2 text-sm font-medium text-left transition-colors t-btn-accent rounded-none"
         >
           Send this gift · {formatPrice(item.base_price_cents)}
@@ -474,7 +474,6 @@ function RenderingTile({ rendering, birthId, item, familyHasAddress, onPhotoChan
           rendering={rendering}
           item={item}
           familyHasAddress={familyHasAddress}
-          startAt={wizardAt}
           onClose={() => setWizardAt(null)}
           onChanged={onPhotoChanged}
           renderCheckout={(current) => (
