@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { api } from '../api/client';
 import { formatPrice } from '../utils/money';
-import Lightbox from './Lightbox';
 import GiftWizard from './GiftWizard';
 
 function formatDate(timestamp) {
@@ -346,7 +345,6 @@ function StorageGiftCheckoutSheet({ birthId, item, onClose }) {
 
 function RenderingTile({ rendering, birthId, item, familyHasAddress, onPhotoChanged }) {
   // Index into the gallery below, or null. One set of images, one viewer.
-  const [zoom, setZoom] = useState(null);
   // null, or the step to open the wizard at. The tile has two ways in: the
   // design itself (customise) and the buy button (straight to sending), so
   // someone happy with what they see doesn't have to click through.
@@ -367,12 +365,6 @@ function RenderingTile({ rendering, birthId, item, familyHasAddress, onPhotoChan
         })),
       ]
     : [];
-  const gallery = [
-    ...(rendering.artwork_url
-      ? [{ url: rendering.artwork_url, caption: 'The artwork' }]
-      : []),
-    ...angles,
-  ];
   const hero = rendering.artwork_url || rendering.mockup_url;
 
   return (
@@ -403,10 +395,10 @@ function RenderingTile({ rendering, birthId, item, familyHasAddress, onPhotoChan
                 <button
                   key={a.url}
                   type="button"
-                  onClick={() => setZoom(i + 1)}
+                  onClick={() => setWizardAt(0)}
                   className="flex-1 block rounded overflow-hidden"
-                  style={{ cursor: 'zoom-in' }}
-                  aria-label={a.caption ? `See ${a.caption} full screen` : 'See this view full screen'}
+                  style={{ cursor: 'pointer' }}
+                  aria-label={a.caption ? `Customise this design (${a.caption})` : 'Customise this design'}
                 >
                   <img
                     src={a.url}
@@ -457,9 +449,6 @@ function RenderingTile({ rendering, birthId, item, familyHasAddress, onPhotoChan
         />
       )}
 
-      {zoom !== null && gallery.length > 0 && (
-        <Lightbox images={gallery} startIndex={zoom} onClose={() => setZoom(null)} />
-      )}
     </div>
   );
 }
