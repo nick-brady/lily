@@ -24,7 +24,7 @@ const SLOT_PLACEHOLDERS = { child_name: 'Lily Wren', custom_line: 'worth every h
 // beneath it, which means the field has to stop where that floor does. Your
 // own line has no such duty — it shrinks as far as it needs to, so it takes
 // as much as the design can hold at all: about eighty characters of prose.
-const SLOT_MAX = { child_name: 28, custom_line: 80 };
+const SLOT_MAX = { child_name: 36, custom_line: 80 };
 
 export default function GiftWizard({
   birthId,

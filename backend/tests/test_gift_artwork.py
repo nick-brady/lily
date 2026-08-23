@@ -587,18 +587,18 @@ def test_long_names_shrink_instead_of_running_under_the_photo():
     room, roomier = TEMPLATES["mug_hours"].text_widths["child_name"]
 
     # a short name keeps the size the design was drawn at
-    assert gift_artwork.fit_name_size("Lily", room, 175, 46) == 175
+    assert gift_artwork.fit_name_size("Lily", room, 175, 32) == 175
     # a long one comes down
-    small = gift_artwork.fit_name_size("Lily Wren Bradfsdf", room, 175, 46)
+    small = gift_artwork.fit_name_size("Lily Wren Bradfsdf", room, 175, 32)
     assert small < 175
     # and it fits once it has
     assert gift_artwork._measure("Lily Wren Bradfsdf", small) <= room
     # taking the photo away gives it more room, not the same shrunk size
-    assert gift_artwork.fit_name_size("Lily Wren Bradfsdf", roomier, 175, 46) > small
+    assert gift_artwork.fit_name_size("Lily Wren Bradfsdf", roomier, 175, 32) > small
     # it only ever shrinks — nothing is scaled up to fill space
-    assert gift_artwork.fit_name_size("Lily", roomier, 175, 46) == 175
+    assert gift_artwork.fit_name_size("Lily", roomier, 175, 32) == 175
     # and it stops at the floor rather than becoming unreadable
-    assert gift_artwork.fit_name_size("M" * 40, room, 175, 46) == 46
+    assert gift_artwork.fit_name_size("M" * 40, room, 175, 32) == 32
 
 
 def test_your_own_line_shrinks_as_far_as_it_has_to():
@@ -634,8 +634,8 @@ def test_the_print_warning_can_only_fire_where_it_matters():
     about 6pt sublimation fills in the fine strokes, and a screen preview
     won't show that.
 
-    The name can never trip it: its 46px floor is 11pt at 300 DPI, and the
-    field stops accepting characters at that floor. Your own line can, because
+    The name can never trip it: its 32px floor is 7.7pt at 300 DPI, and the
+    field stops accepting characters where that floor still fits. Your own line can, because
     it's allowed to shrink as far as it needs to — which is exactly the pair
     of choices the warning exists to cover.
     """
@@ -645,7 +645,7 @@ def test_the_print_warning_can_only_fire_where_it_matters():
     for tid in ("mug_hours", "card_hours_photo"):
         widths = TEMPLATES[tid].text_widths
         worst = min(
-            gift_artwork.fit_name_size(c * 80, min(widths["child_name"]), 175, 46)
+            gift_artwork.fit_name_size(c * 36, min(widths["child_name"]), 175, 32)
             for c in "WMAe"
         )
         assert worst >= floor, f"{tid}: the name should never need a warning"

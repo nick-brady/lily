@@ -136,7 +136,11 @@ def render(
         # Shrink-to-fit, measured against the real font file. Only ever
         # smaller — a short name keeps the size the design was drawn at.
         "child_name_size": (
-            fit_name_size(name, room_for("child_name"), 175, 46)
+            # Floor 32px. Higher and a long name can't fit at all; lower and
+            # it stops being printable. At 32 the widest 36-character name
+            # still clears the photo, and 32px is 7.7pt — small, but a name
+            # that long is a small name however you set it.
+            fit_name_size(name, room_for("child_name"), 175, 32)
             if room_for("child_name")
             else 175
         ),
