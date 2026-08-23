@@ -373,44 +373,40 @@ function RenderingTile({ rendering, birthId, item, familyHasAddress, onPhotoChan
       style={{ borderColor: 'var(--t-soft-ring)' }}
     >
       {rendering.status === 'ready' && hero ? (
-        <>
-          <button
-            type="button"
-            onClick={() => setWizardAt(0)}
+        // One target, not four. Each image used to carry its own handler,
+        // which left the padding and the gutters between them dead — a click
+        // half a centimetre off did nothing, on a card whose whole job is to
+        // be clicked. The button wraps the images instead of living inside
+        // them, so anywhere in this region opens the editor, and it's one tab
+        // stop rather than four.
+        <button
+          type="button"
+          onClick={() => setWizardAt(0)}
+          className="w-full block text-left"
+          aria-label="Customise this design"
+        >
+          <img
+            src={hero}
+            alt={`${rendering.template_id} design`}
             className="w-full block"
-            style={{ cursor: 'pointer' }}
-            aria-label="Customise this design"
-          >
-            <img
-              src={hero}
-              alt={`${rendering.template_id} design`}
-              className="w-full block"
-              style={{ backgroundColor: 'var(--t-soft-bg)' }}
-            />
-          </button>
+            style={{ backgroundColor: 'var(--t-soft-bg)' }}
+          />
 
           {angles.length > 0 && rendering.artwork_url && (
-            <div className="flex gap-1.5 p-1.5">
-              {angles.map((a, i) => (
-                <button
-                  key={a.url}
-                  type="button"
-                  onClick={() => setWizardAt(0)}
-                  className="flex-1 block rounded overflow-hidden"
-                  style={{ cursor: 'pointer' }}
-                  aria-label={a.caption ? `Customise this design (${a.caption})` : 'Customise this design'}
-                >
+            <span className="flex gap-1.5 p-1.5">
+              {angles.map((a) => (
+                <span key={a.url} className="flex-1 block rounded overflow-hidden">
                   <img
                     src={a.url}
                     alt={a.caption || `${rendering.template_id} view`}
                     className="w-full aspect-square object-cover block"
                     style={{ backgroundColor: 'var(--t-soft-bg)' }}
                   />
-                </button>
+                </span>
               ))}
-            </div>
+            </span>
           )}
-        </>
+        </button>
       ) : (
         <div className="aspect-[2/1] flex items-center justify-center text-xs t-muted gap-2">
           <span className="w-3 h-3 rounded-full animate-pulse" style={{ backgroundColor: 'var(--t-dot)' }} />
