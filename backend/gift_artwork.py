@@ -118,13 +118,16 @@ def render(
         overrides.get("child_name") or (birth.child_name or "").strip() or "Baby"
     )
     custom_line = overrides.get("custom_line", "")
-    # How wide the set lines may be. With a photo beside them the box stops
-    # short of it; without one they get the rest of the canvas.
-    if template.text_box:
-        x, right_with_photo, right_without = template.text_box
-        room = (right_with_photo if photo_data_uri else right_without) - x
-    else:
-        room = None
+    def room_for(slot: str) -> float | None:
+        """How wide a given line may be. A photo only crowds the lines level
+        with it, so this is per line: on the mug the name has to clear the
+        picture, while the parent's own line sits below it and gets the whole
+        width either way."""
+        widths = (template.text_widths or {}).get(slot)
+        if not widths:
+            return None
+        with_photo, without = widths
+        return with_photo if photo_data_uri else without
     context = {
         "w": template.width,
         "h": template.height,
@@ -133,7 +136,9 @@ def render(
         # Shrink-to-fit, measured against the real font file. Only ever
         # smaller — a short name keeps the size the design was drawn at.
         "child_name_size": (
-            fit_name_size(name, room, 175, 46) if room else 175
+            fit_name_size(name, room_for("child_name"), 175, 46)
+            if room_for("child_name")
+            else 175
         ),
         # A line of the parent's own. Empty unless they wrote one — the
         # templates that have a slot for it simply skip it when it's blank.
@@ -144,7 +149,9 @@ def render(
         # not that it stays a particular size. The name is the opposite: it
         # holds its floor and the field stops accepting more.
         "custom_line_size": (
-            fit_name_size(custom_line, room, 42, 10) if room else 42
+            fit_name_size(custom_line, room_for("custom_line"), 42, 10)
+            if room_for("custom_line")
+            else 42
         ),
         "birth_date": _fmt_date(when),
         "birth_time": _fmt_time(when),

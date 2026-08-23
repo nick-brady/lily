@@ -584,8 +584,7 @@ def test_long_names_shrink_instead_of_running_under_the_photo():
     that can yield."""
     from gift_templates import TEMPLATES
 
-    x, with_photo, without = TEMPLATES["mug_hours"].text_box
-    room, roomier = with_photo - x, without - x
+    room, roomier = TEMPLATES["mug_hours"].text_widths["child_name"]
 
     # a short name keeps the size the design was drawn at
     assert gift_artwork.fit_name_size("Lily", room, 175, 46) == 175
@@ -609,8 +608,22 @@ def test_your_own_line_shrinks_as_far_as_it_has_to():
     from gift_templates import TEMPLATES
 
     for tid in ("mug_hours", "card_hours_photo"):
-        x, with_photo, _without = TEMPLATES[tid].text_box
-        room = with_photo - x
+        room = min(TEMPLATES[tid].text_widths["custom_line"])
         for text in ("worth every hour", "W" * 80, "M" * 80, "e" * 80):
             size = gift_artwork.fit_name_size(text, room, 42, 10)
             assert gift_artwork._measure(text, size) <= room, (tid, text[:12])
+
+
+def test_each_line_gets_the_room_it_actually_has():
+    """A photo only crowds the lines level with it. On the mug it crosses the
+    name and ends well above the parent's own line, so that line keeps the
+    full width whether the photo is there or not — it was being shrunk to
+    clear something that isn't beside it."""
+    widths = TEMPLATES["mug_hours"].text_widths
+
+    name_with, name_without = widths["child_name"]
+    line_with, line_without = widths["custom_line"]
+
+    assert name_with < name_without, "the photo has to crowd the name"
+    assert line_with == line_without, "nothing sits beside the line below it"
+    assert line_with == name_without, "so it gets the same width the name gets free"

@@ -44,11 +44,12 @@ class GiftTemplate:
     # are for. The name can be shortened to the one people actually use, and
     # anything else they want to say goes on a line that was always theirs.
     editable_text: tuple[str, ...] = ()
-    # How much room the set lines have, so long ones shrink instead of
-    # running under the photo: (x of the text, right edge with a photo
-    # beside it, right edge without one). The artwork has no reflow — the
-    # type is the only thing that can yield.
-    text_box: tuple[float, float, float] | None = None
+    # How much room each set line has, keyed by slot: (width with a photo
+    # beside it, width without). Per line, not per template — the photo only
+    # crowds the lines level with it. On the mug it sits across the name but
+    # ends well above the parent's own line, which therefore gets the whole
+    # width whether the photo is there or not.
+    text_widths: dict[str, tuple[float, float]] | None = None
     scene: str | None = None  # richer data scene: "hours" | "story" | None
     # center of the labor clock, for scene == "hours" (defaults to canvas center)
     clock_cx: float | None = None
@@ -69,7 +70,7 @@ TEMPLATES: dict[str, GiftTemplate] = {
         photo=True,
         photo_spot=(2235 / 2475, 490 / 1155, 150 / 2475),
         editable_text=("child_name", "custom_line"),
-        text_box=(1360, 2033, 2385),
+        text_widths={"child_name": (673, 1025), "custom_line": (1025, 1025)},
         scene="hours",
         clock_cx=640,
         clock_cy=577,
@@ -123,7 +124,7 @@ TEMPLATES: dict[str, GiftTemplate] = {
         photo=True,
         photo_spot=(320 / 1500, 1700 / 2100, 150 / 1500),
         editable_text=("child_name", "custom_line"),
-        text_box=(560, 1410, 1410),
+        text_widths={"child_name": (850, 1320), "custom_line": (850, 1320)},
         scene="hours_photo",
         clock_cx=750,
         clock_cy=940,

@@ -50,9 +50,11 @@
         font-size="38" letter-spacing="2" fill="{{ p.ink }}"
         opacity="0.62">born {{ birth_date }} at {{ birth_time }}</text>
 
-  {# The parent's own line, above the derived footer. #}
+  {# The parent's own line, above the derived footer. It follows the name's
+     column rather than the card's centre: the photo sits bottom-left, level
+     with this line, so a centred one would run straight into it. #}
   {% if custom_line %}
-  <text x="{{ w // 2 }}" y="1862" text-anchor="middle"
+  <text x="{{ text_x }}" y="1862" text-anchor="{{ text_anchor }}"
         font-family="{{ p.display_font }}" font-size="{{ custom_line_size }}" font-style="italic"
         fill="{{ p.ink }}" opacity="0.72">{{ custom_line }}</text>
   {% endif %}
