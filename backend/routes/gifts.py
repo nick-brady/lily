@@ -70,6 +70,7 @@ def _serialize_rendering(rendering) -> GiftRenderingOut:
         is_visible_to_viewers=rendering.is_visible_to_viewers,
         has_photo=shows_photo,
         photo_media_id=rendering.photo_media_id,
+        photo_media_id_effective=gift_artwork.effective_photo_id(rendering),
         photo_auto=(
             rendering.photo_media_id is None and not rendering.photo_removed
         ),

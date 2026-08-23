@@ -662,6 +662,11 @@ class GiftRenderingOut(BaseModel):
     has_photo: bool = False
     photo_media_id: Optional[uuid.UUID] = None
     photo_auto: bool = True
+    # The photo the current artwork actually used, resolved. When a design is
+    # on auto this is the guess *as it stood when it rendered* — which is not
+    # the same as re-running the guess later, and the editor needs the former
+    # so opening it can't move a photo nobody touched.
+    photo_media_id_effective: Optional[uuid.UUID] = None
     photo_removed: bool = False
     photo_removable: bool = False
     # (cx, cy, r) as fractions of the artwork, so the editor can lay a

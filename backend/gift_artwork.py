@@ -235,6 +235,25 @@ def _text_overrides(template: GiftTemplate, rendering) -> dict:
     }
 
 
+def effective_photo_id(rendering) -> str | None:
+    """The photo the current artwork actually used.
+
+    An explicit choice, else the guess *as it stood when this rendered* —
+    which `render` records in the metadata. Deliberately not the guess re-run
+    now: `_select_hero_photo` reads today's photos, so re-running it can
+    return something the artwork on screen has never contained. The editor
+    seeds its draft from this, which is what stops an unrelated edit from
+    quietly swapping the picture.
+    """
+    if rendering is None:
+        return None
+    if rendering.photo_media_id is not None:
+        return str(rendering.photo_media_id)
+    return (getattr(rendering, "rendering_metadata", None) or {}).get(
+        "selected_media_id"
+    )
+
+
 def _photo_for(
     db: Session, birth: Birth, template: GiftTemplate, rendering
 ) -> MediaAsset | None:

@@ -37,7 +37,14 @@ export default function GiftWizard({
   // The draft lives here and nowhere else until Next. Previews don't persist,
   // so trying things costs nothing and backing out costs nothing either.
   const [draft, setDraft] = useState(() => ({
-    mediaId: initialRendering.photo_media_id || null,
+    // Seeded from the photo the artwork *actually* used, not from "auto".
+    // Auto is re-resolved on every render, so a draft that just said "auto"
+    // let an unrelated edit — changing the mug, typing a letter — quietly
+    // swap the picture. The draft has to mean what's on screen.
+    mediaId:
+      initialRendering.photo_media_id
+      || initialRendering.photo_media_id_effective
+      || null,
     removed: Boolean(initialRendering.photo_removed),
     text: { ...(initialRendering.text_overrides || {}) },
     productKey: initialRendering.product_key || null,

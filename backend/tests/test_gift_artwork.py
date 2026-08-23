@@ -553,3 +553,26 @@ def test_shortlist_products_have_a_blank_photo():
 
     for product in fp.SHORTLIST.values():
         assert product.blank_image_url.startswith("https://"), product.key
+
+
+def test_effective_photo_is_what_rendered_not_todays_guess():
+    """The editor seeds its draft from the photo the artwork actually used.
+
+    "Auto" is re-resolved on every render, so a draft that merely said "auto"
+    let an unrelated edit — changing the mug, typing a letter — swap the
+    picture underneath someone. This is the value that prevents it, and it
+    must come from what rendered, never from re-running the guess.
+    """
+
+    class Row:
+        def __init__(self, chosen=None, used=None):
+            self.photo_media_id = chosen
+            self.rendering_metadata = {"selected_media_id": used} if used else {}
+
+    # an explicit choice wins
+    assert gift_artwork.effective_photo_id(Row(chosen="chosen")) == "chosen"
+    # on auto, it's whatever the artwork on screen was rendered with
+    assert gift_artwork.effective_photo_id(Row(used="what-rendered")) == "what-rendered"
+    # a design that has never rendered has nothing to pin
+    assert gift_artwork.effective_photo_id(Row()) is None
+    assert gift_artwork.effective_photo_id(None) is None
