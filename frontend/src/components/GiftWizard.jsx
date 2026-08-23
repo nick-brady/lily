@@ -59,6 +59,12 @@ export default function GiftWizard({
   const [previewing, setPreviewing] = useState(false);
   const [photos, setPhotos] = useState(null);
   const [photosError, setPhotosError] = useState('');
+  // What each set line ended up at, and the size below which it stops
+  // printing well. Seeded from the saved render, refreshed by each preview.
+  const [fit, setFit] = useState(() => ({
+    sizes: initialRendering.text_sizes || {},
+    floor: initialRendering.text_print_floor || 0,
+  }));
   const [saving, setSaving] = useState(false);
   const [mockupBusy, setMockupBusy] = useState(false);
   const [error, setError] = useState('');
@@ -132,12 +138,16 @@ export default function GiftWizard({
         abortRef.current = controller;
         setPreviewing(true);
         try {
-          const url = await api.previewGiftDesign(birthId, rendering.id, next, {
-            signal: controller.signal,
-          });
+          const { url, fit: nextFit } = await api.previewGiftDesign(
+            birthId,
+            rendering.id,
+            next,
+            { signal: controller.signal },
+          );
           if (urlRef.current) URL.revokeObjectURL(urlRef.current);
           urlRef.current = url;
           setPreviewUrl(url);
+          if (nextFit) setFit(nextFit);
           setError('');
         } catch (err) {
           if (err.name !== 'AbortError') setError(err.message || 'Preview failed');
@@ -168,7 +178,7 @@ export default function GiftWizard({
     setGalleryAt(index);
     if (index !== 0 || !dirty || hiResRef.current) return;
     try {
-      const url = await api.previewGiftDesign(birthId, rendering.id, draft, {
+      const { url } = await api.previewGiftDesign(birthId, rendering.id, draft, {
         full: true,
       });
       hiResRef.current = url;
@@ -371,6 +381,20 @@ export default function GiftWizard({
                     className="mt-1 w-full px-3 py-2 rounded-lg border text-sm bg-white dark:bg-gray-800 t-ink"
                     style={{ borderColor: 'var(--t-soft-ring)' }}
                   />
+                  {/* A warning, not a limit. Long is the parent's call — but
+                      below about 6pt sublimation fills in the fine strokes,
+                      and they can't see that in a preview on a screen. */}
+                  {fit.floor > 0
+                    && fit.sizes[slot] > 0
+                    && fit.sizes[slot] < fit.floor && (
+                    <span className="mt-1 flex items-start gap-1.5 text-[11px] text-amber-700 dark:text-amber-400">
+                      <svg className="w-3.5 h-3.5 flex-none mt-px" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                          d="M12 9v4m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" />
+                      </svg>
+                      This has shrunk small enough that it may not print clearly.
+                    </span>
+                  )}
                 </label>
               ))}
 

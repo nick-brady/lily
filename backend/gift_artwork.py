@@ -203,6 +203,14 @@ def render(
 
     metadata = {
         "template_id": template.template_id,
+        # What the set lines ended up at, so the editor can warn when a long
+        # one has shrunk past the point of printing well. Recorded here rather
+        # than recomputed by the client: the measurement needs the font file.
+        "text_sizes": {
+            "child_name": context["child_name_size"],
+            "custom_line": context["custom_line_size"],
+        },
+        "text_print_floor": print_floor_px(template.dpi),
         "theme": birth.theme,
         "selected_media_id": str(photo.id) if photo else None,
         "stats": stats.as_metadata(),
@@ -280,6 +288,13 @@ def _measure(text: str, size: int) -> float:
         # No font file, no measurement — fall back to a generous estimate so
         # a long name shrinks rather than running off into the photo.
         return len(text) * size * 0.46
+
+
+def print_floor_px(dpi: int) -> int:
+    """Below roughly 6pt, sublimation starts filling in the fine strokes and
+    a line stops being worth printing. In pixels that depends on the artwork's
+    resolution, so it's derived rather than guessed: at 300 DPI it's 25px."""
+    return round(6 * dpi / 72)
 
 
 def fit_name_size(text: str, max_width: float, base: int, minimum: int) -> int:

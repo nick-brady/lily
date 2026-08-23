@@ -2,6 +2,7 @@
 and mockups. Purchasing lives in routes/checkout.py."""
 from __future__ import annotations
 
+import json
 import uuid
 
 from pathlib import Path
@@ -82,6 +83,10 @@ def _serialize_rendering(rendering) -> GiftRenderingOut:
         editable_text=list(template.editable_text) if template else [],
         text_overrides=dict(rendering.text_overrides or {}),
         product_key=rendering.product_key,
+        text_sizes=(rendering.rendering_metadata or {}).get("text_sizes") or {},
+        text_print_floor=(rendering.rendering_metadata or {}).get(
+            "text_print_floor"
+        ) or 0,
     )
 
 
@@ -464,7 +469,18 @@ def preview_gift_design(
     return Response(
         content=png,
         media_type="image/png",
-        headers={"Cache-Control": "no-store"},
+        headers={
+            "Cache-Control": "no-store",
+            # The body is a PNG, so the fitted sizes ride along in a header:
+            # the editor needs them to warn about type that's shrunk too far,
+            # and only the server can measure them.
+            "X-Text-Fit": json.dumps(
+                {
+                    "sizes": _meta.get("text_sizes", {}),
+                    "floor": _meta.get("text_print_floor", 0),
+                }
+            ),
+        },
     )
 
 

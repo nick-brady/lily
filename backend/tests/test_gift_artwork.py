@@ -627,3 +627,31 @@ def test_each_line_gets_the_room_it_actually_has():
     assert name_with < name_without, "the photo has to crowd the name"
     assert line_with == line_without, "nothing sits beside the line below it"
     assert line_with == name_without, "so it gets the same width the name gets free"
+
+
+def test_the_print_warning_can_only_fire_where_it_matters():
+    """The editor warns when a line has shrunk past printing well. Below
+    about 6pt sublimation fills in the fine strokes, and a screen preview
+    won't show that.
+
+    The name can never trip it: its 46px floor is 11pt at 300 DPI, and the
+    field stops accepting characters at that floor. Your own line can, because
+    it's allowed to shrink as far as it needs to — which is exactly the pair
+    of choices the warning exists to cover.
+    """
+    floor = gift_artwork.print_floor_px(300)
+    assert floor == 25  # 6pt at 300 DPI
+
+    for tid in ("mug_hours", "card_hours_photo"):
+        widths = TEMPLATES[tid].text_widths
+        worst = min(
+            gift_artwork.fit_name_size(c * 80, min(widths["child_name"]), 175, 46)
+            for c in "WMAe"
+        )
+        assert worst >= floor, f"{tid}: the name should never need a warning"
+
+        worst_line = min(
+            gift_artwork.fit_name_size(c * 80, min(widths["custom_line"]), 42, 10)
+            for c in "WMAe"
+        )
+        assert worst_line < floor, f"{tid}: the line should be able to warn"

@@ -634,7 +634,14 @@ export const api = {
       },
     );
     if (!res.ok) await throwFrom(res);
-    return URL.createObjectURL(await res.blob());
+    // The fitted type sizes ride in a header, since the body is the PNG.
+    let fit = null;
+    try {
+      fit = JSON.parse(res.headers.get('X-Text-Fit') || 'null');
+    } catch {
+      // a preview without it still previews
+    }
+    return { url: URL.createObjectURL(await res.blob()), fit };
   },
 
   async saveGiftDesign(birthId, renderingId, draft) {

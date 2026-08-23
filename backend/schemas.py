@@ -675,6 +675,10 @@ class GiftRenderingOut(BaseModel):
     # Slots this design lets a parent edit, and what they currently say.
     editable_text: list[str] = []
     text_overrides: dict[str, str] = {}
+    # What each set line ended up at, and the size below which it stops
+    # printing well — so the editor can warn without measuring fonts itself.
+    text_sizes: dict[str, int] = {}
+    text_print_floor: int = 0
     product_key: Optional[str] = None
 
 
