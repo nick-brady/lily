@@ -37,7 +37,13 @@ class ShortlistProduct:
     surcharge_cents: int = 0
 
 
-# Insertion order is the display order in the picker.
+# Insertion order is the display order in the picker; the first is the default.
+#
+# White only, and not for want of options. The artwork fills its whole print
+# area with the theme's background — an opaque rectangle, not a transparency —
+# so on a dark mug it prints a pale slab across the wrap rather than sitting on
+# the ceramic. Recolouring the type wouldn't help; the panel is the problem. A
+# dark product needs artwork drawn for it, not this artwork inverted.
 SHORTLIST: dict[str, ShortlistProduct] = {
     "white_glossy_11oz": ShortlistProduct(
         key="white_glossy_11oz",
@@ -66,26 +72,6 @@ SHORTLIST: dict[str, ShortlistProduct] = {
         variant_id=16586,
         blank_image_url="https://files.cdn.printful.com/products/19/16586_1680616351.jpg",
         cost_cents=950,
-        surcharge_cents=300,
-    ),
-    "black_glossy_11oz": ShortlistProduct(
-        key="black_glossy_11oz",
-        display_name="Black Glossy Mug (11 oz)",
-        product_kind="mug",
-        product_id=300,
-        variant_id=9323,
-        blank_image_url="https://files.cdn.printful.com/products/300/9323_1531741162.jpg",
-        cost_cents=795,
-        surcharge_cents=300,
-    ),
-    "black_glossy_15oz": ShortlistProduct(
-        key="black_glossy_15oz",
-        display_name="Black Glossy Mug (15 oz)",
-        product_kind="mug",
-        product_id=300,
-        variant_id=9324,
-        blank_image_url="https://files.cdn.printful.com/products/300/9324_1531741191.jpg",
-        cost_cents=895,
         surcharge_cents=300,
     ),
     "latte_mug": ShortlistProduct(

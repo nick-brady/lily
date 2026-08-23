@@ -655,3 +655,19 @@ def test_the_print_warning_can_only_fire_where_it_matters():
             for c in "WMAe"
         )
         assert worst_line < floor, f"{tid}: the line should be able to warn"
+
+
+def test_the_shortlist_stays_light_coloured():
+    """Every mug we sell has to be light.
+
+    The artwork fills its whole print area with the theme's background — an
+    opaque rectangle, not a transparency — so on a dark mug it prints a pale
+    slab across the wrap instead of sitting on the ceramic. Recolouring the
+    type wouldn't fix it; the panel is the problem. A dark product needs
+    artwork drawn for it.
+    """
+    from fulfillment import products as fp
+
+    for product in fp.SHORTLIST.values():
+        assert "black" not in product.key.lower(), product.key
+        assert "Black" not in product.display_name, product.display_name
