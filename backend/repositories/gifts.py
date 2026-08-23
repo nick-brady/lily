@@ -285,23 +285,26 @@ def artwork_url(rendering: GiftRendering) -> str | None:
     return presigned_get_url(rendering.artwork_s3_key)
 
 
-# A stale mockup is still a real photograph of the product — it just shows the
-# design as it was before the last edit. Keeping it visible beats emptying the
-# gallery every time someone changes a photo; the status rides along so the UI
-# can offer to refresh it.
-_MOCKUP_SHOWABLE = ("ready", "stale")
+# Whether we have a photograph of the product is the s3 key's business; the
+# status only says how current it is. A `stale` shot shows the design as it
+# was before the last edit, and a `failed` one means the most recent *attempt*
+# came back empty-handed — neither unmakes the photograph already taken. The
+# status rides along so the UI can say so and offer to refresh.
+#
+# Gating these on status is how a failed refresh used to empty a gallery that
+# had perfectly good shots in it: one refused request and the mug disappeared.
 
 
 def mockup_url(rendering: GiftRendering) -> str | None:
-    if rendering.mockup_status not in _MOCKUP_SHOWABLE or not rendering.mockup_s3_key:
+    if not rendering.mockup_s3_key:
         return None
     return presigned_get_url(rendering.mockup_s3_key)
 
 
 def mockup_extras(rendering: GiftRendering) -> list[dict]:
     """Extra angle/view mockups alongside the primary one, presigned. Empty
-    when there's no usable mockup or the product had none."""
-    if rendering.mockup_status not in _MOCKUP_SHOWABLE:
+    when no mockup has ever landed or the product had none."""
+    if not rendering.mockup_s3_key:
         return []
     return [
         {"title": extra.get("title", ""), "url": presigned_get_url(extra["s3_key"])}
@@ -461,7 +464,12 @@ def _try_generate_mockup(db: Session, rendering: GiftRendering) -> None:
     birth = db.get(Birth, rendering.birth_id)
     if item is None or birth is None:
         return
-    product = fulfillment_products.default_for_product_kind(item.product_kind)
+    # The product they chose, not our default — `for_rendering` is the one
+    # place that decides, so the mug someone approves in the mockup and the
+    # mug that ships are the same mug.
+    product = fulfillment_products.for_rendering(
+        rendering.product_key, item.product_kind
+    )
     template = gift_templates.get(rendering.template_id)
     if product is None or template is None:
         return

@@ -88,9 +88,11 @@ export default function GiftWizard({
         ...(rendering.mockup_extras || []).map((v) => ({ url: v.url, caption: v.title || '' })),
       ]
     : [];
-  // Behind either because we've edited since it was taken, or because the
-  // last save marked it so.
-  const anglesBehind = dirty || rendering.mockup_status === 'stale';
+  // Behind because we've edited since it was taken, because the last save
+  // marked it so, or because the last attempt to retake it failed — in which
+  // case what's on screen is still the older, real photograph.
+  const anglesBehind =
+    dirty || rendering.mockup_status === 'stale' || rendering.mockup_status === 'failed';
 
   useEffect(() => {
     // Don't swallow this. An empty grid and "no photos yet" is a claim about
@@ -350,9 +352,11 @@ export default function GiftWizard({
                     ))}
                   </div>
                   <p className="text-[11px] t-muted text-center mt-2">
-                    {anglesBehind
-                      ? 'Shows your design before this change — refreshed at the next step.'
-                      : 'On the mug.'}
+                    {rendering.mockup_status === 'failed'
+                      ? "Shows an earlier version — the new photo didn't come back."
+                      : anglesBehind
+                        ? 'Shows your design before this change — refreshed at the next step.'
+                        : 'On the mug.'}
                   </p>
                 </div>
               )}
