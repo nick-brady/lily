@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { api } from '../api/client';
 import { formatPrice } from '../utils/money';
+import Lightbox from './Lightbox';
 
 // Customise → see it on the product → send.
 //
@@ -50,6 +51,13 @@ export default function GiftWizard({
   const [saving, setSaving] = useState(false);
   const [mockupBusy, setMockupBusy] = useState(false);
   const [error, setError] = useState('');
+  // Index into [artwork, ...angles] when the gallery is open, else null.
+  const [galleryAt, setGalleryAt] = useState(null);
+  // A print-resolution render of the *unsaved* draft, fetched only when
+  // someone actually opens it full screen. The 900px live preview is right
+  // for typing and wrong for looking closely.
+  const [hiResUrl, setHiResUrl] = useState(null);
+  const hiResRef = useRef(null);
 
   const fileRef = useRef(null);
   const abortRef = useRef(null);
@@ -96,6 +104,7 @@ export default function GiftWizard({
       clearTimeout(pollRef.current);
       abortRef.current?.abort();
       if (urlRef.current) URL.revokeObjectURL(urlRef.current);
+      if (hiResRef.current) URL.revokeObjectURL(hiResRef.current);
     },
     [],
   );
@@ -132,7 +141,30 @@ export default function GiftWizard({
   const edit = (patch) => {
     const next = { ...draft, ...patch, text: { ...draft.text, ...(patch.text || {}) } };
     setDraft(next);
+    if (hiResRef.current) {
+      URL.revokeObjectURL(hiResRef.current);
+      hiResRef.current = null;
+    }
+    setHiResUrl(null);
     schedulePreview(next);
+  };
+
+  // The artwork is the one worth enlarging: it's a 2475px print file, where
+  // the mug shots are 1000px photographs. So the gallery leads with it and
+  // the angles come along; the viewer never scales past an image's own size,
+  // so nothing is blown up into blur.
+  const openGallery = async (index) => {
+    setGalleryAt(index);
+    if (index !== 0 || !dirty || hiResRef.current) return;
+    try {
+      const url = await api.previewGiftDesign(birthId, rendering.id, draft, {
+        full: true,
+      });
+      hiResRef.current = url;
+      setHiResUrl(url);
+    } catch {
+      // the live preview is already on screen; leave it
+    }
   };
 
   const uploadPhoto = async (e) => {
@@ -260,7 +292,15 @@ export default function GiftWizard({
               style={{ backgroundColor: 'var(--t-soft-bg)' }}
             >
               <div className="relative w-full">
-                <img src={shown} alt="Your design" className="w-full rounded-lg block shadow-sm bg-white" />
+                <button
+                  type="button"
+                  onClick={() => openGallery(0)}
+                  className="w-full block"
+                  style={{ cursor: 'zoom-in' }}
+                  aria-label="See your design full screen"
+                >
+                  <img src={shown} alt="Your design" className="w-full rounded-lg block shadow-sm bg-white" />
+                </button>
                 {previewing && (
                   <span className="absolute top-3 right-3 text-[11px] px-2 py-1 rounded-full bg-black/60 text-white">
                     updating…
@@ -271,13 +311,21 @@ export default function GiftWizard({
               {angles.length > 0 && (
                 <div className="w-full">
                   <div className={`grid grid-cols-3 gap-3 ${anglesBehind ? 'opacity-40' : ''}`}>
-                    {angles.map((a) => (
-                      <img
+                    {angles.map((a, i) => (
+                      <button
                         key={a.url}
-                        src={a.url}
-                        alt={a.caption || 'On the product'}
-                        className="w-full aspect-square object-cover rounded-lg block bg-white"
-                      />
+                        type="button"
+                        onClick={() => openGallery(i + 1)}
+                        className="block w-full"
+                        style={{ cursor: 'zoom-in' }}
+                        aria-label={`See ${a.caption || 'this view'} full screen`}
+                      >
+                        <img
+                          src={a.url}
+                          alt={a.caption || 'On the product'}
+                          className="w-full aspect-square object-cover rounded-lg block bg-white"
+                        />
+                      </button>
                     ))}
                   </div>
                   <p className="text-[11px] t-muted text-center mt-2">
@@ -436,14 +484,22 @@ export default function GiftWizard({
               </div>
             ) : angles.length > 0 ? (
               <div className="grid grid-cols-3 gap-4">
-                {angles.map((a) => (
-                  <img
+                {angles.map((a, i) => (
+                  <button
                     key={a.url}
-                    src={a.url}
-                    alt={a.caption || 'On the product'}
-                    className="w-full aspect-square object-cover rounded-lg block"
-                    style={{ backgroundColor: 'var(--t-soft-bg)' }}
-                  />
+                    type="button"
+                    onClick={() => openGallery(i + 1)}
+                    className="block w-full"
+                    style={{ cursor: 'zoom-in' }}
+                    aria-label={`See ${a.caption || 'this view'} full screen`}
+                  >
+                    <img
+                      src={a.url}
+                      alt={a.caption || 'On the product'}
+                      className="w-full aspect-square object-cover rounded-lg block"
+                      style={{ backgroundColor: 'var(--t-soft-bg)' }}
+                    />
+                  </button>
                 ))}
               </div>
             ) : (
@@ -473,6 +529,17 @@ export default function GiftWizard({
 
         {step === 2 && (
           <div className="flex-1 overflow-y-auto p-5">{renderCheckout?.(rendering)}</div>
+        )}
+
+        {galleryAt !== null && (
+          <Lightbox
+            images={[
+              { url: hiResUrl || shown, caption: 'Your design' },
+              ...angles,
+            ]}
+            startIndex={galleryAt}
+            onClose={() => setGalleryAt(null)}
+          />
         )}
       </div>
     </div>

@@ -431,6 +431,7 @@ _PREVIEW_PHOTO_PX = 500
 def preview_gift_design(
     rendering_id: uuid.UUID,
     payload: GiftDesignIn,
+    full: bool = False,
     access: BirthAccess = Depends(require_parent_access),
     db: Session = Depends(get_db),
 ) -> Response:
@@ -440,6 +441,11 @@ def preview_gift_design(
     onto it and swaps the image. No partner call, no storage write, no row
     touched — so trying things costs nothing and abandoning them costs
     nothing either.
+
+    `full` renders at print resolution instead. Keystrokes don't need it, but
+    someone opening their unsaved design full screen to look closely does —
+    handing them the 900px draft would be answering the wrong question. One
+    request on an explicit action, rather than a bigger render on every one.
     """
     rendering, template = _load_editable(db, access, rendering_id)
     _check_photo(db, access, payload, template)
@@ -449,8 +455,8 @@ def preview_gift_design(
             template,
             db,
             _Draft(rendering, payload),
-            photo_max_px=_PREVIEW_PHOTO_PX,
-            output_width=_PREVIEW_W,
+            photo_max_px=None if full else _PREVIEW_PHOTO_PX,
+            output_width=None if full else _PREVIEW_W,
         )
     except gift_artwork.ArtworkError as exc:
         raise HTTPException(status_code=422, detail=str(exc))

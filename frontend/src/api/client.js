@@ -623,9 +623,9 @@ export const api = {
 
   // Renders the draft and returns an object URL. Nothing is saved — this is
   // what the editor debounces onto while someone types.
-  async previewGiftDesign(birthId, renderingId, draft, { signal } = {}) {
+  async previewGiftDesign(birthId, renderingId, draft, { signal, full } = {}) {
     const res = await fetch(
-      `${API_URL}/birth/${birthId}/gifts/${renderingId}/preview`,
+      `${API_URL}/birth/${birthId}/gifts/${renderingId}/preview${full ? '?full=true' : ''}`,
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
