@@ -513,13 +513,13 @@ def test_chosen_product_is_what_ships():
 
     default = fp.default_for_product_kind("mug")
     assert fp.for_rendering(None, "mug") is default
-    assert fp.for_rendering("black_glossy_15oz", "mug").key == "black_glossy_15oz"
+    assert fp.for_rendering("white_glossy_20oz", "mug").key == "white_glossy_20oz"
     # a key we've since retired falls back rather than failing
     assert fp.for_rendering("no_such_mug", "mug") is default
     # a mug key can't leak into another kind — it falls back to that kind's
     # own default, which today is None: the shortlist is mugs only, so cards
     # have nothing mapped to fulfil them.
-    assert fp.for_rendering("black_glossy_15oz", "birth_announcement_cards") is None
+    assert fp.for_rendering("white_glossy_20oz", "birth_announcement_cards") is None
 
 
 def test_only_the_default_mug_is_free():
