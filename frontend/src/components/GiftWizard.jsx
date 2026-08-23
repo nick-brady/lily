@@ -20,9 +20,11 @@ const DEBOUNCE_MS = 300;
 
 const SLOT_LABELS = { child_name: 'Name', custom_line: 'Your own line' };
 const SLOT_PLACEHOLDERS = { child_name: 'Lily Wren', custom_line: 'worth every hour' };
-// Caps the design can actually set: past these the type shrinks below
-// the date line beside it and the hierarchy inverts.
-const SLOT_MAX = { child_name: 28, custom_line: 42 };
+// The name holds a floor of 46px so it never sets smaller than the date line
+// beneath it, which means the field has to stop where that floor does. Your
+// own line has no such duty — it shrinks as far as it needs to, so it takes
+// as much as the design can hold at all: about eighty characters of prose.
+const SLOT_MAX = { child_name: 28, custom_line: 80 };
 
 export default function GiftWizard({
   birthId,

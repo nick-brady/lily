@@ -600,3 +600,17 @@ def test_long_names_shrink_instead_of_running_under_the_photo():
     assert gift_artwork.fit_name_size("Lily", roomier, 175, 46) == 175
     # and it stops at the floor rather than becoming unreadable
     assert gift_artwork.fit_name_size("M" * 40, room, 175, 46) == 46
+
+
+def test_your_own_line_shrinks_as_far_as_it_has_to():
+    """The name holds a floor so it never sets smaller than the date line
+    under it. Your own line has no such duty — the guarantee that matters is
+    that it never runs under the photo, at any length the field accepts."""
+    from gift_templates import TEMPLATES
+
+    for tid in ("mug_hours", "card_hours_photo"):
+        x, with_photo, _without = TEMPLATES[tid].text_box
+        room = with_photo - x
+        for text in ("worth every hour", "W" * 80, "M" * 80, "e" * 80):
+            size = gift_artwork.fit_name_size(text, room, 42, 10)
+            assert gift_artwork._measure(text, size) <= room, (tid, text[:12])

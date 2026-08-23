@@ -138,8 +138,13 @@ def render(
         # A line of the parent's own. Empty unless they wrote one — the
         # templates that have a slot for it simply skip it when it's blank.
         "custom_line": custom_line,
+        # A far lower floor than the name's. This line is secondary, and
+        # someone typing a very long one watches it shrink as they go — so
+        # the guarantee worth keeping is that it never runs under the photo,
+        # not that it stays a particular size. The name is the opposite: it
+        # holds its floor and the field stops accepting more.
         "custom_line_size": (
-            fit_name_size(custom_line, room, 42, 22) if room else 42
+            fit_name_size(custom_line, room, 42, 10) if room else 42
         ),
         "birth_date": _fmt_date(when),
         "birth_time": _fmt_time(when),
@@ -283,8 +288,15 @@ def fit_name_size(text: str, max_width: float, base: int, minimum: int) -> int:
     width = _measure(text, base)
     if width <= max_width:
         return base
-    # 0.98 keeps a hair of room for cairosvg disagreeing with PIL by a pixel
-    return max(minimum, int(base * max_width * 0.98 / width))
+    # Scaling is very nearly linear in size, so start from the ratio — then
+    # check, because "very nearly" isn't "exactly": hinting and rounding at
+    # small sizes can leave the estimate a few pixels over, which is enough
+    # to put the last glyph back under the photo. The 0.98 also keeps a hair
+    # of room for cairosvg disagreeing with PIL.
+    size = max(minimum, int(base * max_width * 0.98 / width))
+    while size > minimum and _measure(text, size) > max_width:
+        size -= 1
+    return size
 
 
 def effective_photo_id(rendering) -> str | None:
