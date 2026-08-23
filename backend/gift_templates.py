@@ -26,7 +26,30 @@ class GiftTemplate:
     width: int
     height: int
     dpi: int
-    photo: bool  # embed the single auto-selected hero photo
+    photo: bool  # this design shows a photo of the baby
+    # Whether it can render *without* one. `card_welcome` can't — it's a
+    # full-bleed hero in a keyline mat, so removing the photo leaves an empty
+    # framed box. Designs where the photo is an accent render fine without it,
+    # and only those offer "remove" in the picker.
+    photo_required: bool = False
+    # Where the photo sits in the artwork, as a fraction of the canvas
+    # (cx, cy, r). The editor lays a "change photo" hotspot over exactly this
+    # spot, so you click her face on the design instead of a link in a list.
+    # Fractions rather than pixels: the client is looking at a scaled image.
+    photo_spot: tuple[float, float, float] | None = None
+    # Text slots a parent may edit on this design, by key. Deliberately short:
+    # everything else on a keepsake is derived from the birth, and "97
+    # CONTRACTIONS · 26H 56M" is a fact — making it a text field would invite
+    # someone to type a number that isn't true, which is the one thing these
+    # are for. The name can be shortened to the one people actually use, and
+    # anything else they want to say goes on a line that was always theirs.
+    editable_text: tuple[str, ...] = ()
+    # How much room each set line has, keyed by slot: (width with a photo
+    # beside it, width without). Per line, not per template — the photo only
+    # crowds the lines level with it. On the mug it sits across the name but
+    # ends well above the parent's own line, which therefore gets the whole
+    # width whether the photo is there or not.
+    text_widths: dict[str, tuple[float, float]] | None = None
     scene: str | None = None  # richer data scene: "hours" | "story" | None
     # center of the labor clock, for scene == "hours" (defaults to canvas center)
     clock_cx: float | None = None
@@ -35,7 +58,8 @@ class GiftTemplate:
 
 TEMPLATES: dict[str, GiftTemplate] = {
     # ── mugs — wrap print area ≈ 2475 × 1155 px at 300 DPI ────────────────
-    # The labor clock on one face, name and one quiet data line on the other.
+    # The labor clock on one face, name, one quiet data line and her picture
+    # on the other. The right third of the wrap was empty.
     "mug_hours": GiftTemplate(
         template_id="mug_hours",
         product_kind="mug",
@@ -43,7 +67,10 @@ TEMPLATES: dict[str, GiftTemplate] = {
         width=2475,
         height=1155,
         dpi=300,
-        photo=False,
+        photo=True,
+        photo_spot=(2235 / 2475, 490 / 1155, 150 / 2475),
+        editable_text=("child_name", "custom_line"),
+        text_widths={"child_name": (673, 1025), "custom_line": (1025, 1025)},
         scene="hours",
         clock_cx=640,
         clock_cy=577,
@@ -95,6 +122,9 @@ TEMPLATES: dict[str, GiftTemplate] = {
         height=2100,
         dpi=300,
         photo=True,
+        photo_spot=(320 / 1500, 1700 / 2100, 150 / 1500),
+        editable_text=("child_name", "custom_line"),
+        text_widths={"child_name": (850, 1320), "custom_line": (850, 1320)},
         scene="hours_photo",
         clock_cx=750,
         clock_cy=940,
@@ -155,6 +185,11 @@ TEMPLATES: dict[str, GiftTemplate] = {
         height=2100,
         dpi=300,
         photo=True,
+        # The hero panel, not a circle — the spot is a hit area, and a
+        # generous one over a full-bleed photo is exactly right.
+        photo_spot=(0.5, 660 / 2100, 0.42),
+        # The photo *is* this design — without one it's an empty keyline mat.
+        photo_required=True,
     ),
     # The story of the day: a thread rising from "where it began" through
     # Polaroid moments to a star, with the family's own words beneath.

@@ -9,6 +9,7 @@ from __future__ import annotations
 import base64
 import io
 import math
+from functools import lru_cache
 import os
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
@@ -72,9 +73,25 @@ _env.globals["sparkle"] = lambda cx, cy, r: _sparkle_path(cx, cy, r)
 
 
 def render(
-    birth: Birth, template: GiftTemplate, db: Session
+    birth: Birth,
+    template: GiftTemplate,
+    db: Session,
+    rendering=None,
+    photo_max_px: int | None = None,
+    output_width: int | None = None,
 ) -> tuple[bytes, dict]:
-    """Render `template` for `birth`. Returns (png_bytes, rendering_metadata)."""
+    """Render `template` for `birth`. Returns (png_bytes, rendering_metadata).
+
+    `rendering` carries this design's own photo and text choices. It's optional
+    so the preview script and the tests can render a template without a row
+    behind it; without one the photo is the auto-pick and no text is
+    overridden.
+
+    `photo_max_px` shrinks the embedded photo. Most of a render's cost is the
+    photo — 131ms to decode and re-encode it, and most of the rest is cairosvg
+    chewing the 399KB data URI that produces. At 500px that drops to 52ms and
+    61KB, which is what makes a live preview feel live.
+    """
     events = list(
         db.scalars(
             select(TimelineEvent).where(
@@ -86,19 +103,60 @@ def render(
     stats = gift_stats.compute(birth, events)
     palette = gift_themes.for_theme(birth.theme)
 
-    photo = _select_hero_photo(db, birth) if template.photo else None
-    photo_data_uri = _photo_data_uri(photo) if photo else None
-    if template.photo and photo_data_uri is None:
+    photo = _photo_for(db, birth, template, rendering) if template.photo else None
+    photo_data_uri = _photo_data_uri(photo, max_px=photo_max_px) if photo else None
+    # Only designs that can't stand without a photo refuse to render. The rest
+    # lay out around its absence, which is what makes "remove" possible.
+    if template.photo_required and photo_data_uri is None:
         raise ArtworkError("missing-photo")
 
     when = _localize(birth.child_dob or birth.birth_completed_at)
     first_at_local = _localize(stats.first_contraction_at)
     spark_last = _spark_last(stats.durations)
+    overrides = _text_overrides(template, rendering)
+    name = (
+        overrides.get("child_name") or (birth.child_name or "").strip() or "Baby"
+    )
+    custom_line = overrides.get("custom_line", "")
+    def room_for(slot: str) -> float | None:
+        """How wide a given line may be. A photo only crowds the lines level
+        with it, so this is per line: on the mug the name has to clear the
+        picture, while the parent's own line sits below it and gets the whole
+        width either way."""
+        widths = (template.text_widths or {}).get(slot)
+        if not widths:
+            return None
+        with_photo, without = widths
+        return with_photo if photo_data_uri else without
     context = {
         "w": template.width,
         "h": template.height,
         "p": palette,
-        "child_name": (birth.child_name or "").strip() or "Baby",
+        "child_name": name,
+        # Shrink-to-fit, measured against the real font file. Only ever
+        # smaller — a short name keeps the size the design was drawn at.
+        "child_name_size": (
+            # Floor 32px. Higher and a long name can't fit at all; lower and
+            # it stops being printable. At 32 the widest 36-character name
+            # still clears the photo, and 32px is 7.7pt — small, but a name
+            # that long is a small name however you set it.
+            fit_name_size(name, room_for("child_name"), 175, 32)
+            if room_for("child_name")
+            else 175
+        ),
+        # A line of the parent's own. Empty unless they wrote one — the
+        # templates that have a slot for it simply skip it when it's blank.
+        "custom_line": custom_line,
+        # A far lower floor than the name's. This line is secondary, and
+        # someone typing a very long one watches it shrink as they go — so
+        # the guarantee worth keeping is that it never runs under the photo,
+        # not that it stays a particular size. The name is the opposite: it
+        # holds its floor and the field stops accepting more.
+        "custom_line_size": (
+            fit_name_size(custom_line, room_for("custom_line"), 42, 10)
+            if room_for("custom_line")
+            else 42
+        ),
         "birth_date": _fmt_date(when),
         "birth_time": _fmt_time(when),
         "count": stats.contraction_count,
@@ -145,10 +203,18 @@ def render(
     elif template.scene == "pool":
         context.update(_build_pool_scene(db, birth, template))
 
-    png = render_context(template, context)
+    png = render_context(template, context, output_width=output_width)
 
     metadata = {
         "template_id": template.template_id,
+        # What the set lines ended up at, so the editor can warn when a long
+        # one has shrunk past the point of printing well. Recorded here rather
+        # than recomputed by the client: the measurement needs the font file.
+        "text_sizes": {
+            "child_name": context["child_name_size"],
+            "custom_line": context["custom_line_size"],
+        },
+        "text_print_floor": print_floor_px(template.dpi),
         "theme": birth.theme,
         "selected_media_id": str(photo.id) if photo else None,
         "stats": stats.as_metadata(),
@@ -161,22 +227,144 @@ def render(
     return png, metadata
 
 
-def render_context(template: GiftTemplate, context: dict) -> bytes:
+def render_context(
+    template: GiftTemplate, context: dict, output_width: int | None = None
+) -> bytes:
     """Render a template's SVG with `context` and rasterize to PNG at the
     template's exact pixels. Split out from `render` so the template +
-    rasterization path is testable without a DB or S3."""
+    rasterization path is testable without a DB or S3.
+
+    `output_width` rasterizes smaller for previews. It must not be done by
+    shrinking the template: every coordinate in these SVGs is absolute at full
+    size — the clock sits at cx=640 with a 460 radius, the name at x=1360 — so
+    a smaller canvas doesn't scale the drawing, it crops it. cairosvg scales
+    the finished picture instead, which is what "smaller" should mean.
+    """
     svg = _env.get_template(template.svg).render(**context)
+    width = output_width or template.width
+    height = max(1, round(template.height * (width / template.width)))
     try:
         return cairosvg.svg2png(
             bytestring=svg.encode("utf-8"),
-            output_width=template.width,
-            output_height=template.height,
+            output_width=width,
+            output_height=height,
         )
     except Exception as exc:  # cairosvg raises a grab-bag of errors
         raise ArtworkError(f"rasterize: {exc}") from exc
 
 
 # ── photo selection ──────────────────────────────────────────────────────
+
+
+def _text_overrides(template: GiftTemplate, rendering) -> dict:
+    """This design's text edits, filtered to what the template actually lets
+    a parent change. Anything else on the artwork is derived from the birth
+    and isn't up for editing — a keepsake that can be made to say something
+    untrue isn't worth much.
+
+    Blank values are dropped, so clearing a field falls back to the derived
+    value rather than printing an empty line.
+    """
+    if rendering is None or not template.editable_text:
+        return {}
+    raw = getattr(rendering, "text_overrides", None) or {}
+    return {
+        key: value.strip()
+        for key, value in raw.items()
+        if key in template.editable_text
+        and isinstance(value, str)
+        and value.strip()
+    }
+
+
+# The display face the names are set in. Measured with the real file rather
+# than a per-character guess: at 175px a guess is wrong by whole words.
+_DISPLAY_ITALIC = "/usr/local/share/fonts/cormorant/CormorantGaramond-Italic.ttf"
+
+
+@lru_cache(maxsize=512)
+def _measure(text: str, size: int) -> float:
+    try:
+        from PIL import ImageFont
+
+        return ImageFont.truetype(_DISPLAY_ITALIC, size).getlength(text)
+    except Exception:
+        # No font file, no measurement — fall back to a generous estimate so
+        # a long name shrinks rather than running off into the photo.
+        return len(text) * size * 0.46
+
+
+def print_floor_px(dpi: int) -> int:
+    """Below roughly 6pt, sublimation starts filling in the fine strokes and
+    a line stops being worth printing. In pixels that depends on the artwork's
+    resolution, so it's derived rather than guessed: at 300 DPI it's 25px."""
+    return round(6 * dpi / 72)
+
+
+def fit_name_size(text: str, max_width: float, base: int, minimum: int) -> int:
+    """The largest size at which `text` fits `max_width`, down to `minimum`.
+
+    Names are set at a fixed size, and a long one ran straight under the
+    photo beside it — the artwork has no line-wrapping and no reflow, so the
+    type has to yield instead. Shrinks only; a short name keeps the size the
+    design was drawn at.
+    """
+    if not text:
+        return base
+    width = _measure(text, base)
+    if width <= max_width:
+        return base
+    # Scaling is very nearly linear in size, so start from the ratio — then
+    # check, because "very nearly" isn't "exactly": hinting and rounding at
+    # small sizes can leave the estimate a few pixels over, which is enough
+    # to put the last glyph back under the photo. The 0.98 also keeps a hair
+    # of room for cairosvg disagreeing with PIL.
+    size = max(minimum, int(base * max_width * 0.98 / width))
+    while size > minimum and _measure(text, size) > max_width:
+        size -= 1
+    return size
+
+
+def effective_photo_id(rendering) -> str | None:
+    """The photo the current artwork actually used.
+
+    An explicit choice, else the guess *as it stood when this rendered* —
+    which `render` records in the metadata. Deliberately not the guess re-run
+    now: `_select_hero_photo` reads today's photos, so re-running it can
+    return something the artwork on screen has never contained. The editor
+    seeds its draft from this, which is what stops an unrelated edit from
+    quietly swapping the picture.
+    """
+    if rendering is None:
+        return None
+    if rendering.photo_media_id is not None:
+        return str(rendering.photo_media_id)
+    return (getattr(rendering, "rendering_metadata", None) or {}).get(
+        "selected_media_id"
+    )
+
+
+def _photo_for(
+    db: Session, birth: Birth, template: GiftTemplate, rendering
+) -> MediaAsset | None:
+    """This design's photo. Three states: a chosen one, deliberately none, or
+    — the default — whatever `_select_hero_photo` guesses, so a keepsake
+    always shows something before anyone has made a decision.
+
+    A design that can't render photoless ignores a removal: `card_welcome`
+    without its hero is an empty frame, so the picker doesn't offer removal
+    there and a stale flag falls back to the guess rather than failing.
+    """
+    if rendering is not None:
+        if rendering.photo_removed and not template.photo_required:
+            return None
+        chosen_id = rendering.photo_media_id
+        if chosen_id is not None:
+            chosen = db.get(MediaAsset, chosen_id)
+            # A photo deleted since it was chosen shouldn't break the render.
+            if chosen is not None and chosen.archived_at is None:
+                return chosen
+    return _select_hero_photo(db, birth)
 
 
 def _select_hero_photo(db: Session, birth: Birth) -> MediaAsset | None:

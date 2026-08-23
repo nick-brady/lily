@@ -269,7 +269,7 @@ def test_get_adapter_gated_on_env(monkeypatch):
 
 def test_shortlist_mug_products():
     keys = {p.key for p in fulfillment_products.for_product_kind("mug")}
-    assert {"white_glossy_11oz", "latte_mug", "black_glossy_11oz"} <= keys
+    assert {"white_glossy_11oz", "latte_mug", "white_glossy_20oz"} <= keys
     assert fulfillment_products.for_product_kind("unknown_kind") == []
 
 

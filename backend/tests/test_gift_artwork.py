@@ -354,3 +354,320 @@ def test_hours_clock_handles_missing_times():
     ]
     assert clock["clock_born_mark"] is None
     assert clock["clock_marks"] == []
+
+
+# ── per-design photos ────────────────────────────────────────────────────
+# The photo on a keepsake is chosen per design, Shutterfly-style: you're
+# editing this mug, not every keepsake at once. Three states, because "guess
+# for me, but let me override" needs all three.
+
+
+class _FakeRendering:
+    def __init__(self, media_id=None, removed=False):
+        self.photo_media_id = media_id
+        self.photo_removed = removed
+
+
+class _FakeAsset:
+    def __init__(self, ident):
+        self.id = ident
+        self.archived_at = None
+
+
+class _FakeDB:
+    """Just enough session for `_photo_for` — it only ever does a `get`."""
+
+    def __init__(self, assets=None):
+        self._assets = assets or {}
+
+    def get(self, _model, ident):
+        return self._assets.get(ident)
+
+
+def test_photo_choice_falls_back_to_the_guess(monkeypatch):
+    """Nothing chosen means we still show something — a keepsake shouldn't be
+    blank while it waits for someone to have an opinion."""
+    guess = _FakeAsset("guessed")
+    monkeypatch.setattr(gift_artwork, "_select_hero_photo", lambda db, birth: guess)
+    template = TEMPLATES["mug_hours"]
+
+    assert gift_artwork._photo_for(_FakeDB(), None, template, None) is guess
+    assert (
+        gift_artwork._photo_for(_FakeDB(), None, template, _FakeRendering()) is guess
+    )
+
+
+def test_photo_choice_uses_the_chosen_photo(monkeypatch):
+    guess = _FakeAsset("guessed")
+    chosen = _FakeAsset("chosen")
+    monkeypatch.setattr(gift_artwork, "_select_hero_photo", lambda db, birth: guess)
+    db = _FakeDB({"chosen": chosen})
+
+    got = gift_artwork._photo_for(
+        db, None, TEMPLATES["mug_hours"], _FakeRendering(media_id="chosen")
+    )
+    assert got is chosen
+
+
+def test_photo_choice_survives_a_deleted_photo(monkeypatch):
+    """A photo removed from the birth after it was chosen must not break the
+    render — fall back to the guess rather than failing."""
+    guess = _FakeAsset("guessed")
+    monkeypatch.setattr(gift_artwork, "_select_hero_photo", lambda db, birth: guess)
+
+    got = gift_artwork._photo_for(
+        _FakeDB(), None, TEMPLATES["mug_hours"], _FakeRendering(media_id="gone")
+    )
+    assert got is guess
+
+
+def test_removal_is_honoured_only_where_the_design_survives_it(monkeypatch):
+    """`card_welcome` is a full-bleed hero in a keyline mat — without a photo
+    it's an empty frame, so a removal flag there falls back to the guess
+    instead of rendering nothing."""
+    guess = _FakeAsset("guessed")
+    monkeypatch.setattr(gift_artwork, "_select_hero_photo", lambda db, birth: guess)
+    removed = _FakeRendering(removed=True)
+
+    assert TEMPLATES["mug_hours"].photo_required is False
+    assert gift_artwork._photo_for(_FakeDB(), None, TEMPLATES["mug_hours"], removed) is None
+
+    assert TEMPLATES["card_welcome"].photo_required is True
+    assert (
+        gift_artwork._photo_for(_FakeDB(), None, TEMPLATES["card_welcome"], removed)
+        is guess
+    )
+
+
+@pytest.mark.parametrize("template_id", ["mug_hours", "card_hours_photo"])
+def test_photo_optional_templates_render_without_one(template_id):
+    """The designs that offer "remove" have to lay out around the absence."""
+    template = TEMPLATES[template_id]
+    ctx = _context(template)
+    ctx["photo_data_uri"] = None
+    png = gift_artwork.render_context(template, ctx)
+    assert png[:8] == b"\x89PNG\r\n\x1a\n"
+
+
+# ── the mockup budget ────────────────────────────────────────────────────
+# The fulfillment partner allows 2 mockups a minute for the whole store, so
+# they're generated once per design and then only on request.
+
+
+class _FakeRow:
+    def __init__(self, status, key=None):
+        self.mockup_status = status
+        self.mockup_s3_key = key
+
+
+def test_mockups_are_generated_once_then_only_on_request():
+    from repositories.gifts import should_generate_mockup
+
+    # the first render of a design — this is what fills the gallery
+    assert should_generate_mockup(_FakeRow("none")) is True
+
+    # every render after that leaves the partner alone
+    assert should_generate_mockup(_FakeRow("ready", "k.png")) is False
+    assert should_generate_mockup(_FakeRow("stale", "k.png")) is False
+    assert should_generate_mockup(_FakeRow("pending")) is False
+    assert should_generate_mockup(_FakeRow("failed")) is False
+
+    # a row that claims "none" but already has a file is not a first render
+    assert should_generate_mockup(_FakeRow("none", "k.png")) is False
+
+
+def test_preview_scales_the_picture_not_the_canvas():
+    """A preview must show the whole design, smaller — not a corner of it.
+
+    Every coordinate in these SVGs is absolute at full size: the clock sits at
+    cx=640 with a 460 radius, the name at x=1360. Shrinking the template's
+    width/height shrinks the *viewBox*, which crops rather than scales, so
+    previews have to go through cairosvg's output size instead.
+    """
+    from PIL import Image
+    import io
+
+    template = TEMPLATES["mug_hours"]
+    ctx = _context(template)
+    ctx["photo_data_uri"] = None
+
+    full = Image.open(io.BytesIO(gift_artwork.render_context(template, ctx)))
+    small = Image.open(
+        io.BytesIO(gift_artwork.render_context(template, ctx, output_width=900))
+    )
+
+    assert full.size == (template.width, template.height)
+    assert small.size[0] == 900
+    # same picture, fewer pixels — the aspect ratio is the tell for a crop
+    assert abs(small.size[0] / small.size[1] - full.size[0] / full.size[1]) < 0.01
+
+
+# ── the product choice ───────────────────────────────────────────────────
+# Which mug a design is for. It has to reach both the order and the charge:
+# approving a mockup of a black 15oz and being shipped a white 11oz is the
+# bug this closed.
+
+
+def test_chosen_product_is_what_ships():
+    from fulfillment import products as fp
+
+    default = fp.default_for_product_kind("mug")
+    assert fp.for_rendering(None, "mug") is default
+    assert fp.for_rendering("white_glossy_20oz", "mug").key == "white_glossy_20oz"
+    # a key we've since retired falls back rather than failing
+    assert fp.for_rendering("no_such_mug", "mug") is default
+    # a mug key can't leak into another kind — it falls back to that kind's
+    # own default, which today is None: the shortlist is mugs only, so cards
+    # have nothing mapped to fulfil them.
+    assert fp.for_rendering("white_glossy_20oz", "birth_announcement_cards") is None
+
+
+def test_only_the_default_mug_is_free():
+    from fulfillment import products as fp
+
+    default = fp.default_for_product_kind("mug")
+    assert fp.surcharge_for(default.key) == 0
+    assert fp.surcharge_for(None) == 0
+    assert fp.surcharge_for("no_such_mug") == 0
+    for key, product in fp.SHORTLIST.items():
+        if key != default.key:
+            assert fp.surcharge_for(key) == 300, key
+
+
+def test_every_shortlist_product_is_profitable():
+    """The surcharge exists so the bigger mugs don't eat the margin — this
+    pins that none of them is sold below cost."""
+    from fulfillment import products as fp
+
+    item_price = 1800  # the Birth Story Mug's list price
+    for product in fp.SHORTLIST.values():
+        charged = item_price + product.surcharge_cents
+        assert product.cost_cents > 0, product.key
+        assert charged > product.cost_cents, product.key
+
+
+def test_shortlist_products_have_a_blank_photo():
+    """The chooser shows blank product photos so picking a mug costs no
+    mockups. A missing one would silently render an empty tile."""
+    from fulfillment import products as fp
+
+    for product in fp.SHORTLIST.values():
+        assert product.blank_image_url.startswith("https://"), product.key
+
+
+def test_effective_photo_is_what_rendered_not_todays_guess():
+    """The editor seeds its draft from the photo the artwork actually used.
+
+    "Auto" is re-resolved on every render, so a draft that merely said "auto"
+    let an unrelated edit — changing the mug, typing a letter — swap the
+    picture underneath someone. This is the value that prevents it, and it
+    must come from what rendered, never from re-running the guess.
+    """
+
+    class Row:
+        def __init__(self, chosen=None, used=None):
+            self.photo_media_id = chosen
+            self.rendering_metadata = {"selected_media_id": used} if used else {}
+
+    # an explicit choice wins
+    assert gift_artwork.effective_photo_id(Row(chosen="chosen")) == "chosen"
+    # on auto, it's whatever the artwork on screen was rendered with
+    assert gift_artwork.effective_photo_id(Row(used="what-rendered")) == "what-rendered"
+    # a design that has never rendered has nothing to pin
+    assert gift_artwork.effective_photo_id(Row()) is None
+    assert gift_artwork.effective_photo_id(None) is None
+
+
+def test_long_names_shrink_instead_of_running_under_the_photo():
+    """The artwork has no wrapping and no reflow, so a name that doesn't fit
+    used to run straight under the photo beside it. Type is the only thing
+    that can yield."""
+    from gift_templates import TEMPLATES
+
+    room, roomier = TEMPLATES["mug_hours"].text_widths["child_name"]
+
+    # a short name keeps the size the design was drawn at
+    assert gift_artwork.fit_name_size("Lily", room, 175, 32) == 175
+    # a long one comes down
+    small = gift_artwork.fit_name_size("Lily Wren Bradfsdf", room, 175, 32)
+    assert small < 175
+    # and it fits once it has
+    assert gift_artwork._measure("Lily Wren Bradfsdf", small) <= room
+    # taking the photo away gives it more room, not the same shrunk size
+    assert gift_artwork.fit_name_size("Lily Wren Bradfsdf", roomier, 175, 32) > small
+    # it only ever shrinks — nothing is scaled up to fill space
+    assert gift_artwork.fit_name_size("Lily", roomier, 175, 32) == 175
+    # and it stops at the floor rather than becoming unreadable
+    assert gift_artwork.fit_name_size("M" * 40, room, 175, 32) == 32
+
+
+def test_your_own_line_shrinks_as_far_as_it_has_to():
+    """The name holds a floor so it never sets smaller than the date line
+    under it. Your own line has no such duty — the guarantee that matters is
+    that it never runs under the photo, at any length the field accepts."""
+    from gift_templates import TEMPLATES
+
+    for tid in ("mug_hours", "card_hours_photo"):
+        room = min(TEMPLATES[tid].text_widths["custom_line"])
+        for text in ("worth every hour", "W" * 80, "M" * 80, "e" * 80):
+            size = gift_artwork.fit_name_size(text, room, 42, 10)
+            assert gift_artwork._measure(text, size) <= room, (tid, text[:12])
+
+
+def test_each_line_gets_the_room_it_actually_has():
+    """A photo only crowds the lines level with it. On the mug it crosses the
+    name and ends well above the parent's own line, so that line keeps the
+    full width whether the photo is there or not — it was being shrunk to
+    clear something that isn't beside it."""
+    widths = TEMPLATES["mug_hours"].text_widths
+
+    name_with, name_without = widths["child_name"]
+    line_with, line_without = widths["custom_line"]
+
+    assert name_with < name_without, "the photo has to crowd the name"
+    assert line_with == line_without, "nothing sits beside the line below it"
+    assert line_with == name_without, "so it gets the same width the name gets free"
+
+
+def test_the_print_warning_can_only_fire_where_it_matters():
+    """The editor warns when a line has shrunk past printing well. Below
+    about 6pt sublimation fills in the fine strokes, and a screen preview
+    won't show that.
+
+    The name can never trip it: its 32px floor is 7.7pt at 300 DPI, and the
+    field stops accepting characters where that floor still fits. Your own line can, because
+    it's allowed to shrink as far as it needs to — which is exactly the pair
+    of choices the warning exists to cover.
+    """
+    floor = gift_artwork.print_floor_px(300)
+    assert floor == 25  # 6pt at 300 DPI
+
+    for tid in ("mug_hours", "card_hours_photo"):
+        widths = TEMPLATES[tid].text_widths
+        worst = min(
+            gift_artwork.fit_name_size(c * 36, min(widths["child_name"]), 175, 32)
+            for c in "WMAe"
+        )
+        assert worst >= floor, f"{tid}: the name should never need a warning"
+
+        worst_line = min(
+            gift_artwork.fit_name_size(c * 80, min(widths["custom_line"]), 42, 10)
+            for c in "WMAe"
+        )
+        assert worst_line < floor, f"{tid}: the line should be able to warn"
+
+
+def test_the_shortlist_stays_light_coloured():
+    """Every mug we sell has to be light.
+
+    The artwork fills its whole print area with the theme's background — an
+    opaque rectangle, not a transparency — so on a dark mug it prints a pale
+    slab across the wrap instead of sitting on the ceramic. Recolouring the
+    type wouldn't fix it; the panel is the problem. A dark product needs
+    artwork drawn for it.
+    """
+    from fulfillment import products as fp
+
+    for product in fp.SHORTLIST.values():
+        assert "black" not in product.key.lower(), product.key
+        assert "Black" not in product.display_name, product.display_name

@@ -1,13 +1,24 @@
 <svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink"
      width="{{ w }}" height="{{ h }}" viewBox="0 0 {{ w }} {{ h }}">
 {% from "_clock.svg.j2" import clock with context %}
+{# Her picture in the right third of the wrap, which was empty. Optional on
+   purpose: the photo is an accent here, not the design, so a parent can take
+   it off and the clock still stands on its own. #}
+{% set photo_cx = 2235 %}
+{% set photo_cy = 490 %}  {# centred on the name + its date line #}
+{% set photo_r = 150 %}  {# clears the date line, which runs to ~1970 #}
+  <defs>
+    <clipPath id="mugPhoto">
+      <circle cx="{{ photo_cx }}" cy="{{ photo_cy }}" r="{{ photo_r }}"/>
+    </clipPath>
+  </defs>
   <rect x="0" y="0" width="{{ w }}" height="{{ h }}" fill="{{ p.bg }}"/>
 
   <!-- the labor clock, left face of the wrap -->
   {{ clock(label_size=28) }}
 
   <!-- name + date, right face of the wrap -->
-  <text x="1360" y="500" font-family="{{ p.display_font }}" font-size="175"
+  <text x="1360" y="500" font-family="{{ p.display_font }}" font-size="{{ child_name_size }}"
         font-weight="300" font-style="italic" fill="{{ p.ink }}">{{ child_name }}</text>
   <text x="1366" y="600" font-family="{{ p.body_font }}" font-size="38"
         letter-spacing="2" fill="{{ p.ink }}" opacity="0.62">born {{ birth_date }} at {{ birth_time }}</text>
@@ -17,4 +28,24 @@
   <text x="1366" y="785" font-family="{{ p.body_font }}" font-size="29"
         letter-spacing="5" fill="{{ p.ink }}"
         opacity="0.5">{{ count }} CONTRACTIONS · {{ labor_duration|upper }} · EVERY {{ avg_interval|upper }}</text>
+
+  {# A line of the parent's own, under the derived one. Skipped entirely when
+     they haven't written anything — nothing should hold space for a line that
+     isn't there. #}
+  {% if custom_line %}
+  <text x="1366" y="862" font-family="{{ p.display_font }}" font-size="{{ custom_line_size }}"
+        font-style="italic" fill="{{ p.ink }}" opacity="0.72">{{ custom_line }}</text>
+  {% endif %}
+
+  <!-- her, at the far end of the wrap -->
+  {% if photo_data_uri %}
+  <g clip-path="url(#mugPhoto)">
+    <image x="{{ photo_cx - photo_r }}" y="{{ photo_cy - photo_r }}"
+           width="{{ photo_r * 2 }}" height="{{ photo_r * 2 }}"
+           preserveAspectRatio="xMidYMid slice"
+           xlink:href="{{ photo_data_uri }}"/>
+  </g>
+  <circle cx="{{ photo_cx }}" cy="{{ photo_cy }}" r="{{ photo_r + 12 }}"
+          fill="none" stroke="{{ p.ink }}" stroke-width="2" opacity="0.3"/>
+  {% endif %}
 </svg>

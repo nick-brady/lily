@@ -655,6 +655,56 @@ class GiftRenderingOut(BaseModel):
     mockup_status: str = "none"
     mockup_extras: list[MockupExtraOut] = []
     is_visible_to_viewers: bool
+    # This design's own photo. `photo_media_id` is the override, `photo_auto`
+    # says nobody has chosen yet (so what's shown is our guess), and
+    # `photo_removable` is false where the photo *is* the design and taking it
+    # off would leave an empty frame.
+    has_photo: bool = False
+    photo_media_id: Optional[uuid.UUID] = None
+    photo_auto: bool = True
+    # The photo the current artwork actually used, resolved. When a design is
+    # on auto this is the guess *as it stood when it rendered* — which is not
+    # the same as re-running the guess later, and the editor needs the former
+    # so opening it can't move a photo nobody touched.
+    photo_media_id_effective: Optional[uuid.UUID] = None
+    photo_removed: bool = False
+    photo_removable: bool = False
+    # (cx, cy, r) as fractions of the artwork, so the editor can lay a
+    # "change photo" hotspot over the photo itself.
+    photo_spot: Optional[tuple[float, float, float]] = None
+    # Slots this design lets a parent edit, and what they currently say.
+    editable_text: list[str] = []
+    text_overrides: dict[str, str] = {}
+    # What each set line ended up at, and the size below which it stops
+    # printing well — so the editor can warn without measuring fonts itself.
+    text_sizes: dict[str, int] = {}
+    text_print_floor: int = 0
+    product_key: Optional[str] = None
+
+
+class GiftDesignIn(BaseModel):
+    """A draft of one design: its photo and any text the template allows.
+
+    Photo: a media id to use it, `removed` to take it off, or neither to hand
+    the choice back to the auto-pick. Text is keyed by slot, and keys the
+    template doesn't list as editable are dropped at render — a keepsake's
+    derived lines aren't up for editing.
+    """
+
+    media_id: Optional[uuid.UUID] = None
+    removed: bool = False
+    text: dict[str, str] = Field(default_factory=dict)
+    product_key: Optional[str] = None
+
+
+class GiftPhotoOptionOut(BaseModel):
+    """A photo the parent could put on a keepsake."""
+
+    # No URL: the client already builds one with `api.mediaUrl(id)`, the same
+    # way the timeline renders its photos. One place that knows the shape.
+    media_id: uuid.UUID
+    occurred_at: Optional[datetime] = None
+    caption: Optional[str] = None
 
 
 class GiftItemOut(BaseModel):
@@ -701,6 +751,9 @@ class ProductMockupOut(BaseModel):
     display_name: str
     status: str = "none"
     mockup_url: Optional[str] = None
+    # The blank product photo, so the chooser costs no mockups at all.
+    blank_image_url: str = ""
+    surcharge_cents: int = 0
 
 
 class RenderingProductsOut(BaseModel):

@@ -36,14 +36,28 @@
           fill="none" stroke="{{ p.ink }}" stroke-width="2" opacity="0.3"/>
   {% endif %}
 
-  <!-- name + date, set beside the photo rather than centred on the card -->
-  {% set text_x = photo_cx + photo_r + 90 %}
-  <text x="{{ text_x }}" y="1690" font-family="{{ p.display_font }}"
-        font-size="175" font-weight="300" font-style="italic"
+  {# Name and date sit beside the photo — or centred on the card when the
+     photo has been removed, which is where they lived before it moved down
+     here. Nothing should look like it's making room for something absent. #}
+  {% set text_x = photo_data_uri and (photo_cx + photo_r + 90) or (w // 2) %}
+  {% set text_anchor = photo_data_uri and 'start' or 'middle' %}
+  <text x="{{ text_x }}" y="1690" text-anchor="{{ text_anchor }}"
+        font-family="{{ p.display_font }}"
+        font-size="{{ child_name_size }}" font-weight="300" font-style="italic"
         fill="{{ p.ink }}">{{ child_name }}</text>
-  <text x="{{ text_x + 6 }}" y="1790" font-family="{{ p.body_font }}"
+  <text x="{{ photo_data_uri and (text_x + 6) or text_x }}" y="1790"
+        text-anchor="{{ text_anchor }}" font-family="{{ p.body_font }}"
         font-size="38" letter-spacing="2" fill="{{ p.ink }}"
         opacity="0.62">born {{ birth_date }} at {{ birth_time }}</text>
+
+  {# The parent's own line, above the derived footer. It follows the name's
+     column rather than the card's centre: the photo sits bottom-left, level
+     with this line, so a centred one would run straight into it. #}
+  {% if custom_line %}
+  <text x="{{ text_x }}" y="1862" text-anchor="{{ text_anchor }}"
+        font-family="{{ p.display_font }}" font-size="{{ custom_line_size }}" font-style="italic"
+        fill="{{ p.ink }}" opacity="0.72">{{ custom_line }}</text>
+  {% endif %}
 
   <!-- footer -->
   <line x1="{{ w // 2 - 80 }}" y1="1895" x2="{{ w // 2 + 80 }}" y2="1895"

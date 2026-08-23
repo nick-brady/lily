@@ -695,6 +695,31 @@ class GiftRendering(Base):
         JSONB, nullable=False, server_default=sa.text("'{}'::jsonb")
     )
     failure_reason: Mapped[str | None] = mapped_column(sa.Text, nullable=True)
+    # The photo on this one design. Editing is per-design on purpose: you're
+    # changing this mug, not every keepsake at once.
+    #
+    # Three states, because "guess for me, but let me override" needs them:
+    #   both unset          → auto; `_select_hero_photo` picks (the default)
+    #   photo_media_id set  → this photo
+    #   photo_removed       → no photo, deliberately
+    # Auto is not the same as removed — an unset choice means "you decide",
+    # and a removed one means "I decided, and the answer is none".
+    photo_media_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), sa.ForeignKey("media_assets.id"), nullable=True
+    )
+    photo_removed: Mapped[bool] = mapped_column(
+        sa.Boolean, nullable=False, server_default=sa.text("false")
+    )
+    # Per-design text edits, keyed by slot ("child_name", "custom_line").
+    # Only what a template lists as editable is honoured; everything else on a
+    # keepsake is derived from the birth and stays that way.
+    text_overrides: Mapped[dict] = mapped_column(
+        JSONB, nullable=False, server_default=sa.text("'{}'::jsonb")
+    )
+    # Which product in the shortlist this design is for (e.g. a 15oz black
+    # mug). NULL means the default for its kind — every rendering that existed
+    # before people could choose.
+    product_key: Mapped[str | None] = mapped_column(sa.Text, nullable=True)
     is_visible_to_viewers: Mapped[bool] = mapped_column(
         sa.Boolean, nullable=False, server_default=sa.text("true")
     )

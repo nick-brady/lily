@@ -1,10 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { api } from '../api/client';
-import Lightbox from './Lightbox';
-
-function formatPrice(cents) {
-  return `$${(cents / 100).toFixed(2)}`;
-}
+import { formatPrice } from '../utils/money';
+import GiftWizard from './GiftWizard';
 
 function formatDate(timestamp) {
   return new Date(timestamp).toLocaleDateString([], { dateStyle: 'long' });
@@ -137,7 +134,13 @@ export default function GiftGallery({ birthId, isParent = true }) {
             // once storage is forever there's nothing left to sell there
             .filter((item) => !(storageLifetime && item.kind === 'storage_gift'))
             .map((item) => (
-              <GiftItemCard key={item.id} item={item} birthId={birthId} familyHasAddress={familyHasAddress} />
+              <GiftItemCard
+                key={item.id}
+                item={item}
+                birthId={birthId}
+                familyHasAddress={familyHasAddress}
+                onPhotoChanged={load}
+              />
           ))}
         </div>
       )}
@@ -160,7 +163,7 @@ const DESIGN_ORDER = [
   'card_welcome',
 ];
 
-function GiftItemCard({ item, birthId, familyHasAddress }) {
+function GiftItemCard({ item, birthId, familyHasAddress, onPhotoChanged }) {
   const [showAll, setShowAll] = useState(false);
   const designRank = (r) => {
     const i = DESIGN_ORDER.indexOf(r.template_id);
@@ -195,7 +198,14 @@ function GiftItemCard({ item, birthId, familyHasAddress }) {
         <>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             {visible.map((r) => (
-              <RenderingTile key={r.id} rendering={r} birthId={birthId} item={item} familyHasAddress={familyHasAddress} />
+              <RenderingTile
+                key={r.id}
+                rendering={r}
+                birthId={birthId}
+                item={item}
+                familyHasAddress={familyHasAddress}
+                onPhotoChanged={onPhotoChanged}
+              />
             ))}
           </div>
           {usable.length > VISIBLE_DESIGNS && !showAll && (
@@ -215,7 +225,6 @@ function GiftItemCard({ item, birthId, familyHasAddress }) {
 }
 
 function StorageGiftCard({ item, birthId }) {
-  const [buyOpen, setBuyOpen] = useState(false);
   return (
     <div className="rounded-lg border overflow-hidden" style={{ borderColor: 'var(--t-soft-ring)' }}>
       <div
@@ -239,20 +248,13 @@ function StorageGiftCard({ item, birthId }) {
       {item.is_purchasable && !item.is_claimed_for_family && (
         <button
           type="button"
-          onClick={() => setBuyOpen(true)}
+          onClick={() => setWizardAt(0)}
           className="w-full px-3 py-2 text-sm font-medium text-left transition-colors t-btn-accent rounded-none"
         >
           Send this gift · {formatPrice(item.base_price_cents)}
         </button>
       )}
 
-      {buyOpen && (
-        <StorageGiftCheckoutSheet
-          birthId={birthId}
-          item={item}
-          onClose={() => setBuyOpen(false)}
-        />
-      )}
     </div>
   );
 }
@@ -341,11 +343,12 @@ function StorageGiftCheckoutSheet({ birthId, item, onClose }) {
   );
 }
 
-function RenderingTile({ rendering, birthId, item, familyHasAddress }) {
-  const [pickerOpen, setPickerOpen] = useState(false);
-  const [buyOpen, setBuyOpen] = useState(false);
+function RenderingTile({ rendering, birthId, item, familyHasAddress, onPhotoChanged }) {
   // Index into the gallery below, or null. One set of images, one viewer.
-  const [zoom, setZoom] = useState(null);
+  // null, or the step to open the wizard at. The tile has two ways in: the
+  // design itself (customise) and the buy button (straight to sending), so
+  // someone happy with what they see doesn't have to click through.
+  const [wizardAt, setWizardAt] = useState(null);
 
   // The artwork leads: a mug mockup renders the design an inch wide on a
   // white cylinder, and the clock face — the reason to want any of this —
@@ -362,12 +365,6 @@ function RenderingTile({ rendering, birthId, item, familyHasAddress }) {
         })),
       ]
     : [];
-  const gallery = [
-    ...(rendering.artwork_url
-      ? [{ url: rendering.artwork_url, caption: 'The artwork' }]
-      : []),
-    ...angles,
-  ];
   const hero = rendering.artwork_url || rendering.mockup_url;
 
   return (
@@ -376,44 +373,40 @@ function RenderingTile({ rendering, birthId, item, familyHasAddress }) {
       style={{ borderColor: 'var(--t-soft-ring)' }}
     >
       {rendering.status === 'ready' && hero ? (
-        <>
-          <button
-            type="button"
-            onClick={() => setZoom(0)}
+        // One target, not four. Each image used to carry its own handler,
+        // which left the padding and the gutters between them dead — a click
+        // half a centimetre off did nothing, on a card whose whole job is to
+        // be clicked. The button wraps the images instead of living inside
+        // them, so anywhere in this region opens the editor, and it's one tab
+        // stop rather than four.
+        <button
+          type="button"
+          onClick={() => setWizardAt(0)}
+          className="w-full block text-left"
+          aria-label="Customise this design"
+        >
+          <img
+            src={hero}
+            alt={`${rendering.template_id} design`}
             className="w-full block"
-            style={{ cursor: 'zoom-in' }}
-            aria-label="See the design full screen"
-          >
-            <img
-              src={hero}
-              alt={`${rendering.template_id} design`}
-              className="w-full block"
-              style={{ backgroundColor: 'var(--t-soft-bg)' }}
-            />
-          </button>
+            style={{ backgroundColor: 'var(--t-soft-bg)' }}
+          />
 
           {angles.length > 0 && rendering.artwork_url && (
-            <div className="flex gap-1.5 p-1.5">
-              {angles.map((a, i) => (
-                <button
-                  key={a.url}
-                  type="button"
-                  onClick={() => setZoom(i + 1)}
-                  className="flex-1 block rounded overflow-hidden"
-                  style={{ cursor: 'zoom-in' }}
-                  aria-label={a.caption ? `See ${a.caption} full screen` : 'See this view full screen'}
-                >
+            <span className="flex gap-1.5 p-1.5">
+              {angles.map((a) => (
+                <span key={a.url} className="flex-1 block rounded overflow-hidden">
                   <img
                     src={a.url}
                     alt={a.caption || `${rendering.template_id} view`}
                     className="w-full aspect-square object-cover block"
                     style={{ backgroundColor: 'var(--t-soft-bg)' }}
                   />
-                </button>
+                </span>
               ))}
-            </div>
+            </span>
           )}
-        </>
+        </button>
       ) : (
         <div className="aspect-[2/1] flex items-center justify-center text-xs t-muted gap-2">
           <span className="w-3 h-3 rounded-full animate-pulse" style={{ backgroundColor: 'var(--t-dot)' }} />
@@ -424,151 +417,34 @@ function RenderingTile({ rendering, birthId, item, familyHasAddress }) {
       {rendering.status === 'ready' && item?.is_purchasable && (
         <button
           type="button"
-          onClick={() => setBuyOpen(true)}
+          onClick={() => setWizardAt(0)}
           className="w-full px-3 py-2 text-sm font-medium text-left transition-colors t-btn-accent rounded-none"
         >
           Send this gift · {formatPrice(item.base_price_cents)}
         </button>
       )}
 
-      {rendering.status === 'ready' && (
-        <button
-          type="button"
-          onClick={() => setPickerOpen(true)}
-          className="w-full px-3 py-2 text-xs t-muted hover:t-ink text-left transition-colors"
-        >
-          See this design on another product →
-        </button>
-      )}
-
-      {buyOpen && (
-        <GiftCheckoutSheet
+      {wizardAt !== null && (
+        <GiftWizard
           birthId={birthId}
           rendering={rendering}
           item={item}
           familyHasAddress={familyHasAddress}
-          onClose={() => setBuyOpen(false)}
+          onClose={() => setWizardAt(null)}
+          onChanged={onPhotoChanged}
+          renderCheckout={(current) => (
+            <GiftCheckoutSheet
+              embedded
+              birthId={birthId}
+              rendering={current}
+              item={item}
+              familyHasAddress={familyHasAddress}
+              onClose={() => setWizardAt(null)}
+            />
+          )}
         />
       )}
 
-      {pickerOpen && (
-        <ProductPickerDialog
-          birthId={birthId}
-          rendering={rendering}
-          onClose={() => setPickerOpen(false)}
-        />
-      )}
-
-      {zoom !== null && gallery.length > 0 && (
-        <Lightbox images={gallery} startIndex={zoom} onClose={() => setZoom(null)} />
-      )}
-    </div>
-  );
-}
-
-function ProductPickerDialog({ birthId, rendering, onClose }) {
-  const [products, setProducts] = useState(null);
-  const [error, setError] = useState('');
-  const pollRef = useRef(null);
-
-  const load = useCallback(async () => {
-    try {
-      const data = await api.listRenderingProducts(birthId, rendering.id);
-      setProducts(data.products);
-      setError('');
-      return data.products;
-    } catch (err) {
-      setError(err.message || 'Could not load products');
-      return null;
-    }
-  }, [birthId, rendering.id]);
-
-  useEffect(() => {
-    load();
-    return () => clearTimeout(pollRef.current);
-  }, [load]);
-
-  // Poll while any requested mockup is still generating.
-  useEffect(() => {
-    const pending = (products || []).some((p) => p.status === 'pending');
-    if (!pending) return undefined;
-    pollRef.current = setTimeout(load, 2500);
-    return () => clearTimeout(pollRef.current);
-  }, [products, load]);
-
-  const requestMockup = async (productKey) => {
-    // Optimistically flip to pending so the tile shows the designing state.
-    setProducts((prev) =>
-      (prev || []).map((p) =>
-        p.product_key === productKey ? { ...p, status: 'pending' } : p,
-      ),
-    );
-    try {
-      const updated = await api.requestRenderingProductMockup(
-        birthId,
-        rendering.id,
-        productKey,
-      );
-      setProducts((prev) =>
-        (prev || []).map((p) => (p.product_key === productKey ? updated : p)),
-      );
-    } catch (err) {
-      setError(err.message || 'Could not start the preview');
-    }
-  };
-
-  return (
-    <div
-      className="fixed inset-0 z-50 bg-black/40 flex items-end sm:items-center justify-center"
-      onClick={onClose}
-    >
-      <div
-        className="animate-slide-up w-full sm:max-w-lg bg-white dark:bg-gray-900
-                   rounded-t-2xl sm:rounded-2xl shadow-xl p-5 space-y-4 max-h-[85vh] overflow-y-auto"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="text-center">
-          <h2 className="text-base font-semibold text-gray-800 dark:text-white">
-            Put this design on another product
-          </h2>
-          <p className="text-xs t-muted mt-1">
-            Tap a product to preview this design on it.
-          </p>
-        </div>
-
-        {error && (
-          <div className="p-3 rounded-lg bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-300 text-sm">
-            {error}
-          </div>
-        )}
-
-        {products === null ? (
-          <p className="text-sm t-muted text-center py-6">Loading products…</p>
-        ) : products.length === 0 ? (
-          <p className="text-sm t-muted text-center py-6">
-            No other products available for this design yet.
-          </p>
-        ) : (
-          <div className="grid grid-cols-2 gap-3">
-            {products.map((p) => (
-              <ProductOption
-                key={p.product_key}
-                product={p}
-                onRequest={() => requestMockup(p.product_key)}
-              />
-            ))}
-          </div>
-        )}
-
-        <button
-          type="button"
-          onClick={onClose}
-          className="w-full py-3 rounded-xl text-sm font-medium text-gray-600 dark:text-gray-300
-                     bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors"
-        >
-          Done
-        </button>
-      </div>
     </div>
   );
 }
@@ -615,7 +491,17 @@ function ProductOption({ product, onRequest }) {
   );
 }
 
-function GiftCheckoutSheet({ birthId, rendering, item, familyHasAddress, onClose }) {
+// Recipient, note, pay. Its own sheet from the tile's fast lane, or the last
+// pane of the customise wizard — `embedded` drops the overlay and panel so it
+// can sit inside one that already exists.
+function GiftCheckoutSheet({
+  birthId,
+  rendering,
+  item,
+  familyHasAddress,
+  onClose,
+  embedded = false,
+}) {
   // not either/or — both copies at once is a normal purchase (qty 2)
   const [toFamily, setToFamily] = useState(!item.is_claimed_for_family);
   const [toSelf, setToSelf] = useState(item.is_claimed_for_family);
@@ -654,16 +540,8 @@ function GiftCheckoutSheet({ birthId, rendering, item, familyHasAddress, onClose
     }
   }
 
-  return (
-    <div
-      className="fixed inset-0 z-50 bg-black/40 flex items-end sm:items-center justify-center"
-      onClick={onClose}
-    >
-      <div
-        className="animate-slide-up w-full sm:max-w-lg bg-white dark:bg-gray-900
-                   rounded-t-2xl sm:rounded-2xl shadow-xl p-5 space-y-4 max-h-[85vh] overflow-y-auto"
-        onClick={(e) => e.stopPropagation()}
-      >
+  const content = (
+    <>
         <div className="text-center">
           <h2 className="text-base font-semibold text-gray-800 dark:text-white">
             {item.display_name} · {formatPrice(item.base_price_cents)}
@@ -768,6 +646,22 @@ function GiftCheckoutSheet({ birthId, rendering, item, familyHasAddress, onClose
         >
           Cancel
         </button>
+    </>
+  );
+
+  if (embedded) return content;
+
+  return (
+    <div
+      className="fixed inset-0 z-50 bg-black/40 flex items-end sm:items-center justify-center"
+      onClick={onClose}
+    >
+      <div
+        className="animate-slide-up w-full sm:max-w-lg bg-white dark:bg-gray-900
+                   rounded-t-2xl sm:rounded-2xl shadow-xl p-5 space-y-4 max-h-[85vh] overflow-y-auto"
+        onClick={(e) => e.stopPropagation()}
+      >
+        {content}
       </div>
     </div>
   );

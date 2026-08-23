@@ -2,22 +2,49 @@
 and mockups. Purchasing lives in routes/checkout.py."""
 from __future__ import annotations
 
+import json
 import uuid
 
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Response
+from pathlib import Path
+
+from fastapi import (
+    APIRouter,
+    BackgroundTasks,
+    Depends,
+    File,
+    HTTPException,
+    Response,
+    UploadFile,
+)
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 import artwork_links
 import fulfillment
+import gift_artwork
+import gift_templates
 from auth import get_current_user
 from db import get_db
 from fulfillment import products as fulfillment_products
-from models import BirthStatus, GiftKind, GiftRendering, GiftRenderingStatus, User
+from models import (
+    BirthStatus,
+    GiftKind,
+    GiftRendering,
+    GiftRenderingStatus,
+    MediaAsset,
+    MediaKind,
+    TimelineEvent,
+    TimelineEventType,
+    User,
+)
 from repositories import births as births_repo
 from repositories import gift_orders as gift_orders_repo
 from repositories import gifts as gifts_repo
+from repositories import media as media_repo
 from routes.deps import BirthAccess, require_birth_access, require_parent_access
 from schemas import (
+    GiftPhotoOptionOut,
+    GiftDesignIn,
     GiftGalleryOut,
     GiftItemOut,
     GiftRenderingOut,
@@ -25,12 +52,14 @@ from schemas import (
     ProductMockupOut,
     RenderingProductsOut,
 )
-from storage import get_object_bytes
+from storage import get_object_bytes, put_object
 
 router = APIRouter()
 
 
 def _serialize_rendering(rendering) -> GiftRenderingOut:
+    template = gift_templates.get(rendering.template_id)
+    shows_photo = bool(template and template.photo)
     return GiftRenderingOut(
         id=rendering.id,
         template_id=rendering.template_id,
@@ -40,6 +69,24 @@ def _serialize_rendering(rendering) -> GiftRenderingOut:
         mockup_status=rendering.mockup_status,
         mockup_extras=gifts_repo.mockup_extras(rendering),
         is_visible_to_viewers=rendering.is_visible_to_viewers,
+        has_photo=shows_photo,
+        photo_media_id=rendering.photo_media_id,
+        photo_media_id_effective=gift_artwork.effective_photo_id(rendering),
+        photo_auto=(
+            rendering.photo_media_id is None and not rendering.photo_removed
+        ),
+        photo_removed=rendering.photo_removed,
+        # `card_welcome` is a full-bleed hero in a keyline mat — removing its
+        # photo leaves an empty frame, so it doesn't get the option.
+        photo_removable=shows_photo and not (template and template.photo_required),
+        photo_spot=template.photo_spot if template else None,
+        editable_text=list(template.editable_text) if template else [],
+        text_overrides=dict(rendering.text_overrides or {}),
+        product_key=rendering.product_key,
+        text_sizes=(rendering.rendering_metadata or {}).get("text_sizes") or {},
+        text_print_floor=(rendering.rendering_metadata or {}).get(
+            "text_print_floor"
+        ) or 0,
     )
 
 
@@ -201,6 +248,98 @@ def load_rendering_for_products(db, access, rendering_id):
 
 
 @router.get(
+    "/birth/{birth_id}/gifts/photos", response_model=list[GiftPhotoOptionOut]
+)
+def list_gift_photos(
+    access: BirthAccess = Depends(require_parent_access),
+    db: Session = Depends(get_db),
+) -> list[GiftPhotoOptionOut]:
+    """Photos this birth could put on a keepsake — everything on the timeline
+    plus anything uploaded for the artwork alone. Parents only; this is a
+    picker for the people who own the story.
+
+    Captions come from the timeline event that carried the photo, so the grid
+    can be read at a glance. Keepsake-only uploads have no event and no
+    caption, which is the point of them.
+    """
+    assets = list(
+        db.scalars(
+            select(MediaAsset)
+            .where(
+                MediaAsset.birth_id == access.birth.id,
+                MediaAsset.kind == MediaKind.photo,
+                MediaAsset.archived_at.is_(None),
+            )
+            .order_by(MediaAsset.created_at.asc())
+        ).all()
+    )
+    events = list(
+        db.scalars(
+            select(TimelineEvent).where(
+                TimelineEvent.birth_id == access.birth.id,
+                TimelineEvent.event_type == TimelineEventType.photo,
+                TimelineEvent.deleted_at.is_(None),
+            )
+        ).all()
+    )
+    by_media = {
+        (e.payload or {}).get("media_id"): e for e in events
+    }
+    out = []
+    for asset in assets:
+        event = by_media.get(str(asset.id))
+        out.append(
+            GiftPhotoOptionOut(
+                media_id=asset.id,
+                occurred_at=event.occurred_at if event else asset.created_at,
+                caption=(event.payload or {}).get("caption") if event else None,
+            )
+        )
+    return out
+
+
+@router.post(
+    "/birth/{birth_id}/gifts/photos", response_model=GiftPhotoOptionOut
+)
+async def upload_gift_photo(
+    file: UploadFile = File(...),
+    access: BirthAccess = Depends(require_parent_access),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> GiftPhotoOptionOut:
+    """Add a photo for the keepsakes without posting it to the story.
+
+    Deliberately not `POST /birth/{id}/media`, which always appends a timeline
+    event: choosing a nicer picture for a mug isn't an announcement, and it
+    shouldn't push a notification to everyone the family invited.
+    """
+    extension = Path(file.filename or "").suffix or ".jpg"
+    content = await file.read()
+    key = media_repo.media_object_key(
+        family_id=access.birth.family_id,
+        birth_id=access.birth.id,
+        filename=f"{uuid.uuid4()}{extension}",
+    )
+    put_object(key=key, body=content, content_type=file.content_type)
+    asset = media_repo.create_media_asset(
+        db,
+        family_id=access.birth.family_id,
+        birth_id=access.birth.id,
+        uploaded_by_user_id=current_user.id,
+        kind=MediaKind.photo,
+        original_s3_key=key,
+        mime_type=file.content_type,
+        bytes_=len(content),
+    )
+    db.commit()
+    return GiftPhotoOptionOut(
+        media_id=asset.id,
+        occurred_at=asset.created_at,
+        caption=None,
+    )
+
+
+@router.get(
     "/birth/{birth_id}/gifts/{rendering_id}", response_model=GiftRenderingOut
 )
 def get_gift_rendering(
@@ -232,6 +371,177 @@ def patch_gift_rendering(
     return _serialize_rendering(rendering)
 
 
+class _Draft:
+    """An unsaved design, shaped like a GiftRendering for the renderer's
+    benefit. Previews never touch the database or S3, so a parent can try
+    five photos and three names and walk away having changed nothing."""
+
+    def __init__(self, rendering, payload: GiftDesignIn):
+        self.photo_media_id = None if payload.removed else payload.media_id
+        self.photo_removed = payload.removed
+        self.text_overrides = dict(payload.text or {})
+        self.template_id = rendering.template_id
+        self.product_key = payload.product_key
+
+
+def _apply_draft(rendering, payload: GiftDesignIn) -> None:
+    rendering.photo_media_id = None if payload.removed else payload.media_id
+    rendering.photo_removed = payload.removed
+    rendering.text_overrides = dict(payload.text or {})
+    # Unknown keys are ignored rather than rejected: the shortlist is a code
+    # registry, and a design pointing at a product we've since retired should
+    # fall back to the default, not fail to save.
+    rendering.product_key = (
+        payload.product_key
+        if payload.product_key in fulfillment_products.SHORTLIST
+        else None
+    )
+
+
+def _load_editable(db, access, rendering_id):
+    """A rendering plus its template, checked for editability."""
+    rendering = gifts_repo.get_rendering(
+        db, birth_id=access.birth.id, rendering_id=rendering_id
+    )
+    if rendering is None:
+        raise HTTPException(status_code=404, detail="Rendering not found")
+    template = gift_templates.get(rendering.template_id)
+    if template is None:
+        raise HTTPException(status_code=400, detail="Unknown design")
+    return rendering, template
+
+
+def _check_photo(db, access, payload: GiftDesignIn, template) -> None:
+    if payload.removed and template.photo_required:
+        raise HTTPException(
+            status_code=400, detail="This design can't be rendered without a photo"
+        )
+    if payload.media_id is not None:
+        asset = db.get(MediaAsset, payload.media_id)
+        if (
+            asset is None
+            or asset.birth_id != access.birth.id
+            or asset.archived_at is not None
+        ):
+            raise HTTPException(status_code=404, detail="Photo not found")
+
+
+# Wide enough to read, small enough to be instant: a preview costs ~107ms and
+# 13KB against ~500ms and 304KB for the print-resolution render. Most of that
+# saving is the photo, not the raster — hence the max_px.
+_PREVIEW_W = 900
+_PREVIEW_PHOTO_PX = 500
+
+
+@router.post("/birth/{birth_id}/gifts/{rendering_id}/preview")
+def preview_gift_design(
+    rendering_id: uuid.UUID,
+    payload: GiftDesignIn,
+    full: bool = False,
+    access: BirthAccess = Depends(require_parent_access),
+    db: Session = Depends(get_db),
+) -> Response:
+    """Render a draft and hand back the PNG. Nothing is saved.
+
+    This is what makes the editor feel live: the client debounces keystrokes
+    onto it and swaps the image. No partner call, no storage write, no row
+    touched — so trying things costs nothing and abandoning them costs
+    nothing either.
+
+    `full` renders at print resolution instead. Keystrokes don't need it, but
+    someone opening their unsaved design full screen to look closely does —
+    handing them the 900px draft would be answering the wrong question. One
+    request on an explicit action, rather than a bigger render on every one.
+    """
+    rendering, template = _load_editable(db, access, rendering_id)
+    _check_photo(db, access, payload, template)
+    try:
+        png, _meta = gift_artwork.render(
+            access.birth,
+            template,
+            db,
+            _Draft(rendering, payload),
+            photo_max_px=None if full else _PREVIEW_PHOTO_PX,
+            output_width=None if full else _PREVIEW_W,
+        )
+    except gift_artwork.ArtworkError as exc:
+        raise HTTPException(status_code=422, detail=str(exc))
+    return Response(
+        content=png,
+        media_type="image/png",
+        headers={
+            "Cache-Control": "no-store",
+            # The body is a PNG, so the fitted sizes ride along in a header:
+            # the editor needs them to warn about type that's shrunk too far,
+            # and only the server can measure them.
+            "X-Text-Fit": json.dumps(
+                {
+                    "sizes": _meta.get("text_sizes", {}),
+                    "floor": _meta.get("text_print_floor", 0),
+                }
+            ),
+        },
+    )
+
+
+@router.patch(
+    "/birth/{birth_id}/gifts/{rendering_id}/design", response_model=GiftRenderingOut
+)
+def save_gift_design(
+    rendering_id: uuid.UUID,
+    payload: GiftDesignIn,
+    access: BirthAccess = Depends(require_parent_access),
+    db: Session = Depends(get_db),
+) -> GiftRenderingOut:
+    """Commit the draft and re-render at print resolution.
+
+    Rendered inline rather than queued: half a second doesn't need a
+    background task, a pending status and a poll. No partner call happens
+    here — the product mockup is asked for separately, and only when someone
+    wants to see one.
+    """
+    rendering, template = _load_editable(db, access, rendering_id)
+    _check_photo(db, access, payload, template)
+    _apply_draft(rendering, payload)
+    db.commit()
+
+    gifts_repo.render_rendering(rendering.id)
+    db.expire_all()
+    rendering = gifts_repo.get_rendering(
+        db, birth_id=access.birth.id, rendering_id=rendering_id
+    )
+    return _serialize_rendering(rendering)
+
+
+@router.post(
+    "/birth/{birth_id}/gifts/{rendering_id}/mockup", response_model=GiftRenderingOut
+)
+def refresh_gift_mockup(
+    rendering_id: uuid.UUID,
+    background_tasks: BackgroundTasks,
+    access: BirthAccess = Depends(require_parent_access),
+    db: Session = Depends(get_db),
+) -> GiftRenderingOut:
+    """Ask the fulfillment partner to photograph this design on the product.
+
+    Deliberately explicit. The partner allows 2 mockups a minute for the whole
+    store, so they're generated once per design automatically — that's what
+    fills the gallery — and after that only when someone asks, for the design
+    they actually settled on. Returns immediately with `mockup_status`
+    pending; the client polls.
+    """
+    rendering = gifts_repo.get_rendering(
+        db, birth_id=access.birth.id, rendering_id=rendering_id
+    )
+    if rendering is None:
+        raise HTTPException(status_code=404, detail="Rendering not found")
+    if rendering.status is not GiftRenderingStatus.ready:
+        raise HTTPException(status_code=409, detail="The design isn't ready yet")
+    if rendering.mockup_status != "pending":
+        background_tasks.add_task(gifts_repo.refresh_mockup, rendering.id)
+    return _serialize_rendering(rendering)
+
+
 def _serialize_rendering_products(db, rendering) -> RenderingProductsOut:
     product_kind = gifts_repo.product_kind_for_rendering(db, rendering)
     products = (
@@ -255,6 +565,8 @@ def _serialize_product_mockup(product, mockup) -> ProductMockupOut:
         mockup_url=(
             gifts_repo.product_mockup_url(mockup) if mockup is not None else None
         ),
+        blank_image_url=product.blank_image_url,
+        surcharge_cents=product.surcharge_cents,
     )
 
 
