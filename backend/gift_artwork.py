@@ -9,6 +9,7 @@ from __future__ import annotations
 import base64
 import io
 import math
+from functools import lru_cache
 import os
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
@@ -113,16 +114,33 @@ def render(
     first_at_local = _localize(stats.first_contraction_at)
     spark_last = _spark_last(stats.durations)
     overrides = _text_overrides(template, rendering)
+    name = (
+        overrides.get("child_name") or (birth.child_name or "").strip() or "Baby"
+    )
+    custom_line = overrides.get("custom_line", "")
+    # How wide the set lines may be. With a photo beside them the box stops
+    # short of it; without one they get the rest of the canvas.
+    if template.text_box:
+        x, right_with_photo, right_without = template.text_box
+        room = (right_with_photo if photo_data_uri else right_without) - x
+    else:
+        room = None
     context = {
         "w": template.width,
         "h": template.height,
         "p": palette,
-        "child_name": overrides.get("child_name")
-        or (birth.child_name or "").strip()
-        or "Baby",
+        "child_name": name,
+        # Shrink-to-fit, measured against the real font file. Only ever
+        # smaller — a short name keeps the size the design was drawn at.
+        "child_name_size": (
+            fit_name_size(name, room, 175, 46) if room else 175
+        ),
         # A line of the parent's own. Empty unless they wrote one — the
         # templates that have a slot for it simply skip it when it's blank.
-        "custom_line": overrides.get("custom_line", ""),
+        "custom_line": custom_line,
+        "custom_line_size": (
+            fit_name_size(custom_line, room, 42, 22) if room else 42
+        ),
         "birth_date": _fmt_date(when),
         "birth_time": _fmt_time(when),
         "count": stats.contraction_count,
@@ -233,6 +251,40 @@ def _text_overrides(template: GiftTemplate, rendering) -> dict:
         and isinstance(value, str)
         and value.strip()
     }
+
+
+# The display face the names are set in. Measured with the real file rather
+# than a per-character guess: at 175px a guess is wrong by whole words.
+_DISPLAY_ITALIC = "/usr/local/share/fonts/cormorant/CormorantGaramond-Italic.ttf"
+
+
+@lru_cache(maxsize=512)
+def _measure(text: str, size: int) -> float:
+    try:
+        from PIL import ImageFont
+
+        return ImageFont.truetype(_DISPLAY_ITALIC, size).getlength(text)
+    except Exception:
+        # No font file, no measurement — fall back to a generous estimate so
+        # a long name shrinks rather than running off into the photo.
+        return len(text) * size * 0.46
+
+
+def fit_name_size(text: str, max_width: float, base: int, minimum: int) -> int:
+    """The largest size at which `text` fits `max_width`, down to `minimum`.
+
+    Names are set at a fixed size, and a long one ran straight under the
+    photo beside it — the artwork has no line-wrapping and no reflow, so the
+    type has to yield instead. Shrinks only; a short name keeps the size the
+    design was drawn at.
+    """
+    if not text:
+        return base
+    width = _measure(text, base)
+    if width <= max_width:
+        return base
+    # 0.98 keeps a hair of room for cairosvg disagreeing with PIL by a pixel
+    return max(minimum, int(base * max_width * 0.98 / width))
 
 
 def effective_photo_id(rendering) -> str | None:

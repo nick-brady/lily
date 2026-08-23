@@ -43,7 +43,7 @@
   {% set text_anchor = photo_data_uri and 'start' or 'middle' %}
   <text x="{{ text_x }}" y="1690" text-anchor="{{ text_anchor }}"
         font-family="{{ p.display_font }}"
-        font-size="175" font-weight="300" font-style="italic"
+        font-size="{{ child_name_size }}" font-weight="300" font-style="italic"
         fill="{{ p.ink }}">{{ child_name }}</text>
   <text x="{{ photo_data_uri and (text_x + 6) or text_x }}" y="1790"
         text-anchor="{{ text_anchor }}" font-family="{{ p.body_font }}"
@@ -53,7 +53,7 @@
   {# The parent's own line, above the derived footer. #}
   {% if custom_line %}
   <text x="{{ w // 2 }}" y="1862" text-anchor="middle"
-        font-family="{{ p.display_font }}" font-size="46" font-style="italic"
+        font-family="{{ p.display_font }}" font-size="{{ custom_line_size }}" font-style="italic"
         fill="{{ p.ink }}" opacity="0.72">{{ custom_line }}</text>
   {% endif %}
 

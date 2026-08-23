@@ -18,7 +18,7 @@
   {{ clock(label_size=28) }}
 
   <!-- name + date, right face of the wrap -->
-  <text x="1360" y="500" font-family="{{ p.display_font }}" font-size="175"
+  <text x="1360" y="500" font-family="{{ p.display_font }}" font-size="{{ child_name_size }}"
         font-weight="300" font-style="italic" fill="{{ p.ink }}">{{ child_name }}</text>
   <text x="1366" y="600" font-family="{{ p.body_font }}" font-size="38"
         letter-spacing="2" fill="{{ p.ink }}" opacity="0.62">born {{ birth_date }} at {{ birth_time }}</text>
@@ -33,7 +33,7 @@
      they haven't written anything — nothing should hold space for a line that
      isn't there. #}
   {% if custom_line %}
-  <text x="1366" y="862" font-family="{{ p.display_font }}" font-size="42"
+  <text x="1366" y="862" font-family="{{ p.display_font }}" font-size="{{ custom_line_size }}"
         font-style="italic" fill="{{ p.ink }}" opacity="0.72">{{ custom_line }}</text>
   {% endif %}
 

@@ -576,3 +576,27 @@ def test_effective_photo_is_what_rendered_not_todays_guess():
     # a design that has never rendered has nothing to pin
     assert gift_artwork.effective_photo_id(Row()) is None
     assert gift_artwork.effective_photo_id(None) is None
+
+
+def test_long_names_shrink_instead_of_running_under_the_photo():
+    """The artwork has no wrapping and no reflow, so a name that doesn't fit
+    used to run straight under the photo beside it. Type is the only thing
+    that can yield."""
+    from gift_templates import TEMPLATES
+
+    x, with_photo, without = TEMPLATES["mug_hours"].text_box
+    room, roomier = with_photo - x, without - x
+
+    # a short name keeps the size the design was drawn at
+    assert gift_artwork.fit_name_size("Lily", room, 175, 46) == 175
+    # a long one comes down
+    small = gift_artwork.fit_name_size("Lily Wren Bradfsdf", room, 175, 46)
+    assert small < 175
+    # and it fits once it has
+    assert gift_artwork._measure("Lily Wren Bradfsdf", small) <= room
+    # taking the photo away gives it more room, not the same shrunk size
+    assert gift_artwork.fit_name_size("Lily Wren Bradfsdf", roomier, 175, 46) > small
+    # it only ever shrinks — nothing is scaled up to fill space
+    assert gift_artwork.fit_name_size("Lily", roomier, 175, 46) == 175
+    # and it stops at the floor rather than becoming unreadable
+    assert gift_artwork.fit_name_size("M" * 40, room, 175, 46) == 46

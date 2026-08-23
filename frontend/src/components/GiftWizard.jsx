@@ -20,7 +20,9 @@ const DEBOUNCE_MS = 300;
 
 const SLOT_LABELS = { child_name: 'Name', custom_line: 'Your own line' };
 const SLOT_PLACEHOLDERS = { child_name: 'Lily Wren', custom_line: 'worth every hour' };
-const SLOT_MAX = { child_name: 40, custom_line: 60 };
+// Caps the design can actually set: past these the type shrinks below
+// the date line beside it and the hierarchy inverts.
+const SLOT_MAX = { child_name: 28, custom_line: 42 };
 
 export default function GiftWizard({
   birthId,
