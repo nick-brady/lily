@@ -381,20 +381,42 @@ export default function GiftWizard({
                     className="mt-1 w-full px-3 py-2 rounded-lg border text-sm bg-white dark:bg-gray-800 t-ink"
                     style={{ borderColor: 'var(--t-soft-ring)' }}
                   />
-                  {/* A warning, not a limit. Long is the parent's call — but
-                      below about 6pt sublimation fills in the fine strokes,
-                      and they can't see that in a preview on a screen. */}
-                  {fit.floor > 0
-                    && fit.sizes[slot] > 0
-                    && fit.sizes[slot] < fit.floor && (
-                    <span className="mt-1 flex items-start gap-1.5 text-[11px] text-amber-700 dark:text-amber-400">
-                      <svg className="w-3.5 h-3.5 flex-none mt-px" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-                          d="M12 9v4m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" />
-                      </svg>
-                      This has shrunk small enough that it may not print clearly.
-                    </span>
-                  )}
+                  {/* Two different things can be worth saying here, and only
+                      one at a time. Running out of room is the common one —
+                      with the cap where it is, normal prose hits it long
+                      before the type shrinks. Type too small to print is rarer
+                      but more serious, so it wins when both are true. */}
+                  {(() => {
+                    const max = SLOT_MAX[slot] || 60;
+                    const used = (draft.text[slot] ?? '').length;
+                    const size = fit.sizes[slot] || 0;
+                    if (fit.floor > 0 && size > 0 && size < fit.floor) {
+                      return (
+                        <span className="mt-1 flex items-start gap-1.5 text-[11px] text-amber-700 dark:text-amber-400">
+                          <svg className="w-3.5 h-3.5 flex-none mt-px" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                              d="M12 9v4m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" />
+                          </svg>
+                          This has shrunk small enough that it may not print clearly.
+                        </span>
+                      );
+                    }
+                    if (used >= max) {
+                      return (
+                        <span className="mt-1 block text-[11px] t-faint">
+                          That's as long as this line can be.
+                        </span>
+                      );
+                    }
+                    if (max - used <= 10) {
+                      return (
+                        <span className="mt-1 block text-[11px] t-faint">
+                          {max - used} character{max - used === 1 ? '' : 's'} left
+                        </span>
+                      );
+                    }
+                    return null;
+                  })()}
                 </label>
               ))}
 
