@@ -590,7 +590,12 @@ export default function GiftWizard({
         )}
 
         {step === 2 && (
-          <div className="flex-1 overflow-y-auto p-5">{renderCheckout?.(rendering)}</div>
+          <div className="flex-1 overflow-y-auto p-6">
+            {/* The editor is as wide as the artwork needs; a form isn't. Held
+                to the same column the standalone checkout sheet uses, so a
+                checkbox and its label aren't a foot apart. */}
+            <div className="max-w-lg mx-auto">{renderCheckout?.(rendering)}</div>
+          </div>
         )}
 
         {galleryAt !== null && (

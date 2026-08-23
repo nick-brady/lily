@@ -291,7 +291,7 @@ function StorageGiftCheckoutSheet({ birthId, item, onClose }) {
     >
       <div
         className="animate-slide-up w-full sm:max-w-lg bg-white dark:bg-gray-900
-                   rounded-t-2xl sm:rounded-2xl shadow-xl p-5 space-y-4 max-h-[85vh] overflow-y-auto"
+                   rounded-t-2xl sm:rounded-2xl shadow-xl p-5 max-h-[85vh] overflow-y-auto"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="text-center">
@@ -541,112 +541,112 @@ function GiftCheckoutSheet({
   }
 
   const content = (
-    <>
-        <div className="text-center">
-          <h2 className="text-base font-semibold text-gray-800 dark:text-white">
-            {item.display_name} · {formatPrice(item.base_price_cents)}
-          </h2>
-          <p className="text-xs t-muted mt-1">Shipping included.</p>
+    <div className="space-y-4">
+      <div className="text-center">
+        <h2 className="text-base font-semibold text-gray-800 dark:text-white">
+          {item.display_name} · {formatPrice(item.base_price_cents)}
+        </h2>
+        <p className="text-xs t-muted mt-1">Shipping included.</p>
+      </div>
+
+      {error && (
+        <div className="p-3 rounded-lg bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-300 text-sm">
+          {error}
         </div>
+      )}
 
-        {error && (
-          <div className="p-3 rounded-lg bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-300 text-sm">
-            {error}
-          </div>
-        )}
+      <div className="space-y-2">
+        <label
+          className={`flex items-start gap-3 p-3 rounded-lg border cursor-pointer ${
+            item.is_claimed_for_family ? 'opacity-50 cursor-default' : ''
+          }`}
+          style={{ borderColor: 'var(--t-soft-ring)' }}
+        >
+          <input
+            type="checkbox"
+            checked={toFamily}
+            disabled={item.is_claimed_for_family}
+            onChange={(e) => setToFamily(e.target.checked)}
+            className="mt-1"
+          />
+          <span className="text-sm t-ink">
+            Send to the family
+            <span className="block text-xs t-muted mt-0.5">
+              {item.is_claimed_for_family
+                ? 'Already gifted 🤍'
+                : familyHasAddress
+                  ? "Ships to the family's saved address."
+                  : "You'll enter their address at checkout."}
+            </span>
+          </span>
+        </label>
+        <label
+          className="flex items-start gap-3 p-3 rounded-lg border cursor-pointer"
+          style={{ borderColor: 'var(--t-soft-ring)' }}
+        >
+          <input
+            type="checkbox"
+            checked={toSelf}
+            onChange={(e) => setToSelf(e.target.checked)}
+            className="mt-1"
+          />
+          <span className="text-sm t-ink">
+            Get one for myself
+            <span className="block text-xs t-muted mt-0.5">
+              Ships to you — you'll enter your address at checkout.
+            </span>
+          </span>
+        </label>
+      </div>
 
-        <div className="space-y-2">
-          <label
-            className={`flex items-start gap-3 p-3 rounded-lg border cursor-pointer ${
-              item.is_claimed_for_family ? 'opacity-50 cursor-default' : ''
-            }`}
-            style={{ borderColor: 'var(--t-soft-ring)' }}
-          >
-            <input
-              type="checkbox"
-              checked={toFamily}
-              disabled={item.is_claimed_for_family}
-              onChange={(e) => setToFamily(e.target.checked)}
-              className="mt-1"
-            />
-            <span className="text-sm t-ink">
-              Send to the family
-              <span className="block text-xs t-muted mt-0.5">
-                {item.is_claimed_for_family
-                  ? 'Already gifted 🤍'
-                  : familyHasAddress
-                    ? "Ships to the family's saved address."
-                    : "You'll enter their address at checkout."}
-              </span>
-            </span>
-          </label>
-          <label
-            className="flex items-start gap-3 p-3 rounded-lg border cursor-pointer"
-            style={{ borderColor: 'var(--t-soft-ring)' }}
-          >
-            <input
-              type="checkbox"
-              checked={toSelf}
-              onChange={(e) => setToSelf(e.target.checked)}
-              className="mt-1"
-            />
-            <span className="text-sm t-ink">
-              Get one for myself
-              <span className="block text-xs t-muted mt-0.5">
-                Ships to you — you'll enter your address at checkout.
-              </span>
-            </span>
-          </label>
+      {bothBlocked && (
+        <div
+          className="p-3 rounded-lg text-sm t-ink flex items-start gap-2"
+          style={{ backgroundColor: 'var(--t-soft-bg)' }}
+        >
+          <span aria-hidden="true">✋</span>
+          <span>
+            Both at once needs the family&rsquo;s saved shipping address, and
+            they haven&rsquo;t added one yet — uncheck one to continue, and
+            send the other separately.
+          </span>
         </div>
+      )}
 
-        {bothBlocked && (
-          <div
-            className="p-3 rounded-lg text-sm t-ink flex items-start gap-2"
-            style={{ backgroundColor: 'var(--t-soft-bg)' }}
-          >
-            <span aria-hidden="true">✋</span>
-            <span>
-              Both at once needs the family&rsquo;s saved shipping address, and
-              they haven&rsquo;t added one yet — uncheck one to continue, and
-              send the other separately.
-            </span>
-          </div>
-        )}
+      {toFamily && (
+        <label className="block text-xs t-muted">
+          A note for the family (printed on the packing slip)
+          <textarea
+            value={note}
+            onChange={(e) => setNote(e.target.value)}
+            rows={2}
+            maxLength={500}
+            placeholder="With so much love…"
+            className="mt-1 w-full px-3 py-2 rounded-lg border text-sm bg-white dark:bg-gray-800 t-ink resize-none"
+            style={{ borderColor: 'var(--t-soft-ring)' }}
+          />
+        </label>
+      )}
 
-        {toFamily && (
-          <label className="block text-xs t-muted">
-            A note for the family (printed on the packing slip)
-            <textarea
-              value={note}
-              onChange={(e) => setNote(e.target.value)}
-              rows={2}
-              maxLength={500}
-              placeholder="With so much love…"
-              className="mt-1 w-full px-3 py-2 rounded-lg border text-sm bg-white dark:bg-gray-800 t-ink resize-none"
-              style={{ borderColor: 'var(--t-soft-ring)' }}
-            />
-          </label>
-        )}
-
-        <button
-          type="button"
-          onClick={startCheckout}
-          disabled={starting || copies === 0 || bothBlocked}
-          className="w-full py-3 rounded-xl text-sm font-medium text-white disabled:opacity-50"
-          style={{ backgroundColor: 'var(--t-accent)' }}
-        >
-          {starting
-            ? 'Opening checkout…'
-            : `Continue to checkout · ${formatPrice(item.base_price_cents * Math.max(copies, 1))}`}
-        </button>
-        <button
-          type="button"
-          onClick={onClose}
-          className="w-full py-2 rounded-xl text-sm text-gray-600 dark:text-gray-300"
-        >
-          Cancel
-        </button>
-    </>
+      <button
+        type="button"
+        onClick={startCheckout}
+        disabled={starting || copies === 0 || bothBlocked}
+        className="w-full py-3 rounded-xl text-sm font-medium text-white disabled:opacity-50"
+        style={{ backgroundColor: 'var(--t-accent)' }}
+      >
+        {starting
+          ? 'Opening checkout…'
+          : `Continue to checkout · ${formatPrice(item.base_price_cents * Math.max(copies, 1))}`}
+      </button>
+      <button
+        type="button"
+        onClick={onClose}
+        className="w-full py-2 rounded-xl text-sm text-gray-600 dark:text-gray-300"
+      >
+        Cancel
+      </button>
+    </div>
   );
 
   if (embedded) return content;
@@ -658,7 +658,7 @@ function GiftCheckoutSheet({
     >
       <div
         className="animate-slide-up w-full sm:max-w-lg bg-white dark:bg-gray-900
-                   rounded-t-2xl sm:rounded-2xl shadow-xl p-5 space-y-4 max-h-[85vh] overflow-y-auto"
+                   rounded-t-2xl sm:rounded-2xl shadow-xl p-5 max-h-[85vh] overflow-y-auto"
         onClick={(e) => e.stopPropagation()}
       >
         {content}
