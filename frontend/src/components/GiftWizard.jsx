@@ -404,7 +404,8 @@ export default function GiftWizard({
                     if (used >= max) {
                       return (
                         <span className="mt-1 block text-[11px] t-faint">
-                          That's as long as this line can be.
+                          Character limit reached — any longer would set too
+                          small to print clearly.
                         </span>
                       );
                     }
