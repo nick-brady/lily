@@ -610,7 +610,7 @@ function GiftCheckoutSheet({
     <div className="space-y-4">
       <div className="text-center">
         <h2 className="text-base font-semibold text-gray-800 dark:text-white">
-          {item.display_name} · {formatPrice(item.base_price_cents)}
+          {item.display_name}
         </h2>
         <p className="text-xs t-muted mt-1">Shipping included · US addresses only.</p>
       </div>
@@ -682,7 +682,7 @@ function GiftCheckoutSheet({
             ? 'Pick who this is for'
             : missingAddress
               ? 'Add the address above to continue'
-              : `Continue to checkout · ${formatPrice(item.base_price_cents * Math.max(copies, 1))}`}
+              : 'Continue to checkout'}
       </button>
       <button
         type="button"
