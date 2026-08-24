@@ -1243,34 +1243,20 @@ def build_hours_clock(
         }
 
     # ── the legend ───────────────────────────────────────────────────────
-    # The two tones need naming or they read as texture. It sits in the dial's
-    # empty centre — the one place every clock template has room, since below
-    # the face the mug wrap is already out of canvas. Only when both tones are
-    # actually on the dial: an all-morning labor has nothing to distinguish.
+    # The two tones need naming or they read as texture. This only decides
+    # *whether* — both tones actually on the dial, since an all-morning labor
+    # has nothing to distinguish. Each template places it in its own text
+    # block (under the parent's line on the mug, under the footer on the
+    # cards), so the geometry here carries stroke styling only.
     all_strokes = [st for ring in rings for st in ring["strokes"]]
     legend = None
-    # The hole shrinks as day rings stack (205px alone, ~122 at two days,
-    # ~90 at three). The legend spans cx±116, so past two rings it would lie
-    # across the innermost day's rays — better absent than crossed out.
-    fits = inner > 120
-    if fits and any(st["am"] for st in all_strokes) and any(
-        not st["am"] for st in all_strokes
-    ):
+    if any(st["am"] for st in all_strokes) and any(not st["am"] for st in all_strokes):
         legend = {
-            "y": round(cy, 1),
-            "items": [
-                {
-                    "x1": round(cx - 116, 1), "x2": round(cx - 78, 1),
-                    "lx": round(cx - 66, 1), "label": "AM",
-                    "w": AM_WIDTH, "o": AM_ALPHA + 0.14,  # lifted a touch: at
-                    # ray alpha a 38px sample reads as a scratch
-                },
-                {
-                    "x1": round(cx + 14, 1), "x2": round(cx + 52, 1),
-                    "lx": round(cx + 64, 1), "label": "PM",
-                    "w": PM_WIDTH, "o": PM_ALPHA,
-                },
-            ],
+            "am_w": AM_WIDTH,
+            "pm_w": PM_WIDTH,
+            # lifted a touch: at ray alpha a 38px sample reads as a scratch
+            "am_o": round(AM_ALPHA + 0.14, 2),
+            "pm_o": PM_ALPHA,
         }
 
     return {

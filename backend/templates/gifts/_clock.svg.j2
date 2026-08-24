@@ -61,15 +61,24 @@
         stroke-linejoin="round" stroke-linecap="round" opacity="0.9"/>
   {% endif %}
   {% endfor %}
-  {# what the two tones mean, in the dial's empty centre #}
+{% endmacro %}
+
+{# What the two tones mean. Drawn here so every template agrees on how it
+   looks; placed by each template so it sits with that design's own text —
+   under the parent's line on the mug, under the footer on the cards. Renders
+   nothing when the dial is one-toned. #}
+{% macro legend(x, y, anchor='start') %}
   {% if clock_legend %}
-  {% for it in clock_legend['items'] %}
-  <line x1="{{ it.x1 }}" y1="{{ clock_legend.y }}" x2="{{ it.x2 }}" y2="{{ clock_legend.y }}"
-        stroke="{{ p.dot if it.label == 'AM' else p.accent }}" stroke-width="{{ it.w }}"
-        stroke-linecap="round" opacity="{{ it.o }}"/>
-  <text x="{{ it.lx }}" y="{{ clock_legend.y + 9 }}" font-family="{{ p.body_font }}"
-        font-size="26" letter-spacing="4" fill="{{ p.ink }}"
-        opacity="0.5">{{ it.label }}</text>
-  {% endfor %}
+  {% set x0 = (x - 112) if anchor == 'middle' else x %}
+  <line x1="{{ x0 }}" y1="{{ y }}" x2="{{ x0 + 38 }}" y2="{{ y }}"
+        stroke="{{ p.dot }}" stroke-width="{{ clock_legend.am_w }}"
+        stroke-linecap="round" opacity="{{ clock_legend.am_o }}"/>
+  <text x="{{ x0 + 50 }}" y="{{ y + 9 }}" font-family="{{ p.body_font }}"
+        font-size="26" letter-spacing="4" fill="{{ p.ink }}" opacity="0.5">AM</text>
+  <line x1="{{ x0 + 132 }}" y1="{{ y }}" x2="{{ x0 + 170 }}" y2="{{ y }}"
+        stroke="{{ p.accent }}" stroke-width="{{ clock_legend.pm_w }}"
+        stroke-linecap="round" opacity="{{ clock_legend.pm_o }}"/>
+  <text x="{{ x0 + 182 }}" y="{{ y + 9 }}" font-family="{{ p.body_font }}"
+        font-size="26" letter-spacing="4" fill="{{ p.ink }}" opacity="0.5">PM</text>
   {% endif %}
 {% endmacro %}

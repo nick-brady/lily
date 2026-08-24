@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink"
      width="{{ w }}" height="{{ h }}" viewBox="0 0 {{ w }} {{ h }}">
-{% from "_clock.svg.j2" import clock with context %}
+{% from "_clock.svg.j2" import clock, legend with context %}
   {# The photo used to sit in the middle of the clock face, which cost the
      dial its inner radius — the space the day rings now need. It moves down
      beside the name, where it reads as a portrait rather than a hole in the
@@ -65,4 +65,5 @@
   <text x="{{ w // 2 }}" y="1975" text-anchor="middle" font-family="{{ p.body_font }}"
         font-size="30" letter-spacing="6" fill="{{ p.ink }}"
         opacity="0.5">{{ count }} CONTRACTIONS · {{ labor_duration|upper }} OF LABOR · EVERY {{ avg_interval|upper }}</text>
+  {{ legend(w // 2, 2038, anchor='middle') }}
 </svg>

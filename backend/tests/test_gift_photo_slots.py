@@ -52,10 +52,13 @@ def _clock(offset_hours, start_hour=7):
     )
 
 
-def test_legend_names_the_tones_when_both_are_on_the_dial():
+def test_legend_appears_when_both_tones_are_on_the_dial():
     out = _clock([1, 2, 8, 9])  # 8am–4pm: both tones
-    labels = [it["label"] for it in out["clock_legend"]["items"]]
-    assert labels == ["AM", "PM"]
+    legend = out["clock_legend"]
+    # styling only — each template places it in its own text block, so there
+    # are no coordinates to carry
+    assert legend and legend["am_w"] < legend["pm_w"]
+    assert legend["am_o"] < legend["pm_o"]
 
 
 def test_no_legend_for_a_single_tone_labor():
@@ -63,9 +66,9 @@ def test_no_legend_for_a_single_tone_labor():
     assert _clock([1, 2, 3, 4])["clock_legend"] is None
 
 
-def test_no_legend_when_day_rings_leave_it_no_room():
-    # three days: the centre hole shrinks under the legend's width, and the
-    # legend absent beats the legend lying across the innermost day's rays
+def test_multi_day_labor_keeps_its_legend():
+    # it lives in the text block now, so day rings crowding the dial's centre
+    # no longer cost the artwork its key
     out = _clock([1, 5, 15, 30, 40, 55, 62])
     assert len(out["clock_rings"]) == 3
-    assert out["clock_legend"] is None
+    assert out["clock_legend"] is not None
