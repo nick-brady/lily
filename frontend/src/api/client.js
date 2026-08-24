@@ -631,6 +631,7 @@ export const api = {
     return JSON.stringify({
       media_id: draft.mediaId ?? null,
       removed: Boolean(draft.removed),
+      photo_slots: draft.slots || {},
       text: draft.text || {},
       product_key: draft.productKey ?? null,
     });

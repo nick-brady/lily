@@ -710,6 +710,13 @@ class GiftRendering(Base):
     photo_removed: Mapped[bool] = mapped_column(
         sa.Boolean, nullable=False, server_default=sa.text("false")
     )
+    # Per-slot photo choices for the filmstrip designs, keyed by slot index
+    # ("0".."3") with a media id. Empty means every slot stays on the auto
+    # sample. Separate from photo_media_id because "the photo" and "the photo
+    # in slot 2" are different statements.
+    photo_slots: Mapped[dict] = mapped_column(
+        JSONB, nullable=False, server_default=sa.text("'{}'::jsonb")
+    )
     # Per-design text edits, keyed by slot ("child_name", "custom_line").
     # Only what a template lists as editable is honoured; everything else on a
     # keepsake is derived from the birth and stays that way.

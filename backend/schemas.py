@@ -695,6 +695,13 @@ class GiftRenderingOut(BaseModel):
     # (cx, cy, r) as fractions of the artwork, so the editor can lay a
     # "change photo" hotspot over the photo itself.
     photo_spot: Optional[tuple[float, float, float]] = None
+    # The filmstrip designs: how many photo panels, the explicit choices,
+    # and what each panel actually showed at the last render — the editor
+    # seeds its per-slot pickers from the latter, exactly as the single
+    # photo seeds from photo_media_id_effective.
+    photo_slot_count: int = 0
+    photo_slots: dict[str, uuid.UUID] = {}
+    photo_slots_effective: list[Optional[uuid.UUID]] = []
     # Slots this design lets a parent edit, and what they currently say.
     editable_text: list[str] = []
     text_overrides: dict[str, str] = {}
@@ -716,6 +723,9 @@ class GiftDesignIn(BaseModel):
 
     media_id: Optional[uuid.UUID] = None
     removed: bool = False
+    # For the filmstrip designs: slot index ("0".."3") → the chosen photo.
+    # A missing slot stays on the auto sample; unknown slots are dropped.
+    photo_slots: dict[str, uuid.UUID] = Field(default_factory=dict)
     text: dict[str, str] = Field(default_factory=dict)
     product_key: Optional[str] = None
 
