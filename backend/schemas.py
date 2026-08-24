@@ -752,9 +752,6 @@ class GiftGalleryOut(BaseModel):
 
     items: list["GiftItemOut"] = []
     family_has_shipping_address: bool = False
-    # Where we can ship at all, so the buyer's address form offers the same
-    # countries the checkout will accept rather than finding out at submit.
-    shipping_countries: list[str] = Field(default_factory=list)
     storage_paid_until: Optional[datetime] = None
     storage_lifetime: bool = False
     # When artwork may first be generated: the arrival plus a few hours for

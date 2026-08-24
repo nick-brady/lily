@@ -18,7 +18,6 @@ function formatTime(timestamp) {
 export default function GiftGallery({ birthId, isParent = true }) {
   const [items, setItems] = useState(null);
   const [familyHasAddress, setFamilyHasAddress] = useState(false);
-  const [shippingCountries, setShippingCountries] = useState(['US']);
   const [storagePaidUntil, setStoragePaidUntil] = useState(null);
   const [storageLifetime, setStorageLifetime] = useState(false);
   const [artworkReadyAt, setArtworkReadyAt] = useState(null);
@@ -31,9 +30,6 @@ export default function GiftGallery({ birthId, isParent = true }) {
       const gallery = await api.listGifts(birthId);
       setItems(gallery.items);
       setFamilyHasAddress(gallery.family_has_shipping_address);
-      setShippingCountries(gallery.shipping_countries?.length
-        ? gallery.shipping_countries
-        : ['US']);
       setStoragePaidUntil(gallery.storage_paid_until);
       setStorageLifetime(gallery.storage_lifetime ?? false);
       setArtworkReadyAt(gallery.artwork_ready_at ?? null);
@@ -144,7 +140,6 @@ export default function GiftGallery({ birthId, isParent = true }) {
                 item={item}
                 birthId={birthId}
                 familyHasAddress={familyHasAddress}
-                shippingCountries={shippingCountries}
                 onPhotoChanged={load}
               />
           ))}
@@ -169,7 +164,7 @@ const DESIGN_ORDER = [
   'card_welcome',
 ];
 
-function GiftItemCard({ item, birthId, familyHasAddress, shippingCountries, onPhotoChanged }) {
+function GiftItemCard({ item, birthId, familyHasAddress, onPhotoChanged }) {
   const [showAll, setShowAll] = useState(false);
   const designRank = (r) => {
     const i = DESIGN_ORDER.indexOf(r.template_id);
@@ -210,7 +205,6 @@ function GiftItemCard({ item, birthId, familyHasAddress, shippingCountries, onPh
                 birthId={birthId}
                 item={item}
                 familyHasAddress={familyHasAddress}
-                shippingCountries={shippingCountries}
                 onPhotoChanged={onPhotoChanged}
               />
             ))}
@@ -355,7 +349,6 @@ function RenderingTile({
   birthId,
   item,
   familyHasAddress,
-  shippingCountries,
   onPhotoChanged,
 }) {
   // Index into the gallery below, or null. One set of images, one viewer.
@@ -444,7 +437,6 @@ function RenderingTile({
           rendering={rendering}
           item={item}
           familyHasAddress={familyHasAddress}
-          shippingCountries={shippingCountries}
           onClose={() => setWizardAt(null)}
           onChanged={onPhotoChanged}
           renderCheckout={(current) => (
@@ -454,7 +446,6 @@ function RenderingTile({
               rendering={current}
               item={item}
               familyHasAddress={familyHasAddress}
-              shippingCountries={shippingCountries}
               onClose={() => setWizardAt(null)}
             />
           )}
@@ -515,7 +506,6 @@ function GiftCheckoutSheet({
   rendering,
   item,
   familyHasAddress,
-  shippingCountries,
   onClose,
   embedded = false,
 }) {
@@ -571,7 +561,7 @@ function GiftCheckoutSheet({
         <h2 className="text-base font-semibold text-gray-800 dark:text-white">
           {item.display_name} · {formatPrice(item.base_price_cents)}
         </h2>
-        <p className="text-xs t-muted mt-1">Shipping included.</p>
+        <p className="text-xs t-muted mt-1">Shipping included · US addresses only.</p>
       </div>
 
       {error && (
@@ -631,7 +621,6 @@ function GiftCheckoutSheet({
           hint="They haven't saved an address, so you'll need theirs."
           value={familyAddress}
           onChange={setFamilyAddress}
-          countries={shippingCountries}
         />
       )}
 
@@ -641,7 +630,6 @@ function GiftCheckoutSheet({
           title="Where your copy goes"
           value={selfAddress}
           onChange={setSelfAddress}
-          countries={shippingCountries}
         />
       )}
 

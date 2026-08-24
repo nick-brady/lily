@@ -24,15 +24,14 @@ export function emptyAddress() {
   return { ...EMPTY };
 }
 
-// Printful won't take a US or Canadian order without one; elsewhere it's
-// genuinely optional and demanding it would be wrong.
-const STATE_REQUIRED = new Set(['US', 'CA']);
-
+// US only, deliberately. The server is the authority on where we ship
+// (GIFT_SHIPPING_COUNTRIES, "US"), and until that says otherwise a country
+// picker would offer choices the checkout would refuse. Printful won't take a
+// US order without a state code, so it's required here too.
 export function addressComplete(address) {
   if (!address) return false;
   const has = (k) => (address[k] || '').trim().length > 0;
-  if (!['name', 'line1', 'city', 'postal_code'].every(has)) return false;
-  return !STATE_REQUIRED.has((address.country || '').toUpperCase()) || has('state');
+  return ['name', 'line1', 'city', 'state', 'postal_code'].every(has);
 }
 
 function Field({ label, value, onChange, autoComplete, required = true, className = '' }) {
@@ -52,7 +51,7 @@ function Field({ label, value, onChange, autoComplete, required = true, classNam
   );
 }
 
-export default function AddressForm({ birthId, title, hint, value, onChange, countries }) {
+export default function AddressForm({ birthId, title, hint, value, onChange }) {
   const [review, setReview] = useState(null);
   const [checking, setChecking] = useState(false);
   const set = (patch) => {
@@ -75,7 +74,6 @@ export default function AddressForm({ birthId, title, hint, value, onChange, cou
   };
 
   const suggestion = review?.suggestion;
-  const multi = (countries || ['US']).length > 1;
 
   return (
     <div
@@ -118,38 +116,18 @@ export default function AddressForm({ birthId, title, hint, value, onChange, cou
           value={value.state}
           onChange={(v) => set({ state: v })}
           autoComplete="shipping address-level1"
-          required={STATE_REQUIRED.has((value.country || '').toUpperCase())}
         />
       </div>
       <div className="grid grid-cols-2 gap-3">
         <Field
-          label="ZIP / postcode"
+          label="ZIP code"
           value={value.postal_code}
           onChange={(v) => set({ postal_code: v })}
           autoComplete="shipping postal-code"
         />
-        {multi ? (
-          <label className="block text-xs t-muted">
-            Country
-            <select
-              value={value.country}
-              autoComplete="shipping country"
-              onChange={(e) => set({ country: e.target.value })}
-              className="mt-1 w-full px-3 py-2 rounded-lg border text-sm bg-white dark:bg-gray-800 t-ink"
-              style={{ borderColor: 'var(--t-soft-ring)' }}
-            >
-              {countries.map((c) => (
-                <option key={c} value={c}>
-                  {c}
-                </option>
-              ))}
-            </select>
-          </label>
-        ) : (
-          <div className="flex items-end">
-            <p className="text-xs t-muted pb-2">United States</p>
-          </div>
-        )}
+        <div className="flex items-end">
+          <p className="text-xs t-muted pb-2">United States</p>
+        </div>
       </div>
 
       <button
