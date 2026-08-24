@@ -264,7 +264,20 @@ export const api = {
     return jsonOrThrow(res);
   },
 
-  async createGiftCheckout(birthId, renderingId, { recipientKind, giftMessage }) {
+  async reviewShippingAddress(birthId, address) {
+    const res = await fetch(`${API_URL}/birth/${birthId}/gifts/address-review`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ address }),
+    });
+    return jsonOrThrow(res);
+  },
+
+  async createGiftCheckout(
+    birthId,
+    renderingId,
+    { recipientKind, giftMessage, familyAddress, selfAddress },
+  ) {
     const res = await fetch(
       `${API_URL}/birth/${birthId}/gifts/${renderingId}/checkout`,
       {
@@ -273,6 +286,8 @@ export const api = {
         body: JSON.stringify({
           recipient_kind: recipientKind,
           gift_message: giftMessage || null,
+          family_address: familyAddress || null,
+          self_address: selfAddress || null,
         }),
       },
     );
@@ -616,6 +631,7 @@ export const api = {
     return JSON.stringify({
       media_id: draft.mediaId ?? null,
       removed: Boolean(draft.removed),
+      photo_slots: draft.slots || {},
       text: draft.text || {},
       product_key: draft.productKey ?? null,
     });

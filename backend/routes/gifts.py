@@ -80,6 +80,11 @@ def _serialize_rendering(rendering) -> GiftRenderingOut:
         # photo leaves an empty frame, so it doesn't get the option.
         photo_removable=shows_photo and not (template and template.photo_required),
         photo_spot=template.photo_spot if template else None,
+        photo_slot_count=template.photo_slots if template else 0,
+        photo_slots=rendering.photo_slots or {},
+        photo_slots_effective=(
+            (rendering.rendering_metadata or {}).get("selected_slot_media_ids") or []
+        ),
         editable_text=list(template.editable_text) if template else [],
         text_overrides=dict(rendering.text_overrides or {}),
         product_key=rendering.product_key,
@@ -379,6 +384,7 @@ class _Draft:
     def __init__(self, rendering, payload: GiftDesignIn):
         self.photo_media_id = None if payload.removed else payload.media_id
         self.photo_removed = payload.removed
+        self.photo_slots = {k: str(v) for k, v in (payload.photo_slots or {}).items()}
         self.text_overrides = dict(payload.text or {})
         self.template_id = rendering.template_id
         self.product_key = payload.product_key
@@ -387,6 +393,11 @@ class _Draft:
 def _apply_draft(rendering, payload: GiftDesignIn) -> None:
     rendering.photo_media_id = None if payload.removed else payload.media_id
     rendering.photo_removed = payload.removed
+    # Stringified for JSONB; unknown slot keys fall away at render, the same
+    # posture as text overrides.
+    rendering.photo_slots = {
+        k: str(v) for k, v in (payload.photo_slots or {}).items()
+    }
     rendering.text_overrides = dict(payload.text or {})
     # Unknown keys are ignored rather than rejected: the shortlist is a code
     # registry, and a design pointing at a product we've since retired should
@@ -416,8 +427,10 @@ def _check_photo(db, access, payload: GiftDesignIn, template) -> None:
         raise HTTPException(
             status_code=400, detail="This design can't be rendered without a photo"
         )
-    if payload.media_id is not None:
-        asset = db.get(MediaAsset, payload.media_id)
+    for media_id in [payload.media_id, *(payload.photo_slots or {}).values()]:
+        if media_id is None:
+            continue
+        asset = db.get(MediaAsset, media_id)
         if (
             asset is None
             or asset.birth_id != access.birth.id

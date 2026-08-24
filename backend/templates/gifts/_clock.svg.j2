@@ -61,4 +61,15 @@
         stroke-linejoin="round" stroke-linecap="round" opacity="0.9"/>
   {% endif %}
   {% endfor %}
+  {# what the two tones mean, in the dial's empty centre #}
+  {% if clock_legend %}
+  {% for it in clock_legend['items'] %}
+  <line x1="{{ it.x1 }}" y1="{{ clock_legend.y }}" x2="{{ it.x2 }}" y2="{{ clock_legend.y }}"
+        stroke="{{ p.dot if it.label == 'AM' else p.accent }}" stroke-width="{{ it.w }}"
+        stroke-linecap="round" opacity="{{ it.o }}"/>
+  <text x="{{ it.lx }}" y="{{ clock_legend.y + 9 }}" font-family="{{ p.body_font }}"
+        font-size="26" letter-spacing="4" fill="{{ p.ink }}"
+        opacity="0.5">{{ it.label }}</text>
+  {% endfor %}
+  {% endif %}
 {% endmacro %}

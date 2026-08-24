@@ -564,6 +564,55 @@ instead."
 
 This is why the ask appears pre-birth even though gifts only exist post-birth.
 
+### We collect the destination, not Stripe
+*2026-08-23*
+
+Stripe Checkout holds exactly one shipping address per session, so buying a
+copy for the family and a copy for yourself in one payment was refused unless
+the parents had already saved theirs — and the buyer, usually not a parent,
+had no way to save it. The address was never Stripe's to hold: Printful ships
+the mug, Stripe was a convenient form.
+
+The buyer now names each destination on the send step and `collect_shipping`
+is False in every case (`routes/checkout.py`). A buyer typing the family's
+address never writes it to `births.shipping_address` — that field is the
+parents' own record, not a guest's guess.
+
+### The order snapshots the address it was bought against
+*2026-08-23*
+
+`gift_orders.shipping_address` is written at purchase, including when it's
+copied from the parents' saved address. It is not re-read at shipping time.
+
+> "the birth address can be updated, after all.. so a historical record at the
+> time of purchase is only a good thing."
+
+The payment was for a parcel to a particular place. If the family updates
+their address between paying and shipping, an order already paid for
+shouldn't quietly change destination — and a year later the order should
+still say where it went. Every order names its own destination, so there's no
+"null means look somewhere else" rule to remember.
+
+### Ship to the US only, for now
+*2026-08-23*
+
+`GIFT_SHIPPING_COUNTRIES` is `"US"`. The address form offers no country
+picker, because offering a choice the checkout would refuse is a wrong answer
+waiting to be given. `address_validation.check_structure` still reads the
+allowed list rather than assuming one, so widening is a config change plus a
+form field.
+
+### Address validation advises, it never refuses
+*2026-08-23*
+
+Structure — required fields, a country we ship to, a state code (Printful
+won't take a US order without one) — refuses. Google's Address Validation API
+only suggests the postal service's spelling and admits when it can't confirm a
+place. New construction, rural routes and flats the postal file hasn't caught
+up with are real addresses, and someone who knows where their sister lives
+shouldn't be overruled by a database. Inert until `GOOGLE_MAPS_API_KEY` is
+set; a Google outage never blocks a sale.
+
 ---
 
 ## Onboarding & setup

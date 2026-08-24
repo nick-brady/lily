@@ -199,9 +199,16 @@ def render(
     elif template.scene == "words":
         context.update(_build_words_scene(db, birth, template))
     elif template.scene == "reel":
-        context.update(_build_reel_scene(db, birth, template))
+        context.update(
+            _build_reel_scene(
+                db, birth, template, rendering, photo_max_px=photo_max_px
+            )
+        )
     elif template.scene == "pool":
         context.update(_build_pool_scene(db, birth, template))
+
+    # Panel provenance rides to the metadata, not to Jinja.
+    slot_media_ids = context.pop("reel_media_ids", None)
 
     png = render_context(template, context, output_width=output_width)
 
@@ -217,6 +224,7 @@ def render(
         "text_print_floor": print_floor_px(template.dpi),
         "theme": birth.theme,
         "selected_media_id": str(photo.id) if photo else None,
+        "selected_slot_media_ids": slot_media_ids,
         "stats": stats.as_metadata(),
         "child": {
             "name": birth.child_name,
@@ -1234,12 +1242,44 @@ def build_hours_clock(
             "stroke": BORN_STROKE, "halo": BORN_HALO_R,
         }
 
+    # ── the legend ───────────────────────────────────────────────────────
+    # The two tones need naming or they read as texture. It sits in the dial's
+    # empty centre — the one place every clock template has room, since below
+    # the face the mug wrap is already out of canvas. Only when both tones are
+    # actually on the dial: an all-morning labor has nothing to distinguish.
+    all_strokes = [st for ring in rings for st in ring["strokes"]]
+    legend = None
+    # The hole shrinks as day rings stack (205px alone, ~122 at two days,
+    # ~90 at three). The legend spans cx±116, so past two rings it would lie
+    # across the innermost day's rays — better absent than crossed out.
+    fits = inner > 120
+    if fits and any(st["am"] for st in all_strokes) and any(
+        not st["am"] for st in all_strokes
+    ):
+        legend = {
+            "y": round(cy, 1),
+            "items": [
+                {
+                    "x1": round(cx - 116, 1), "x2": round(cx - 78, 1),
+                    "lx": round(cx - 66, 1), "label": "AM",
+                    "w": AM_WIDTH, "o": AM_ALPHA + 0.14,  # lifted a touch: at
+                    # ray alpha a 38px sample reads as a scratch
+                },
+                {
+                    "x1": round(cx + 14, 1), "x2": round(cx + 52, 1),
+                    "lx": round(cx + 64, 1), "label": "PM",
+                    "w": PM_WIDTH, "o": PM_ALPHA,
+                },
+            ],
+        }
+
     return {
         "clock_rings": rings,
         "clock_ticks": ticks,
         "clock_numerals": numerals,
         "clock_marks": marks,
         "clock_born_mark": born_mark,
+        "clock_legend": legend,
         # only worth naming the days when there is more than one
         "clock_day_labels": n > 1,
     }
@@ -1391,14 +1431,130 @@ def build_reel_scene(photos: list[dict], *, width: float, height: float, layout:
     }
 
 
-def _build_reel_scene(db: Session, birth: Birth, template: GiftTemplate) -> dict:
+def _reel_refs(db: Session, birth: Birth) -> list[dict]:
+    """Every viewer-visible timeline photo as {asset, media_id, caption,
+    occurred_at}, chronological, without data URIs — those are built only for
+    the panels that make the cut, because encoding is most of a render's
+    cost and the pool can be far larger than the strip."""
+    events = list(
+        db.scalars(
+            select(TimelineEvent)
+            .where(
+                TimelineEvent.birth_id == birth.id,
+                TimelineEvent.event_type == TimelineEventType.photo,
+                TimelineEvent.deleted_at.is_(None),
+            )
+            .order_by(TimelineEvent.occurred_at.asc())
+        ).all()
+    )
+    out: list[dict] = []
+    for e in events:
+        media_id = (e.payload or {}).get("media_id")
+        if not media_id:
+            continue
+        asset = db.get(MediaAsset, media_id)
+        if (
+            asset is None
+            or asset.kind != MediaKind.photo
+            or not asset.is_visible_to_viewers
+            or asset.archived_at is not None
+        ):
+            continue
+        out.append(
+            {
+                "asset": asset,
+                "media_id": str(media_id),
+                "caption": _truncate(_clean_text((e.payload or {}).get("caption")), 18),
+                "occurred_at": _localize(e.occurred_at),
+            }
+        )
+    return out
+
+
+def _keepsake_ref(db: Session, birth: Birth, media_id: str) -> dict | None:
+    """A chosen photo that never rode a timeline event — uploaded straight
+    into the editor. It has no caption and no honest timestamp (created_at is
+    the upload, not the moment), so its panel stamp stays blank."""
+    try:
+        asset = db.get(MediaAsset, uuid.UUID(media_id))
+    except (ValueError, TypeError):
+        return None
+    if (
+        asset is None
+        or asset.birth_id != birth.id
+        or asset.kind != MediaKind.photo
+        or asset.archived_at is not None
+    ):
+        return None
+    return {"asset": asset, "media_id": media_id, "caption": "", "occurred_at": None}
+
+
+def slot_overrides(rendering, slot_count: int) -> dict[int, str]:
+    """The explicit per-slot choices, keyed by int index, unknown slots
+    dropped — same posture as text overrides: a stale key falls away rather
+    than failing the render."""
+    raw = getattr(rendering, "photo_slots", None) or {}
+    out: dict[int, str] = {}
+    for key, media_id in raw.items():
+        try:
+            i = int(key)
+        except (ValueError, TypeError):
+            continue
+        if 0 <= i < slot_count and media_id:
+            out[i] = str(media_id)
+    return out
+
+
+def _build_reel_scene(
+    db: Session,
+    birth: Birth,
+    template: GiftTemplate,
+    rendering=None,
+    *,
+    photo_max_px: int | None = None,
+) -> dict:
     layout = "mug" if template.product_kind == "mug" else "card"
-    photos = _gather_photos(db, birth, limit=4 if layout == "mug" else 3)
+    n = template.photo_slots or (4 if layout == "mug" else 3)
+    refs = _reel_refs(db, birth)
+    chosen = _sample_spaced(refs, n)
+    # A choice replaces its slot's auto pick; the other slots keep theirs.
+    # A chosen photo that has since been deleted falls back to the auto pick
+    # rather than failing — same posture as the single-photo designs.
+    by_id = {r["media_id"]: r for r in refs}
+    for i, media_id in sorted(slot_overrides(rendering, n).items()):
+        ref = by_id.get(media_id) or _keepsake_ref(db, birth, media_id)
+        if ref is None:
+            continue
+        if i < len(chosen):
+            chosen[i] = ref
+        elif i == len(chosen):
+            # a story shorter than the strip, extended by hand
+            chosen.append(ref)
+    if not chosen:
+        raise ArtworkError("missing-photo")
+    photos = []
+    for ref in chosen:
+        uri = _photo_data_uri(ref["asset"], max_px=photo_max_px or 900)
+        if uri is None:
+            continue
+        photos.append(
+            {
+                "uri": uri,
+                "caption": ref["caption"],
+                "occurred_at": ref["occurred_at"],
+                "media_id": ref["media_id"],
+            }
+        )
     if not photos:
         raise ArtworkError("missing-photo")
-    return build_reel_scene(
+    scene = build_reel_scene(
         photos, width=template.width, height=template.height, layout=layout
     )
+    # What each panel actually shows, for the metadata — the editor seeds its
+    # slot pickers from this, exactly as the single photo seeds from
+    # selected_media_id.
+    scene["reel_media_ids"] = [p["media_id"] for p in photos]
+    return scene
 
 
 # ── the pool: the family's predictions vs. the actuals ───────────────────

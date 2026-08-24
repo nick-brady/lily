@@ -50,9 +50,19 @@ export default function GiftWizard({
       || initialRendering.photo_media_id_effective
       || null,
     removed: Boolean(initialRendering.photo_removed),
+    // The filmstrip designs: one entry per panel, seeded from what each
+    // panel actually showed — same reasoning as mediaId above.
+    slots: Object.fromEntries(
+      (initialRendering.photo_slots_effective || [])
+        .map((id, i) => [i, id])
+        .filter(([, id]) => id),
+    ),
     text: { ...(initialRendering.text_overrides || {}) },
     productKey: initialRendering.product_key || null,
   }));
+  const slotCount = initialRendering.photo_slot_count || 0;
+  // Which panel the story grid is currently choosing for.
+  const [activeSlot, setActiveSlot] = useState(0);
   const [products, setProducts] = useState(null);
   const [dirty, setDirty] = useState(false);
   const [previewUrl, setPreviewUrl] = useState(null);
@@ -172,6 +182,33 @@ export default function GiftWizard({
     schedulePreview(next);
   };
 
+  // Whether anything distinguishes this design from its untouched default —
+  // saved overrides or unsaved edits. That's when "start over" earns a place.
+  const customized =
+    dirty
+    || Boolean(rendering.photo_media_id)
+    || Boolean(rendering.photo_removed)
+    || Boolean(rendering.product_key)
+    || Object.keys(rendering.text_overrides || {}).length > 0
+    || Object.keys(rendering.photo_slots || {}).length > 0;
+
+  // Back to the design as it was before anyone touched it: auto photo, no
+  // text, the standard mug. Deliberately re-resolves the photo guess — the
+  // seeding above exists to stop *accidental* re-resolution; asking for the
+  // default is the one time re-resolving is the point. Nothing is saved
+  // until Next, so this too can be walked away from.
+  const resetToDefault = () => {
+    const next = { mediaId: null, removed: false, slots: {}, text: {}, productKey: null };
+    setDraft(next);
+    setActiveSlot(0);
+    if (hiResRef.current) {
+      URL.revokeObjectURL(hiResRef.current);
+      hiResRef.current = null;
+    }
+    setHiResUrl(null);
+    schedulePreview(next);
+  };
+
   // The artwork is the one worth enlarging: it's a 2475px print file, where
   // the mug shots are 1000px photographs. So the gallery leads with it and
   // the angles come along; the viewer never scales past an image's own size,
@@ -197,7 +234,11 @@ export default function GiftWizard({
     try {
       const added = await api.uploadGiftPhoto(birthId, file);
       setPhotos((rows) => [...(rows || []), added]);
-      edit({ mediaId: added.media_id, removed: false });
+      if (slotCount > 0) {
+        edit({ slots: { ...draft.slots, [activeSlot]: added.media_id } });
+      } else {
+        edit({ mediaId: added.media_id, removed: false });
+      }
     } catch (err) {
       setError(err.message || "We couldn't add that photo");
     }
@@ -367,7 +408,18 @@ export default function GiftWizard({
               style={{ borderColor: 'var(--t-soft-ring)' }}
             >
               <div>
-                <h2 className="text-base font-semibold t-ink">{item.display_name}</h2>
+                <div className="flex items-baseline justify-between gap-2">
+                  <h2 className="text-base font-semibold t-ink">{item.display_name}</h2>
+                  {customized && (
+                    <button
+                      type="button"
+                      onClick={resetToDefault}
+                      className="text-[11px] underline t-muted whitespace-nowrap"
+                    >
+                      Reset to default
+                    </button>
+                  )}
+                </div>
                 <p className="text-xs t-muted mt-1">
                   The rest is drawn from the birth itself, so it stays true.
                 </p>
@@ -458,9 +510,51 @@ export default function GiftWizard({
                 </div>
               )}
 
-              {rendering.has_photo && (
+              {(rendering.has_photo || slotCount > 0) && (
                 <div>
-                  <span className="text-xs font-medium t-muted">Photo</span>
+                  <span className="text-xs font-medium t-muted">
+                    {slotCount > 0 ? 'Photos' : 'Photo'}
+                  </span>
+                  {slotCount > 0 && (
+                    <>
+                      <p className="text-[11px] t-faint mt-0.5">
+                        The strip plays the day in order — pick a panel, then
+                        choose its photo below.
+                      </p>
+                      <div className="mt-1.5 grid grid-cols-4 gap-1.5">
+                        {Array.from({ length: slotCount }, (_, i) => (
+                          <button
+                            key={i}
+                            type="button"
+                            onClick={() => setActiveSlot(i)}
+                            aria-label={`Photo ${i + 1}`}
+                            className="relative rounded overflow-hidden border-2 aspect-square"
+                            style={{
+                              borderColor:
+                                i === activeSlot
+                                  ? 'var(--t-accent)'
+                                  : 'var(--t-soft-ring)',
+                            }}
+                          >
+                            {draft.slots?.[i] ? (
+                              <img
+                                src={api.mediaUrl(draft.slots[i])}
+                                alt=""
+                                className="absolute inset-0 w-full h-full object-cover"
+                              />
+                            ) : (
+                              <span className="absolute inset-0 flex items-center justify-center text-[10px] t-faint">
+                                auto
+                              </span>
+                            )}
+                            <span className="absolute bottom-0.5 right-1 text-[10px] px-1 rounded bg-black/50 text-white">
+                              {i + 1}
+                            </span>
+                          </button>
+                        ))}
+                      </div>
+                    </>
+                  )}
                   {/* These are the birth's photos — everything posted to the
                       story, plus anything uploaded here. Worth saying so:
                       an unlabelled grid of thumbnails reads as "some photos"
@@ -479,13 +573,26 @@ export default function GiftWizard({
                       <button
                         key={photo.media_id}
                         type="button"
-                        onClick={() => edit({ mediaId: photo.media_id, removed: false })}
+                        onClick={() => {
+                          if (slotCount > 0) {
+                            edit({
+                              slots: { ...draft.slots, [activeSlot]: photo.media_id },
+                            });
+                            // filling the strip in order is the common case
+                            setActiveSlot((i) => Math.min(i + 1, slotCount - 1));
+                          } else {
+                            edit({ mediaId: photo.media_id, removed: false });
+                          }
+                        }}
                         className="block rounded overflow-hidden border-2"
                         style={{
-                          borderColor:
-                            draft.mediaId === photo.media_id && !draft.removed
-                              ? 'var(--t-accent)'
-                              : 'transparent',
+                          borderColor: (
+                            slotCount > 0
+                              ? draft.slots?.[activeSlot] === photo.media_id
+                              : draft.mediaId === photo.media_id && !draft.removed
+                          )
+                            ? 'var(--t-accent)'
+                            : 'transparent',
                         }}
                       >
                         <img
@@ -590,7 +697,12 @@ export default function GiftWizard({
         )}
 
         {step === 2 && (
-          <div className="flex-1 overflow-y-auto p-5">{renderCheckout?.(rendering)}</div>
+          <div className="flex-1 overflow-y-auto p-6">
+            {/* The editor is as wide as the artwork needs; a form isn't. Held
+                to the same column the standalone checkout sheet uses, so a
+                checkbox and its label aren't a foot apart. */}
+            <div className="max-w-lg mx-auto">{renderCheckout?.(rendering)}</div>
+          </div>
         )}
 
         {galleryAt !== null && (

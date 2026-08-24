@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { api } from '../api/client';
+import AddressForm, { addressComplete, emptyAddress } from './AddressForm';
 import { formatPrice } from '../utils/money';
 import GiftWizard from './GiftWizard';
 
@@ -291,7 +292,7 @@ function StorageGiftCheckoutSheet({ birthId, item, onClose }) {
     >
       <div
         className="animate-slide-up w-full sm:max-w-lg bg-white dark:bg-gray-900
-                   rounded-t-2xl sm:rounded-2xl shadow-xl p-5 space-y-4 max-h-[85vh] overflow-y-auto"
+                   rounded-t-2xl sm:rounded-2xl shadow-xl p-5 max-h-[85vh] overflow-y-auto"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="text-center">
@@ -343,7 +344,13 @@ function StorageGiftCheckoutSheet({ birthId, item, onClose }) {
   );
 }
 
-function RenderingTile({ rendering, birthId, item, familyHasAddress, onPhotoChanged }) {
+function RenderingTile({
+  rendering,
+  birthId,
+  item,
+  familyHasAddress,
+  onPhotoChanged,
+}) {
   // Index into the gallery below, or null. One set of images, one viewer.
   // null, or the step to open the wizard at. The tile has two ways in: the
   // design itself (customise) and the buy button (straight to sending), so
@@ -491,6 +498,57 @@ function ProductOption({ product, onRequest }) {
   );
 }
 
+// One recipient: the tick, and the address that belongs to it. The form used
+// to sit in its own box further down the sheet, which left you to work out
+// which box it answered — with two of them open at once, that's a real
+// question. Ticking a box now opens the box.
+//
+// The grid 0fr→1fr transition animates to whatever height the form turns out
+// to be, which max-height can't do without a magic number that's wrong the
+// day a field is added.
+function Recipient({ label, hint, checked, disabled = false, onChange, open, children }) {
+  return (
+    <div
+      className={`rounded-lg border ${disabled ? 'opacity-50' : ''}`}
+      style={{ borderColor: 'var(--t-soft-ring)' }}
+    >
+      <label
+        className={`flex items-start gap-3 p-3 ${
+          disabled ? 'cursor-default' : 'cursor-pointer'
+        }`}
+      >
+        <input
+          type="checkbox"
+          checked={checked}
+          disabled={disabled}
+          onChange={(e) => onChange(e.target.checked)}
+          className="mt-1"
+        />
+        <span className="text-sm t-ink">
+          {label}
+          <span className="block text-xs t-muted mt-0.5">{hint}</span>
+        </span>
+      </label>
+      <div
+        className="grid transition-[grid-template-rows] duration-300 ease-out motion-reduce:transition-none"
+        style={{ gridTemplateRows: open ? '1fr' : '0fr' }}
+        aria-hidden={!open}
+      >
+        {/* the row is what animates; this is what gets clipped while it does */}
+        <div className="overflow-hidden">
+          <div
+            className="px-3 pb-3 pt-1 border-t"
+            style={{ borderColor: 'var(--t-soft-ring)' }}
+          >
+            {children}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+
 // Recipient, note, pay. Its own sheet from the tile's fast lane, or the last
 // pane of the customise wizard — `embedded` drops the overlay and panel so it
 // can sit inside one that already exists.
@@ -508,12 +566,18 @@ function GiftCheckoutSheet({
   const [note, setNote] = useState('');
   const [starting, setStarting] = useState(false);
   const [error, setError] = useState('');
+  const [familyAddress, setFamilyAddress] = useState(emptyAddress);
+  const [selfAddress, setSelfAddress] = useState(emptyAddress);
 
   const copies = (toFamily ? 1 : 0) + (toSelf ? 1 : 0);
-  // Stripe collects one address per checkout (the buyer's, for the self
-  // copy) — both copies together need the family's saved address.
-  const bothBlocked = toFamily && toSelf && !familyHasAddress;
   const recipientKind = toFamily && toSelf ? 'both' : toFamily ? 'family' : 'self';
+  // Each parcel needs somewhere to go. The family's is already known when the
+  // parents have saved one — and it stays theirs: we ship to it without ever
+  // showing it to whoever is buying.
+  const needFamilyAddress = toFamily && !familyHasAddress;
+  const missingAddress =
+    (needFamilyAddress && !addressComplete(familyAddress)) ||
+    (toSelf && !addressComplete(selfAddress));
 
   async function startCheckout() {
     setStarting(true);
@@ -522,6 +586,8 @@ function GiftCheckoutSheet({
       const { url } = await api.createGiftCheckout(birthId, rendering.id, {
         recipientKind,
         giftMessage: note.trim() || null,
+        familyAddress: needFamilyAddress ? familyAddress : null,
+        selfAddress: toSelf ? selfAddress : null,
       });
       window.location.assign(url);
     } catch (err) {
@@ -541,112 +607,91 @@ function GiftCheckoutSheet({
   }
 
   const content = (
-    <>
-        <div className="text-center">
-          <h2 className="text-base font-semibold text-gray-800 dark:text-white">
-            {item.display_name} · {formatPrice(item.base_price_cents)}
-          </h2>
-          <p className="text-xs t-muted mt-1">Shipping included.</p>
+    <div className="space-y-4">
+      <div className="text-center">
+        <h2 className="text-base font-semibold text-gray-800 dark:text-white">
+          {item.display_name}
+        </h2>
+        <p className="text-xs t-muted mt-1">Shipping included · US addresses only.</p>
+      </div>
+
+      {error && (
+        <div className="p-3 rounded-lg bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-300 text-sm">
+          {error}
         </div>
+      )}
 
-        {error && (
-          <div className="p-3 rounded-lg bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-300 text-sm">
-            {error}
-          </div>
-        )}
-
-        <div className="space-y-2">
-          <label
-            className={`flex items-start gap-3 p-3 rounded-lg border cursor-pointer ${
-              item.is_claimed_for_family ? 'opacity-50 cursor-default' : ''
-            }`}
-            style={{ borderColor: 'var(--t-soft-ring)' }}
-          >
-            <input
-              type="checkbox"
-              checked={toFamily}
-              disabled={item.is_claimed_for_family}
-              onChange={(e) => setToFamily(e.target.checked)}
-              className="mt-1"
-            />
-            <span className="text-sm t-ink">
-              Send to the family
-              <span className="block text-xs t-muted mt-0.5">
-                {item.is_claimed_for_family
-                  ? 'Already gifted 🤍'
-                  : familyHasAddress
-                    ? "Ships to the family's saved address."
-                    : "You'll enter their address at checkout."}
-              </span>
-            </span>
-          </label>
-          <label
-            className="flex items-start gap-3 p-3 rounded-lg border cursor-pointer"
-            style={{ borderColor: 'var(--t-soft-ring)' }}
-          >
-            <input
-              type="checkbox"
-              checked={toSelf}
-              onChange={(e) => setToSelf(e.target.checked)}
-              className="mt-1"
-            />
-            <span className="text-sm t-ink">
-              Get one for myself
-              <span className="block text-xs t-muted mt-0.5">
-                Ships to you — you'll enter your address at checkout.
-              </span>
-            </span>
-          </label>
-        </div>
-
-        {bothBlocked && (
-          <div
-            className="p-3 rounded-lg text-sm t-ink flex items-start gap-2"
-            style={{ backgroundColor: 'var(--t-soft-bg)' }}
-          >
-            <span aria-hidden="true">✋</span>
-            <span>
-              Both at once needs the family&rsquo;s saved shipping address, and
-              they haven&rsquo;t added one yet — uncheck one to continue, and
-              send the other separately.
-            </span>
-          </div>
-        )}
-
-        {toFamily && (
-          <label className="block text-xs t-muted">
-            A note for the family (printed on the packing slip)
-            <textarea
-              value={note}
-              onChange={(e) => setNote(e.target.value)}
-              rows={2}
-              maxLength={500}
-              placeholder="With so much love…"
-              className="mt-1 w-full px-3 py-2 rounded-lg border text-sm bg-white dark:bg-gray-800 t-ink resize-none"
-              style={{ borderColor: 'var(--t-soft-ring)' }}
-            />
-          </label>
-        )}
-
-        <button
-          type="button"
-          onClick={startCheckout}
-          disabled={starting || copies === 0 || bothBlocked}
-          className="w-full py-3 rounded-xl text-sm font-medium text-white disabled:opacity-50"
-          style={{ backgroundColor: 'var(--t-accent)' }}
+      <div className="space-y-2">
+        <Recipient
+          label="Send to the family"
+          hint={
+            item.is_claimed_for_family
+              ? 'Already gifted 🤍'
+              : familyHasAddress
+                ? "Ships to the family's saved address."
+                : "They haven't saved an address, so you'll need theirs."
+          }
+          checked={toFamily}
+          disabled={item.is_claimed_for_family}
+          onChange={setToFamily}
+          open={needFamilyAddress}
         >
-          {starting
-            ? 'Opening checkout…'
-            : `Continue to checkout · ${formatPrice(item.base_price_cents * Math.max(copies, 1))}`}
-        </button>
-        <button
-          type="button"
-          onClick={onClose}
-          className="w-full py-2 rounded-xl text-sm text-gray-600 dark:text-gray-300"
+          <AddressForm
+            birthId={birthId}
+            value={familyAddress}
+            onChange={setFamilyAddress}
+          />
+        </Recipient>
+
+        <Recipient
+          label="Get one for myself"
+          hint="Ships to you."
+          checked={toSelf}
+          onChange={setToSelf}
+          open={toSelf}
         >
-          Cancel
-        </button>
-    </>
+          <AddressForm birthId={birthId} value={selfAddress} onChange={setSelfAddress} />
+        </Recipient>
+      </div>
+
+      {toFamily && (
+        <label className="block text-xs t-muted">
+          A note for the family (printed on the packing slip)
+          <textarea
+            value={note}
+            onChange={(e) => setNote(e.target.value)}
+            rows={2}
+            maxLength={500}
+            placeholder="With so much love…"
+            className="mt-1 w-full px-3 py-2 rounded-lg border text-sm bg-white dark:bg-gray-800 t-ink resize-none"
+            style={{ borderColor: 'var(--t-soft-ring)' }}
+          />
+        </label>
+      )}
+
+      <button
+        type="button"
+        onClick={startCheckout}
+        disabled={starting || copies === 0 || missingAddress}
+        className="w-full py-3 rounded-xl text-sm font-medium text-white disabled:opacity-50"
+        style={{ backgroundColor: 'var(--t-accent)' }}
+      >
+        {starting
+          ? 'Opening checkout…'
+          : copies === 0
+            ? 'Pick who this is for'
+            : missingAddress
+              ? 'Add the address above to continue'
+              : 'Continue to checkout'}
+      </button>
+      <button
+        type="button"
+        onClick={onClose}
+        className="w-full py-2 rounded-xl text-sm text-gray-600 dark:text-gray-300"
+      >
+        Cancel
+      </button>
+    </div>
   );
 
   if (embedded) return content;
@@ -658,7 +703,7 @@ function GiftCheckoutSheet({
     >
       <div
         className="animate-slide-up w-full sm:max-w-lg bg-white dark:bg-gray-900
-                   rounded-t-2xl sm:rounded-2xl shadow-xl p-5 space-y-4 max-h-[85vh] overflow-y-auto"
+                   rounded-t-2xl sm:rounded-2xl shadow-xl p-5 max-h-[85vh] overflow-y-auto"
         onClick={(e) => e.stopPropagation()}
       >
         {content}

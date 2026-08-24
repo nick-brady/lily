@@ -222,10 +222,43 @@ class GuessBoardOut(BaseModel):
     due_date: Optional[date] = None
 
 
+class ShippingAddressIn(BaseModel):
+    name: str = Field(..., min_length=1, max_length=120)
+    line1: str = Field(..., min_length=1, max_length=200)
+    line2: Optional[str] = Field(default=None, max_length=200)
+    city: str = Field(..., min_length=1, max_length=100)
+    state: str = Field(..., min_length=1, max_length=50)
+    postal_code: str = Field(..., min_length=1, max_length=20)
+    country: str = Field(default="US", min_length=2, max_length=2)
+
+
 class GiftCheckoutIn(BaseModel):
     # "both" = a family copy and a self copy in one checkout (quantity 2)
     recipient_kind: str = Field(..., pattern="^(family|self|both)$")
     gift_message: Optional[str] = Field(default=None, max_length=500)
+    # Where each copy goes. The buyer names them here rather than on Stripe's
+    # page, which collects exactly one address per session — the reason
+    # "both" used to be refused unless the parents had saved theirs.
+    # `family_address` is unnecessary (and ignored) when they have.
+    family_address: Optional[ShippingAddressIn] = None
+    self_address: Optional[ShippingAddressIn] = None
+
+
+class AddressReviewIn(BaseModel):
+    address: ShippingAddressIn
+
+
+class AddressReviewOut(BaseModel):
+    """What we make of an address before anyone pays for it.
+
+    `verdict` is confirmed | corrected | unconfirmed | unchecked. Only
+    `structure_error` refuses the address; the rest is advice, because a real
+    address that a postal database hasn't heard of is still a real address.
+    """
+
+    verdict: str
+    suggestion: Optional[dict] = None
+    structure_error: Optional[str] = None
 
 
 class StorageGiftCheckoutIn(BaseModel):
@@ -248,16 +281,6 @@ class GiftConfirmOut(BaseModel):
     lost the family-claim race and their payment was returned) | 'pending'."""
 
     status: str
-
-
-class ShippingAddressIn(BaseModel):
-    name: str = Field(..., min_length=1, max_length=120)
-    line1: str = Field(..., min_length=1, max_length=200)
-    line2: Optional[str] = Field(default=None, max_length=200)
-    city: str = Field(..., min_length=1, max_length=100)
-    state: str = Field(..., min_length=1, max_length=50)
-    postal_code: str = Field(..., min_length=1, max_length=20)
-    country: str = Field(default="US", min_length=2, max_length=2)
 
 
 class ShippingAddressOut(BaseModel):
@@ -672,6 +695,13 @@ class GiftRenderingOut(BaseModel):
     # (cx, cy, r) as fractions of the artwork, so the editor can lay a
     # "change photo" hotspot over the photo itself.
     photo_spot: Optional[tuple[float, float, float]] = None
+    # The filmstrip designs: how many photo panels, the explicit choices,
+    # and what each panel actually showed at the last render — the editor
+    # seeds its per-slot pickers from the latter, exactly as the single
+    # photo seeds from photo_media_id_effective.
+    photo_slot_count: int = 0
+    photo_slots: dict[str, uuid.UUID] = {}
+    photo_slots_effective: list[Optional[uuid.UUID]] = []
     # Slots this design lets a parent edit, and what they currently say.
     editable_text: list[str] = []
     text_overrides: dict[str, str] = {}
@@ -693,6 +723,9 @@ class GiftDesignIn(BaseModel):
 
     media_id: Optional[uuid.UUID] = None
     removed: bool = False
+    # For the filmstrip designs: slot index ("0".."3") → the chosen photo.
+    # A missing slot stays on the auto sample; unknown slots are dropped.
+    photo_slots: dict[str, uuid.UUID] = Field(default_factory=dict)
     text: dict[str, str] = Field(default_factory=dict)
     product_key: Optional[str] = None
 

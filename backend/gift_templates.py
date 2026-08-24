@@ -44,6 +44,10 @@ class GiftTemplate:
     # are for. The name can be shortened to the one people actually use, and
     # anything else they want to say goes on a line that was always theirs.
     editable_text: tuple[str, ...] = ()
+    # How many photo panels this design carries (the filmstrip templates).
+    # Each is separately replaceable in the editor; 0 means the design has no
+    # panels and any single photo goes through `photo` above instead.
+    photo_slots: int = 0
     # How much room each set line has, keyed by slot: (width with a photo
     # beside it, width without). Per line, not per template — the photo only
     # crowds the lines level with it. On the mug it sits across the name but
@@ -96,6 +100,7 @@ TEMPLATES: dict[str, GiftTemplate] = {
         height=1155,
         dpi=300,
         photo=False,
+        photo_slots=4,
         scene="reel",
     ),
     # ── cards — 5×7 in at 300 DPI = 1500 × 2100 px (portrait) ─────────────
@@ -152,6 +157,7 @@ TEMPLATES: dict[str, GiftTemplate] = {
         height=2100,
         dpi=300,
         photo=False,
+        photo_slots=3,
         scene="reel",
     ),
     # The guessing-jar leaderboard as a keepsake card.

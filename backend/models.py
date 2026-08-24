@@ -710,6 +710,13 @@ class GiftRendering(Base):
     photo_removed: Mapped[bool] = mapped_column(
         sa.Boolean, nullable=False, server_default=sa.text("false")
     )
+    # Per-slot photo choices for the filmstrip designs, keyed by slot index
+    # ("0".."3") with a media id. Empty means every slot stays on the auto
+    # sample. Separate from photo_media_id because "the photo" and "the photo
+    # in slot 2" are different statements.
+    photo_slots: Mapped[dict] = mapped_column(
+        JSONB, nullable=False, server_default=sa.text("'{}'::jsonb")
+    )
     # Per-design text edits, keyed by slot ("child_name", "custom_line").
     # Only what a template lists as editable is honoured; everything else on a
     # keepsake is derived from the birth and stays that way.
@@ -860,6 +867,12 @@ class GiftOrder(Base):
     )  # pending | paid | refunded
     recipient_kind: Mapped[str] = mapped_column(sa.Text, nullable=False)  # family | self
     gift_message: Mapped[str | None] = mapped_column(sa.Text, nullable=True)
+    # Where this copy goes, settled at purchase — typed by the buyer, or
+    # copied from the parents' saved address when they have one. A snapshot
+    # on purpose: this is the destination the payment was for, and it should
+    # read the same a year later whether or not the family has moved since.
+    # Null only on orders from before the destination lived here.
+    shipping_address: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
     amount_cents: Mapped[int] = mapped_column(sa.Integer, nullable=False)
     currency: Mapped[str] = mapped_column(
         sa.Text, nullable=False, server_default="usd"
