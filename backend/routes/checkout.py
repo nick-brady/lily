@@ -144,14 +144,19 @@ def create_gift_checkout(
     ):
         # UX guard — the partial unique index is the real enforcement
         raise HTTPException(status_code=409, detail={"code": "already_claimed"})
-    # Where each copy is going, settled before anyone pays. The family copy
-    # can lean on the parents' own saved address — left off the order so
-    # fulfillment reads it fresh, in case they move between the two — but
-    # everything else the buyer names here, because Stripe's page holds one
-    # address and two parcels need two.
+    # Where each copy is going, settled before anyone pays and written onto
+    # the order. The parents' saved address is copied here rather than read at
+    # shipping time: an order should say where it was going, and the buyer is
+    # being charged for a parcel to a particular place. If that address
+    # changed between the payment and the shipment, we'd be delivering
+    # something nobody agreed to.
     family_address = None
-    if wants_family and access.birth.shipping_address is None:
-        family_address = _checked(payload.family_address, "the family's address")
+    if wants_family:
+        family_address = (
+            dict(access.birth.shipping_address)
+            if access.birth.shipping_address
+            else _checked(payload.family_address, "the family's address")
+        )
     self_address = _checked(payload.self_address, "your address") if wants_self else None
 
     message = (payload.gift_message or "").strip() or None

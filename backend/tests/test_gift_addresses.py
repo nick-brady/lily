@@ -164,9 +164,21 @@ def test_what_the_buyer_typed_wins():
     assert _resolve(order, birth, {})["name"] == "Typed At Checkout"
 
 
-def test_a_family_copy_reads_the_saved_address_at_shipping_time():
-    """Not copied onto the order at checkout — the parents may move between
-    buying and shipping, and the parcel should follow them."""
+def test_a_family_copy_carries_the_saved_address_it_was_bought_against():
+    """Copied onto the order at purchase, not read at shipping time. The
+    payment was for a parcel to a particular place; if the family updates
+    their address afterwards, an order already paid for shouldn't quietly
+    change destination."""
+    order = SimpleNamespace(
+        shipping_address={**_GOOD, "name": "Saved At Purchase"},
+        recipient_kind="family",
+    )
+    birth = SimpleNamespace(shipping_address={**_GOOD, "name": "Moved Since"})
+    assert _resolve(order, birth, {})["name"] == "Saved At Purchase"
+
+
+def test_an_order_from_before_the_snapshot_falls_back_to_the_birth():
+    """Orders created while the family copy still resolved at shipping time."""
     order = SimpleNamespace(shipping_address=None, recipient_kind="family")
     birth = SimpleNamespace(shipping_address={**_GOOD, "name": "Saved"})
     assert _resolve(order, birth, {})["name"] == "Saved"

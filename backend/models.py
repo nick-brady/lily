@@ -860,11 +860,11 @@ class GiftOrder(Base):
     )  # pending | paid | refunded
     recipient_kind: Mapped[str] = mapped_column(sa.Text, nullable=False)  # family | self
     gift_message: Mapped[str | None] = mapped_column(sa.Text, nullable=True)
-    # Where this copy goes, named by the buyer at checkout. Null when the
-    # destination is known elsewhere: a family copy shipping to the parents'
-    # own saved address, which is read at fulfillment so a move between
-    # buying and shipping still lands, or an order from before the buyer
-    # named it here at all.
+    # Where this copy goes, settled at purchase — typed by the buyer, or
+    # copied from the parents' saved address when they have one. A snapshot
+    # on purpose: this is the destination the payment was for, and it should
+    # read the same a year later whether or not the family has moved since.
+    # Null only on orders from before the destination lived here.
     shipping_address: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
     amount_cents: Mapped[int] = mapped_column(sa.Integer, nullable=False)
     currency: Mapped[str] = mapped_column(
