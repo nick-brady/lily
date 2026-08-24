@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { api } from '../api/client';
+import AddressForm, { addressComplete, emptyAddress } from './AddressForm';
 import { formatPrice } from '../utils/money';
 import GiftWizard from './GiftWizard';
 
@@ -17,6 +18,7 @@ function formatTime(timestamp) {
 export default function GiftGallery({ birthId, isParent = true }) {
   const [items, setItems] = useState(null);
   const [familyHasAddress, setFamilyHasAddress] = useState(false);
+  const [shippingCountries, setShippingCountries] = useState(['US']);
   const [storagePaidUntil, setStoragePaidUntil] = useState(null);
   const [storageLifetime, setStorageLifetime] = useState(false);
   const [artworkReadyAt, setArtworkReadyAt] = useState(null);
@@ -29,6 +31,9 @@ export default function GiftGallery({ birthId, isParent = true }) {
       const gallery = await api.listGifts(birthId);
       setItems(gallery.items);
       setFamilyHasAddress(gallery.family_has_shipping_address);
+      setShippingCountries(gallery.shipping_countries?.length
+        ? gallery.shipping_countries
+        : ['US']);
       setStoragePaidUntil(gallery.storage_paid_until);
       setStorageLifetime(gallery.storage_lifetime ?? false);
       setArtworkReadyAt(gallery.artwork_ready_at ?? null);
@@ -139,6 +144,7 @@ export default function GiftGallery({ birthId, isParent = true }) {
                 item={item}
                 birthId={birthId}
                 familyHasAddress={familyHasAddress}
+                shippingCountries={shippingCountries}
                 onPhotoChanged={load}
               />
           ))}
@@ -163,7 +169,7 @@ const DESIGN_ORDER = [
   'card_welcome',
 ];
 
-function GiftItemCard({ item, birthId, familyHasAddress, onPhotoChanged }) {
+function GiftItemCard({ item, birthId, familyHasAddress, shippingCountries, onPhotoChanged }) {
   const [showAll, setShowAll] = useState(false);
   const designRank = (r) => {
     const i = DESIGN_ORDER.indexOf(r.template_id);
@@ -204,6 +210,7 @@ function GiftItemCard({ item, birthId, familyHasAddress, onPhotoChanged }) {
                 birthId={birthId}
                 item={item}
                 familyHasAddress={familyHasAddress}
+                shippingCountries={shippingCountries}
                 onPhotoChanged={onPhotoChanged}
               />
             ))}
@@ -343,7 +350,14 @@ function StorageGiftCheckoutSheet({ birthId, item, onClose }) {
   );
 }
 
-function RenderingTile({ rendering, birthId, item, familyHasAddress, onPhotoChanged }) {
+function RenderingTile({
+  rendering,
+  birthId,
+  item,
+  familyHasAddress,
+  shippingCountries,
+  onPhotoChanged,
+}) {
   // Index into the gallery below, or null. One set of images, one viewer.
   // null, or the step to open the wizard at. The tile has two ways in: the
   // design itself (customise) and the buy button (straight to sending), so
@@ -430,6 +444,7 @@ function RenderingTile({ rendering, birthId, item, familyHasAddress, onPhotoChan
           rendering={rendering}
           item={item}
           familyHasAddress={familyHasAddress}
+          shippingCountries={shippingCountries}
           onClose={() => setWizardAt(null)}
           onChanged={onPhotoChanged}
           renderCheckout={(current) => (
@@ -439,6 +454,7 @@ function RenderingTile({ rendering, birthId, item, familyHasAddress, onPhotoChan
               rendering={current}
               item={item}
               familyHasAddress={familyHasAddress}
+              shippingCountries={shippingCountries}
               onClose={() => setWizardAt(null)}
             />
           )}
@@ -499,6 +515,7 @@ function GiftCheckoutSheet({
   rendering,
   item,
   familyHasAddress,
+  shippingCountries,
   onClose,
   embedded = false,
 }) {
@@ -508,12 +525,18 @@ function GiftCheckoutSheet({
   const [note, setNote] = useState('');
   const [starting, setStarting] = useState(false);
   const [error, setError] = useState('');
+  const [familyAddress, setFamilyAddress] = useState(emptyAddress);
+  const [selfAddress, setSelfAddress] = useState(emptyAddress);
 
   const copies = (toFamily ? 1 : 0) + (toSelf ? 1 : 0);
-  // Stripe collects one address per checkout (the buyer's, for the self
-  // copy) — both copies together need the family's saved address.
-  const bothBlocked = toFamily && toSelf && !familyHasAddress;
   const recipientKind = toFamily && toSelf ? 'both' : toFamily ? 'family' : 'self';
+  // Each parcel needs somewhere to go. The family's is already known when the
+  // parents have saved one — and it stays theirs: we ship to it without ever
+  // showing it to whoever is buying.
+  const needFamilyAddress = toFamily && !familyHasAddress;
+  const missingAddress =
+    (needFamilyAddress && !addressComplete(familyAddress)) ||
+    (toSelf && !addressComplete(selfAddress));
 
   async function startCheckout() {
     setStarting(true);
@@ -522,6 +545,8 @@ function GiftCheckoutSheet({
       const { url } = await api.createGiftCheckout(birthId, rendering.id, {
         recipientKind,
         giftMessage: note.trim() || null,
+        familyAddress: needFamilyAddress ? familyAddress : null,
+        selfAddress: toSelf ? selfAddress : null,
       });
       window.location.assign(url);
     } catch (err) {
@@ -599,18 +624,25 @@ function GiftCheckoutSheet({
         </label>
       </div>
 
-      {bothBlocked && (
-        <div
-          className="p-3 rounded-lg text-sm t-ink flex items-start gap-2"
-          style={{ backgroundColor: 'var(--t-soft-bg)' }}
-        >
-          <span aria-hidden="true">✋</span>
-          <span>
-            Both at once needs the family&rsquo;s saved shipping address, and
-            they haven&rsquo;t added one yet — uncheck one to continue, and
-            send the other separately.
-          </span>
-        </div>
+      {needFamilyAddress && (
+        <AddressForm
+          birthId={birthId}
+          title="Where the family's copy goes"
+          hint="They haven't saved an address, so you'll need theirs."
+          value={familyAddress}
+          onChange={setFamilyAddress}
+          countries={shippingCountries}
+        />
+      )}
+
+      {toSelf && (
+        <AddressForm
+          birthId={birthId}
+          title="Where your copy goes"
+          value={selfAddress}
+          onChange={setSelfAddress}
+          countries={shippingCountries}
+        />
       )}
 
       {toFamily && (
@@ -631,13 +663,17 @@ function GiftCheckoutSheet({
       <button
         type="button"
         onClick={startCheckout}
-        disabled={starting || copies === 0 || bothBlocked}
+        disabled={starting || copies === 0 || missingAddress}
         className="w-full py-3 rounded-xl text-sm font-medium text-white disabled:opacity-50"
         style={{ backgroundColor: 'var(--t-accent)' }}
       >
         {starting
           ? 'Opening checkout…'
-          : `Continue to checkout · ${formatPrice(item.base_price_cents * Math.max(copies, 1))}`}
+          : copies === 0
+            ? 'Pick who this is for'
+            : missingAddress
+              ? 'Add the address above to continue'
+              : `Continue to checkout · ${formatPrice(item.base_price_cents * Math.max(copies, 1))}`}
       </button>
       <button
         type="button"

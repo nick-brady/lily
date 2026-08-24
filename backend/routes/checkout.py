@@ -18,6 +18,7 @@ from fastapi import (
 )
 from sqlalchemy.orm import Session
 
+import address_validation
 import gift_fulfillment
 import payments
 from auth import get_current_user
@@ -33,6 +34,8 @@ from routes.deps import (
 )
 from routes.gifts import load_rendering_for_products
 from schemas import (
+    AddressReviewIn,
+    AddressReviewOut,
     GiftCheckoutIn,
     GiftCheckoutOut,
     GiftConfirmIn,
@@ -81,6 +84,29 @@ async def stripe_webhook(
     return {"received": True}
 
 
+def _checked(address, whose: str) -> dict:
+    """A destination we're willing to send a parcel to, as a plain dict.
+
+    Structure only. Whether the place is real is Google's opinion and the
+    buyer's to overrule — see address_validation.review — but a missing
+    postcode or a country we don't ship to is ours to refuse, and refusing it
+    here costs a form field where refusing it later costs a failed shipment
+    with the money already taken."""
+    if address is None:
+        raise HTTPException(
+            status_code=422, detail=f"We need {whose} to send this."
+        )
+    data = address.model_dump()
+    data["country"] = (data.get("country") or "US").upper()
+    try:
+        address_validation.check_structure(
+            data, allowed_countries=payments.gift_shipping_countries()
+        )
+    except address_validation.AddressError as exc:
+        raise HTTPException(status_code=422, detail=str(exc))
+    return data
+
+
 @router.post(
     "/birth/{birth_id}/gifts/{rendering_id}/checkout",
     response_model=GiftCheckoutOut,
@@ -118,12 +144,15 @@ def create_gift_checkout(
     ):
         # UX guard — the partial unique index is the real enforcement
         raise HTTPException(status_code=409, detail={"code": "already_claimed"})
-    if payload.recipient_kind == "both" and access.birth.shipping_address is None:
-        # Stripe collects exactly one address per session (the buyer's, for
-        # the self copy) — the family copy needs the parent-saved address.
-        raise HTTPException(
-            status_code=409, detail={"code": "family_address_required"}
-        )
+    # Where each copy is going, settled before anyone pays. The family copy
+    # can lean on the parents' own saved address — left off the order so
+    # fulfillment reads it fresh, in case they move between the two — but
+    # everything else the buyer names here, because Stripe's page holds one
+    # address and two parcels need two.
+    family_address = None
+    if wants_family and access.birth.shipping_address is None:
+        family_address = _checked(payload.family_address, "the family's address")
+    self_address = _checked(payload.self_address, "your address") if wants_self else None
 
     message = (payload.gift_message or "").strip() or None
     orders = []
@@ -137,6 +166,7 @@ def create_gift_checkout(
                 user=current_user,
                 recipient_kind="family",
                 gift_message=message,
+                shipping_address=family_address,
             )
         )
     if wants_self:
@@ -149,6 +179,7 @@ def create_gift_checkout(
                 user=current_user,
                 recipient_kind="self",
                 gift_message=None if wants_family else message,
+                shipping_address=self_address,
             )
         )
     # Bigger and darker mugs cost us more, so the choice carries a flat
@@ -157,7 +188,11 @@ def create_gift_checkout(
     amount_cents = item.base_price_cents + fulfillment_products.surcharge_for(
         getattr(rendering, "product_key", None)
     )
-    collect_shipping = wants_self or access.birth.shipping_address is None
+    # Stripe takes the payment; it no longer takes the destination. It never
+    # needed one — Printful ships the mug — and its page can only hold a
+    # single address, which is what made two parcels in one payment
+    # impossible.
+    collect_shipping = False
     try:
         session = stripe.create_gift_checkout_session(
             order_id=str(orders[0].id),
@@ -265,6 +300,33 @@ async def confirm_gift(
         db, stripe, session, background_tasks, raise_on_refund_error=False
     )
     return GiftConfirmOut(status=status)
+
+
+@router.post(
+    "/birth/{birth_id}/gifts/address-review", response_model=AddressReviewOut
+)
+def review_shipping_address(
+    payload: AddressReviewIn,
+    access: BirthAccess = Depends(require_birth_access),
+) -> AddressReviewOut:
+    """Look over an address the buyer is typing, before they pay for it.
+
+    Advisory by design. It refuses nothing the checkout wouldn't refuse
+    anyway; it offers the postal service's spelling and admits when it can't
+    find the place. Available to any family member because gift buyers are
+    viewers, and the address they're describing is one they already know."""
+    data = payload.address.model_dump()
+    data["country"] = (data.get("country") or "US").upper()
+    try:
+        address_validation.check_structure(
+            data, allowed_countries=payments.gift_shipping_countries()
+        )
+    except address_validation.AddressError as exc:
+        return AddressReviewOut(verdict="unchecked", structure_error=str(exc))
+    result = address_validation.review(data)
+    return AddressReviewOut(
+        verdict=result["verdict"], suggestion=result["suggestion"]
+    )
 
 
 @router.get(

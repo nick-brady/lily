@@ -54,7 +54,14 @@ async def fulfill_gift_from_session(
                 )
                 statuses.append("fulfilled")
                 continue
-            if order.recipient_kind == "family" and birth.shipping_address:
+            # Where the buyer said it goes, first. Then the parents' own
+            # saved address for a family copy — read now rather than copied
+            # at checkout, so a move between buying and shipping still lands.
+            # Stripe's collected address is the last resort: sessions started
+            # before we asked for the destination ourselves were paid after.
+            if order.shipping_address:
+                address = dict(order.shipping_address)
+            elif order.recipient_kind == "family" and birth.shipping_address:
                 address = dict(birth.shipping_address)
             else:
                 address = payments.extract_shipping(session_obj)

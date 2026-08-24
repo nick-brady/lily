@@ -222,10 +222,43 @@ class GuessBoardOut(BaseModel):
     due_date: Optional[date] = None
 
 
+class ShippingAddressIn(BaseModel):
+    name: str = Field(..., min_length=1, max_length=120)
+    line1: str = Field(..., min_length=1, max_length=200)
+    line2: Optional[str] = Field(default=None, max_length=200)
+    city: str = Field(..., min_length=1, max_length=100)
+    state: str = Field(..., min_length=1, max_length=50)
+    postal_code: str = Field(..., min_length=1, max_length=20)
+    country: str = Field(default="US", min_length=2, max_length=2)
+
+
 class GiftCheckoutIn(BaseModel):
     # "both" = a family copy and a self copy in one checkout (quantity 2)
     recipient_kind: str = Field(..., pattern="^(family|self|both)$")
     gift_message: Optional[str] = Field(default=None, max_length=500)
+    # Where each copy goes. The buyer names them here rather than on Stripe's
+    # page, which collects exactly one address per session — the reason
+    # "both" used to be refused unless the parents had saved theirs.
+    # `family_address` is unnecessary (and ignored) when they have.
+    family_address: Optional[ShippingAddressIn] = None
+    self_address: Optional[ShippingAddressIn] = None
+
+
+class AddressReviewIn(BaseModel):
+    address: ShippingAddressIn
+
+
+class AddressReviewOut(BaseModel):
+    """What we make of an address before anyone pays for it.
+
+    `verdict` is confirmed | corrected | unconfirmed | unchecked. Only
+    `structure_error` refuses the address; the rest is advice, because a real
+    address that a postal database hasn't heard of is still a real address.
+    """
+
+    verdict: str
+    suggestion: Optional[dict] = None
+    structure_error: Optional[str] = None
 
 
 class StorageGiftCheckoutIn(BaseModel):
@@ -248,16 +281,6 @@ class GiftConfirmOut(BaseModel):
     lost the family-claim race and their payment was returned) | 'pending'."""
 
     status: str
-
-
-class ShippingAddressIn(BaseModel):
-    name: str = Field(..., min_length=1, max_length=120)
-    line1: str = Field(..., min_length=1, max_length=200)
-    line2: Optional[str] = Field(default=None, max_length=200)
-    city: str = Field(..., min_length=1, max_length=100)
-    state: str = Field(..., min_length=1, max_length=50)
-    postal_code: str = Field(..., min_length=1, max_length=20)
-    country: str = Field(default="US", min_length=2, max_length=2)
 
 
 class ShippingAddressOut(BaseModel):
@@ -729,6 +752,9 @@ class GiftGalleryOut(BaseModel):
 
     items: list["GiftItemOut"] = []
     family_has_shipping_address: bool = False
+    # Where we can ship at all, so the buyer's address form offers the same
+    # countries the checkout will accept rather than finding out at submit.
+    shipping_countries: list[str] = Field(default_factory=list)
     storage_paid_until: Optional[datetime] = None
     storage_lifetime: bool = False
     # When artwork may first be generated: the arrival plus a few hours for

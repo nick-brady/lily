@@ -191,7 +191,7 @@ class _FakeOrderSession:
         pass
 
 
-def _order(status="pending", session_id=None):
+def _order(status="pending", session_id=None, shipping_address=None):
     return SimpleNamespace(
         id=uuid.uuid4(),
         birth_id=uuid.uuid4(),
@@ -199,6 +199,9 @@ def _order(status="pending", session_id=None):
         status=status,
         recipient_kind="family",
         stripe_checkout_session_id=session_id,
+        # Where the buyer said this copy goes. None falls back to the
+        # parents' saved address, then to whatever Stripe collected.
+        shipping_address=shipping_address,
         amount_cents=1800,
     )
 

@@ -60,6 +60,7 @@ def create_pending_order(
     user: User,
     recipient_kind: str,
     gift_message: str | None,
+    shipping_address: dict | None = None,
 ) -> GiftOrder:
     order = GiftOrder(
         birth_id=birth.id,
@@ -68,6 +69,7 @@ def create_pending_order(
         purchased_by_user_id=user.id,
         recipient_kind=recipient_kind,
         gift_message=gift_message,
+        shipping_address=shipping_address,
         amount_cents=item.base_price_cents,
     )
     db.add(order)
