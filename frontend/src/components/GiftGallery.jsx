@@ -498,6 +498,57 @@ function ProductOption({ product, onRequest }) {
   );
 }
 
+// One recipient: the tick, and the address that belongs to it. The form used
+// to sit in its own box further down the sheet, which left you to work out
+// which box it answered — with two of them open at once, that's a real
+// question. Ticking a box now opens the box.
+//
+// The grid 0fr→1fr transition animates to whatever height the form turns out
+// to be, which max-height can't do without a magic number that's wrong the
+// day a field is added.
+function Recipient({ label, hint, checked, disabled = false, onChange, open, children }) {
+  return (
+    <div
+      className={`rounded-lg border ${disabled ? 'opacity-50' : ''}`}
+      style={{ borderColor: 'var(--t-soft-ring)' }}
+    >
+      <label
+        className={`flex items-start gap-3 p-3 ${
+          disabled ? 'cursor-default' : 'cursor-pointer'
+        }`}
+      >
+        <input
+          type="checkbox"
+          checked={checked}
+          disabled={disabled}
+          onChange={(e) => onChange(e.target.checked)}
+          className="mt-1"
+        />
+        <span className="text-sm t-ink">
+          {label}
+          <span className="block text-xs t-muted mt-0.5">{hint}</span>
+        </span>
+      </label>
+      <div
+        className="grid transition-[grid-template-rows] duration-300 ease-out motion-reduce:transition-none"
+        style={{ gridTemplateRows: open ? '1fr' : '0fr' }}
+        aria-hidden={!open}
+      >
+        {/* the row is what animates; this is what gets clipped while it does */}
+        <div className="overflow-hidden">
+          <div
+            className="px-3 pb-3 pt-1 border-t"
+            style={{ borderColor: 'var(--t-soft-ring)' }}
+          >
+            {children}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+
 // Recipient, note, pay. Its own sheet from the tile's fast lane, or the last
 // pane of the customise wizard — `embedded` drops the overlay and panel so it
 // can sit inside one that already exists.
@@ -571,67 +622,37 @@ function GiftCheckoutSheet({
       )}
 
       <div className="space-y-2">
-        <label
-          className={`flex items-start gap-3 p-3 rounded-lg border cursor-pointer ${
-            item.is_claimed_for_family ? 'opacity-50 cursor-default' : ''
-          }`}
-          style={{ borderColor: 'var(--t-soft-ring)' }}
+        <Recipient
+          label="Send to the family"
+          hint={
+            item.is_claimed_for_family
+              ? 'Already gifted 🤍'
+              : familyHasAddress
+                ? "Ships to the family's saved address."
+                : "They haven't saved an address, so you'll need theirs."
+          }
+          checked={toFamily}
+          disabled={item.is_claimed_for_family}
+          onChange={setToFamily}
+          open={needFamilyAddress}
         >
-          <input
-            type="checkbox"
-            checked={toFamily}
-            disabled={item.is_claimed_for_family}
-            onChange={(e) => setToFamily(e.target.checked)}
-            className="mt-1"
+          <AddressForm
+            birthId={birthId}
+            value={familyAddress}
+            onChange={setFamilyAddress}
           />
-          <span className="text-sm t-ink">
-            Send to the family
-            <span className="block text-xs t-muted mt-0.5">
-              {item.is_claimed_for_family
-                ? 'Already gifted 🤍'
-                : familyHasAddress
-                  ? "Ships to the family's saved address."
-                  : "You'll enter their address at checkout."}
-            </span>
-          </span>
-        </label>
-        <label
-          className="flex items-start gap-3 p-3 rounded-lg border cursor-pointer"
-          style={{ borderColor: 'var(--t-soft-ring)' }}
+        </Recipient>
+
+        <Recipient
+          label="Get one for myself"
+          hint="Ships to you."
+          checked={toSelf}
+          onChange={setToSelf}
+          open={toSelf}
         >
-          <input
-            type="checkbox"
-            checked={toSelf}
-            onChange={(e) => setToSelf(e.target.checked)}
-            className="mt-1"
-          />
-          <span className="text-sm t-ink">
-            Get one for myself
-            <span className="block text-xs t-muted mt-0.5">
-              Ships to you — you'll enter your address at checkout.
-            </span>
-          </span>
-        </label>
+          <AddressForm birthId={birthId} value={selfAddress} onChange={setSelfAddress} />
+        </Recipient>
       </div>
-
-      {needFamilyAddress && (
-        <AddressForm
-          birthId={birthId}
-          title="Where the family's copy goes"
-          hint="They haven't saved an address, so you'll need theirs."
-          value={familyAddress}
-          onChange={setFamilyAddress}
-        />
-      )}
-
-      {toSelf && (
-        <AddressForm
-          birthId={birthId}
-          title="Where your copy goes"
-          value={selfAddress}
-          onChange={setSelfAddress}
-        />
-      )}
 
       {toFamily && (
         <label className="block text-xs t-muted">

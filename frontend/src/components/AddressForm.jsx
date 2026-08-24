@@ -51,7 +51,7 @@ function Field({ label, value, onChange, autoComplete, required = true, classNam
   );
 }
 
-export default function AddressForm({ birthId, title, hint, value, onChange }) {
+export default function AddressForm({ birthId, value, onChange }) {
   const [review, setReview] = useState(null);
   const [checking, setChecking] = useState(false);
   const set = (patch) => {
@@ -76,15 +76,7 @@ export default function AddressForm({ birthId, title, hint, value, onChange }) {
   const suggestion = review?.suggestion;
 
   return (
-    <div
-      className="p-3 rounded-lg border space-y-3"
-      style={{ borderColor: 'var(--t-soft-ring)' }}
-    >
-      <div>
-        <p className="text-sm t-ink font-medium">{title}</p>
-        {hint && <p className="text-xs t-muted mt-0.5">{hint}</p>}
-      </div>
-
+    <div className="space-y-3 pt-2">
       <Field
         label="Full name"
         value={value.name}
