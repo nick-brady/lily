@@ -580,6 +580,30 @@ compressing weeks onto the line. Iterated as a scratch script against real
 data before touching production (`frame_proto.py`, session scratchpad); the
 comments/ruler interior of the earlier draft was dropped for the wall.
 
+### The story is the second framed print
+*2026-08-24*
+
+Replaces the clock card fitted onto the sheet. Every moment of the timeline
+— photos, milestones, short notes — wraps the mat opening in order, starting
+on the top edge past the top-left corner and running clockwise back up the
+left edge; the labor clock sits small in the middle with her name beneath.
+
+**Spaced by beat, not by clock.** Thirty weeks to the delivery room is
+months and the labor is hours; on a time-proportional line the pregnancy is
+a sliver. A photo claims 1 unit of line, a milestone 0.7, a note 0.55.
+
+**Photos are an inch, always; the count follows.** A print is read from
+three feet, and a thumbnail under ¾″ is a smudge. The line holds ~24 at an
+inch; a busier story thins evenly (every milestone kept, notes capped at 8),
+a quieter one spreads out. Each placed photo is a slot the parent can swap.
+
+> "It really depends on how much they post … we would have to be dynamic."
+
+**Nothing sits on a corner** — two pictures straddling an arc overlap. Notes
+hang upright and inward with their time beneath; long ones become just the
+dot. Pregnancy moments are labelled by week from `due_date`, days once labor
+starts. No portrait beside the name: she's already on the line.
+
 ### Two designs lead, "see more" opens the third and a custom placeholder
 *2026-08-24*
 

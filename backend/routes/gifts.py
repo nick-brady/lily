@@ -80,7 +80,13 @@ def _serialize_rendering(rendering) -> GiftRenderingOut:
         # photo leaves an empty frame, so it doesn't get the option.
         photo_removable=shows_photo and not (template and template.photo_required),
         photo_spot=template.photo_spot if template else None,
-        photo_slot_count=template.photo_slots if template else 0,
+        # how many slot pickers to show: what the last render actually placed
+        # when it recorded that (the story fits as many photos as its line
+        # holds), else the template's count
+        photo_slot_count=(
+            len((rendering.rendering_metadata or {}).get("selected_slot_media_ids") or [])
+            or (template.photo_slots if template else 0)
+        ) if template and template.photo_slots else 0,
         photo_slots=rendering.photo_slots or {},
         photo_slots_effective=(
             (rendering.rendering_metadata or {}).get("selected_slot_media_ids") or []

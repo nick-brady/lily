@@ -1,0 +1,104 @@
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink"
+     width="{{ w }}" height="{{ h }}" viewBox="0 0 {{ w }} {{ h }}">
+{% from "_clock.svg.j2" import clock, legend with context %}
+{# The story: every moment of the timeline — photos, milestones, short notes
+   — wrapping the mat opening in order, the labor clock small in the middle,
+   her name beneath it. Drawn at the size of the opening (7.5 × 11.5 in). #}
+  <defs>
+    {% for ph in story_photos %}
+    <clipPath id="story{{ loop.index }}">
+      <rect x="{{ ph.px }}" y="{{ ph.py }}" width="{{ ph.psize }}" height="{{ ph.psize }}"/>
+    </clipPath>
+    {% endfor %}
+  </defs>
+  <rect x="0" y="0" width="{{ w }}" height="{{ h }}" fill="{{ p.bg }}"/>
+
+  <!-- the line -->
+  <path d="{{ story_path }}" fill="none" stroke="{{ p.ink }}" stroke-width="1.6" opacity="0.2"/>
+
+  {# the days (or, before labor, the weeks), named where they begin #}
+  {% for d in story_day_labels %}
+  <text x="{{ d.x }}" y="{{ d.y }}" text-anchor="middle" dominant-baseline="middle"
+        transform="rotate({{ d.ang }} {{ d.x }} {{ d.y }})"
+        font-family="{{ p.body_font }}" font-size="24" font-weight="500" letter-spacing="3"
+        fill="{{ p.ink }}" opacity="0.55">{{ d.label }}</text>
+  {% endfor %}
+
+  {# the photos: an inch each, in a slim mat, the time inside the line #}
+  {% for ph in story_photos %}
+  <rect x="{{ ph.x }}" y="{{ ph.y }}" width="{{ ph.size }}" height="{{ ph.size }}" fill="#ffffff"
+        stroke="{{ p.ink }}" stroke-width="1.3" stroke-opacity="0.3"/>
+  <image x="{{ ph.px }}" y="{{ ph.py }}" width="{{ ph.psize }}" height="{{ ph.psize }}"
+         preserveAspectRatio="xMidYMid slice" clip-path="url(#story{{ loop.index }})"
+         xlink:href="{{ ph.href }}"/>
+  <text x="{{ ph.lx }}" y="{{ ph.ly }}" text-anchor="middle" dominant-baseline="middle"
+        transform="rotate({{ ph.ang }} {{ ph.lx }} {{ ph.ly }})"
+        font-family="{{ p.body_font }}" font-size="20" letter-spacing="3"
+        fill="{{ p.ink }}" opacity="0.5">{{ ph.label }}</text>
+  {% endfor %}
+
+  {# the notes: a dot on the line, the words upright and inward, the time beneath #}
+  {% for n in story_notes %}
+  <circle cx="{{ n.x }}" cy="{{ n.y }}" r="6" fill="{{ p.accent }}" opacity="0.8"/>
+  {% if n.side %}
+  <text x="{{ n.lx }}" y="{{ n.ly + 4 }}" text-anchor="{{ n.anchor }}"
+        font-family="{{ p.display_font }}" font-size="34" font-style="italic"
+        fill="{{ p.ink }}" opacity="0.72">{{ n.lines[0] }}</text>
+  <text x="{{ n.lx }}" y="{{ n.ly + 40 }}" text-anchor="{{ n.anchor }}"
+        font-family="{{ p.display_font }}" font-size="24" font-style="italic"
+        fill="{{ p.ink }}" opacity="0.5">{{ n.when }}</text>
+  {% else %}
+  {% for line in n.lines %}
+  <text x="{{ n.lx }}" y="{{ n.ly + (loop.index0 * 38) + 11 }}" text-anchor="middle"
+        font-family="{{ p.display_font }}" font-size="32" font-style="italic"
+        fill="{{ p.ink }}" opacity="0.72">{{ line }}</text>
+  {% endfor %}
+  <text x="{{ n.lx }}" y="{{ n.ly + (n.lines|length * 38) + 8 }}" text-anchor="middle"
+        font-family="{{ p.display_font }}" font-size="24" font-style="italic"
+        fill="{{ p.ink }}" opacity="0.5">{{ n.when }}</text>
+  {% endif %}
+  {% endfor %}
+
+  {# the milestones, with the mug's marks, named along the edge #}
+  {% for m in story_marks %}
+  <circle cx="{{ m.x }}" cy="{{ m.y }}" r="{{ m.halo }}" fill="{{ p.bg }}"/>
+  {% if m.transform %}
+  <g transform="{{ m.transform }}">
+    <path d="{{ m.d }}" fill="{{ p.accent }}" fill-rule="{{ m.rule }}" opacity="0.85"/>
+  </g>
+  {% else %}
+  <path d="{{ m.d }}" fill="none" stroke="{{ p.accent }}" stroke-width="{{ m.stroke }}"
+        stroke-linejoin="round" stroke-linecap="round" opacity="0.9"/>
+  {% endif %}
+  <text x="{{ m.lx }}" y="{{ m.ly }}" text-anchor="middle" dominant-baseline="middle"
+        transform="rotate({{ m.ang }} {{ m.lx }} {{ m.ly }})"
+        font-family="{{ p.body_font }}" font-size="20" letter-spacing="4"
+        fill="{{ p.ink }}" opacity="0.55">{{ m.label }}</text>
+  {% endfor %}
+
+  {# she arrives #}
+  {% if story_born %}
+  <circle cx="{{ story_born.x }}" cy="{{ story_born.y }}" r="{{ story_born.halo }}" fill="{{ p.bg }}"/>
+  <path d="{{ story_born.d }}" fill="none" stroke="{{ p.accent }}" stroke-width="{{ story_born.stroke }}"
+        stroke-linejoin="round" opacity="0.9"/>
+  <text x="{{ story_born.lx }}" y="{{ story_born.ly }}" text-anchor="middle" dominant-baseline="middle"
+        transform="rotate({{ story_born.ang }} {{ story_born.lx }} {{ story_born.ly }})"
+        font-family="{{ p.body_font }}" font-size="22" letter-spacing="4"
+        fill="{{ p.accent }}" opacity="0.9">{{ story_born.label }}</text>
+  {% endif %}
+
+  <!-- the middle: the labor clock, her name, the numbers -->
+  {{ clock(label_size=26) }}
+  <text x="{{ w // 2 }}" y="{{ story_name_y }}" text-anchor="middle"
+        font-family="{{ p.display_font }}" font-size="{{ child_name_size }}" font-weight="300"
+        font-style="italic" fill="{{ p.ink }}">{{ child_name }}</text>
+  <text x="{{ w // 2 }}" y="{{ story_name_y + 74 }}" text-anchor="middle"
+        font-family="{{ p.body_font }}" font-size="32" letter-spacing="2" fill="{{ p.ink }}"
+        opacity="0.62">born {{ birth_date }} at {{ birth_time }}</text>
+  <line x1="{{ w // 2 - 70 }}" y1="{{ story_rule_y }}" x2="{{ w // 2 + 70 }}" y2="{{ story_rule_y }}"
+        stroke="{{ p.ink }}" stroke-width="2" opacity="0.25"/>
+  <text x="{{ w // 2 }}" y="{{ story_stats_y }}" text-anchor="middle" font-family="{{ p.body_font }}"
+        font-size="26" letter-spacing="6" fill="{{ p.ink }}"
+        opacity="0.5">{{ count }} CONTRACTIONS · {{ labor_duration|upper }} · EVERY {{ avg_interval|upper }}</text>
+  {{ legend(story_legend.x, story_legend.y) }}
+</svg>
