@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink"
      width="{{ w }}" height="{{ h }}" viewBox="0 0 {{ w }} {{ h }}">
-{% from "_clock.svg.j2" import clock with context %}
+{% from "_clock.svg.j2" import clock, legend with context %}
 {# Her picture in the right third of the wrap, which was empty. Optional on
    purpose: the photo is an accent here, not the design, so a parent can take
    it off and the clock still stands on its own. #}
@@ -36,6 +36,9 @@
   <text x="1366" y="862" font-family="{{ p.display_font }}" font-size="{{ custom_line_size }}"
         font-style="italic" fill="{{ p.ink }}" opacity="0.72">{{ custom_line }}</text>
   {% endif %}
+
+  {# the tones, named at the foot of the text block #}
+  {{ legend(1366, 940 if custom_line else 862) }}
 
   <!-- her, at the far end of the wrap -->
   {% if photo_data_uri %}
