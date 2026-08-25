@@ -112,6 +112,7 @@ class PrintfulAdapter(FulfillmentAdapter):
         artwork_width: int,
         artwork_height: int,
         placement: str = "default",
+        option_groups: tuple[str, ...] = (),
     ) -> MockupResult:
         try:
             with _mockup_rate_limit(self._mockup_interval):
@@ -122,6 +123,7 @@ class PrintfulAdapter(FulfillmentAdapter):
                     artwork_url=artwork_url,
                     artwork_width=artwork_width,
                     artwork_height=artwork_height,
+                    option_groups=option_groups,
                 )
             mockup_url, extra = self._poll_for_mockup(task_key)
             result = self._download(mockup_url)
@@ -184,10 +186,15 @@ class PrintfulAdapter(FulfillmentAdapter):
         artwork_url: str,
         artwork_width: int,
         artwork_height: int,
+        option_groups: tuple[str, ...] = (),
     ) -> str:
         body = {
             "variant_ids": [variant_id],
             "format": "png",
+            # Which mockup styles come back. Left out, Printful picks its
+            # default group for the product — fine for mugs, one flat shot
+            # for posters.
+            **({"option_groups": list(option_groups)} if option_groups else {}),
             "files": [
                 {
                     "placement": placement,

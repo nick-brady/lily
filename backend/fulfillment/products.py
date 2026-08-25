@@ -31,6 +31,12 @@ class ShortlistProduct:
     # What Printful charges us, for reference when pricing. The spread is
     # $5.95–$9.50, so every mug here is profitable at the item price.
     cost_cents: int = 0
+    # Which of the partner's mockup styles to ask for. Empty means their
+    # default set — for mugs that's three angles (front, handle left, front
+    # view). A framed poster's default is one flat shot, so the frames ask
+    # for the flat and the in-room ones too, to give the tile the same
+    # three-image rhythm the mug has.
+    mockup_option_groups: tuple[str, ...] = ()
     # Added to the item price when this product is chosen. The default mug is
     # the price on the tin; the larger and darker ones cost us $2–$3.55 more,
     # so they carry a flat surcharge rather than eating the margin.
@@ -109,6 +115,7 @@ for _key, _name, _variant in (
         variant_id=_variant,
         blank_image_url=_FRAME_IMAGES[_variant],
         cost_cents=3570,
+        mockup_option_groups=("Flat", "Lifestyle"),
     )
 
 # The product used for the default hero mockup on the gift gallery, per

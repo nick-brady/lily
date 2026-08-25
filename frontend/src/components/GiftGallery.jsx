@@ -225,15 +225,15 @@ function GiftItemCard({ item, birthId, familyHasAddress, onPhotoChanged }) {
             ))}
             {showAll && <CustomDesignTile noun={PRODUCT_NOUN[item.product_kind] || 'design'} />}
           </div>
-          {!showAll && (
+          <div className="mt-3 text-center">
             <button
               type="button"
-              onClick={() => setShowAll(true)}
-              className="mt-2 text-xs t-muted hover:t-ink transition-colors"
+              onClick={() => setShowAll((v) => !v)}
+              className="text-xs underline t-muted hover:t-ink transition-colors"
             >
-              See more →
+              {showAll ? 'See less' : 'See more'}
             </button>
-          )}
+          </div>
         </>
       )}
     </div>
