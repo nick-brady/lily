@@ -312,7 +312,7 @@ export default function GiftWizard({
     >
       <div
         className="animate-slide-up w-full sm:max-w-6xl bg-white dark:bg-gray-900
-                   rounded-t-2xl sm:rounded-2xl shadow-xl max-h-[94vh] flex flex-col"
+                   rounded-t-2xl sm:rounded-2xl shadow-xl max-h-[94vh] sm:h-[94vh] flex flex-col"
         onClick={(e) => e.stopPropagation()}
       >
         <header
@@ -350,22 +350,32 @@ export default function GiftWizard({
         )}
 
         {step === 0 && (
-          <div className="flex-1 overflow-y-auto grid sm:grid-cols-[3fr_1fr]">
+          <div className="flex-1 min-h-0 overflow-y-auto sm:overflow-visible grid sm:grid-cols-[3fr_1fr]">
             {/* The artwork leads and updates as you type; the product shots sit
-                beneath it, real but honest about being behind. */}
+                beneath it, real but honest about being behind.
+
+                On desktop this pane is sized to the modal, not to the artwork:
+                a portrait print at full column width is taller than the
+                screen, and the whole editor scrolled to fit it — options and
+                all. So the artwork takes whatever height is left after the
+                product strip, and the options column scrolls on its own. */}
             <div
-              className="flex flex-col justify-center items-center gap-5 p-6"
+              className="flex flex-col items-center gap-4 p-6 sm:min-h-0"
               style={{ backgroundColor: 'var(--t-soft-bg)' }}
             >
-              <div className="relative w-full">
+              <div className="relative w-full sm:flex-1 sm:min-h-0 flex items-center justify-center">
                 <button
                   type="button"
                   onClick={() => openGallery(0)}
-                  className="w-full block"
+                  className="block w-full sm:w-auto sm:h-full sm:max-w-full"
                   style={{ cursor: 'zoom-in' }}
                   aria-label="See your design full screen"
                 >
-                  <img src={shown} alt="Your design" className="w-full rounded-lg block shadow-sm bg-white" />
+                  <img
+                    src={shown}
+                    alt="Your design"
+                    className="w-full sm:w-auto sm:h-full sm:max-w-full object-contain rounded-lg block shadow-sm bg-white"
+                  />
                 </button>
                 {previewing && (
                   <span className="absolute top-3 right-3 text-[11px] px-2 py-1 rounded-full bg-black/60 text-white">
@@ -375,21 +385,22 @@ export default function GiftWizard({
               </div>
 
               {angles.length > 0 && (
-                <div className="w-full">
-                  <div className={`grid grid-cols-3 gap-3 ${anglesBehind ? 'opacity-40' : ''}`}>
+                <div className="w-full sm:flex-none">
+                  {/* a fixed-height strip, so it never competes with the artwork for room */}
+                  <div className={`flex justify-center gap-3 ${anglesBehind ? 'opacity-40' : ''}`}>
                     {angles.map((a, i) => (
                       <button
                         key={a.url}
                         type="button"
                         onClick={() => openGallery(i + 1)}
-                        className="block w-full"
+                        className="block h-24 sm:h-28 aspect-square"
                         style={{ cursor: 'zoom-in' }}
                         aria-label={`See ${a.caption || 'this view'} full screen`}
                       >
                         <img
                           src={a.url}
                           alt={a.caption || 'On the product'}
-                          className="w-full aspect-square object-cover rounded-lg block bg-white"
+                          className="w-full h-full object-cover rounded-lg block bg-white"
                         />
                       </button>
                     ))}
@@ -406,7 +417,7 @@ export default function GiftWizard({
             </div>
 
             <div
-              className="p-5 space-y-4 border-t sm:border-t-0 sm:border-l"
+              className="p-5 space-y-4 border-t sm:border-t-0 sm:border-l sm:overflow-y-auto sm:min-h-0"
               style={{ borderColor: 'var(--t-soft-ring)' }}
             >
               <div>
