@@ -450,6 +450,14 @@ function RenderingTile({
       ]
     : [];
   const hero = rendering.artwork_url || rendering.mockup_url;
+  // A mug's artwork is a wide strip, so its product shots sit in a row
+  // beneath it. A print is portrait; stacked over a row of landscape shots it
+  // made a tile twice the height of the mug's. Side by side instead — the
+  // artwork left, the two shots in a column on the right — and the tile
+  // comes out about the mug's shape. The print file is a 12×16 sheet with
+  // the mat's share of it blank, so the tile shows just the opening
+  // (7.5×11.5 of it, centred): the mockup beside it shows the mat.
+  const portrait = item?.product_kind === 'framed_print';
 
   return (
     <div
@@ -469,27 +477,39 @@ function RenderingTile({
           className="w-full block text-left"
           aria-label="Customise this design"
         >
-          <img
-            src={hero}
-            alt={`${rendering.template_id} design`}
-            className="w-full block"
-            style={{ backgroundColor: 'var(--t-soft-bg)' }}
-          />
-
-          {angles.length > 0 && rendering.artwork_url && (
-            <span className="flex gap-1.5 p-1.5">
-              {angles.map((a) => (
-                <span key={a.url} className="flex-1 block rounded overflow-hidden">
-                  <img
-                    src={a.url}
-                    alt={a.caption || `${rendering.template_id} view`}
-                    className="w-full aspect-square object-cover block"
-                    style={{ backgroundColor: 'var(--t-soft-bg)' }}
-                  />
-                </span>
-              ))}
+          <span className={portrait ? 'grid grid-cols-[3fr_2fr] gap-1.5 p-1.5' : 'block'}>
+            <span
+              className={
+                portrait
+                  ? 'block aspect-[15/23] overflow-hidden rounded flex items-center justify-center'
+                  : 'block'
+              }
+              style={{ backgroundColor: 'var(--t-soft-bg)' }}
+            >
+              <img
+                src={hero}
+                alt={`${rendering.template_id} design`}
+                className={portrait ? 'h-full w-auto max-w-none block' : 'w-full block'}
+                // 1/0.719: the opening is 11.5 of the sheet's 16 inches tall
+                style={portrait ? { transform: 'scale(1.39)' } : undefined}
+              />
             </span>
-          )}
+
+            {angles.length > 0 && rendering.artwork_url && (
+              <span className={portrait ? 'flex flex-col gap-1.5' : 'flex gap-1.5 p-1.5'}>
+                {angles.map((a) => (
+                  <span key={a.url} className="flex-1 block rounded overflow-hidden">
+                    <img
+                      src={a.url}
+                      alt={a.caption || `${rendering.template_id} view`}
+                      className={`w-full object-cover block ${portrait ? 'h-full' : 'aspect-square'}`}
+                      style={{ backgroundColor: 'var(--t-soft-bg)' }}
+                    />
+                  </span>
+                ))}
+              </span>
+            )}
+          </span>
         </button>
       ) : (
         <div className="aspect-[2/1] flex items-center justify-center text-xs t-muted gap-2">
