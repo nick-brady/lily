@@ -529,9 +529,9 @@ def test_only_the_default_mug_is_free():
     assert fp.surcharge_for(default.key) == 0
     assert fp.surcharge_for(None) == 0
     assert fp.surcharge_for("no_such_mug") == 0
-    for key, product in fp.SHORTLIST.items():
-        if key != default.key:
-            assert fp.surcharge_for(key) == 300, key
+    for product in fp.for_product_kind("mug"):
+        if product.key != default.key:
+            assert fp.surcharge_for(product.key) == 300, product.key
 
 
 def test_every_shortlist_product_is_profitable():
@@ -539,9 +539,10 @@ def test_every_shortlist_product_is_profitable():
     pins that none of them is sold below cost."""
     from fulfillment import products as fp
 
-    item_price = 1800  # the Birth Story Mug's list price
+    # list prices, per product kind (the catalog rows in 0009 and 0032)
+    list_price = {"mug": 1800, "framed_print": 7900}
     for product in fp.SHORTLIST.values():
-        charged = item_price + product.surcharge_cents
+        charged = list_price[product.product_kind] + product.surcharge_cents
         assert product.cost_cents > 0, product.key
         assert charged > product.cost_cents, product.key
 
@@ -668,6 +669,9 @@ def test_the_shortlist_stays_light_coloured():
     """
     from fulfillment import products as fp
 
-    for product in fp.SHORTLIST.values():
+    for product in fp.for_product_kind("mug"):
         assert "black" not in product.key.lower(), product.key
         assert "Black" not in product.display_name, product.display_name
+    # A frame is different: it surrounds the print rather than sitting under
+    # it, so the opaque background is a non-issue and a black frame is fine.
+    assert any("black" in p.key for p in fp.for_product_kind("framed_print"))

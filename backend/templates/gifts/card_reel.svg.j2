@@ -26,10 +26,17 @@
         font-size="34" letter-spacing="2" fill="{{ p.ink }}"
         opacity="0.62">arrived · {{ birth_date }} · {{ birth_time }}</text>
 
-  <!-- the story, read downward -->
+  <!-- the story, read downward. Each panel is clipped explicitly rather than
+       trusting `slice` to do it: cairosvg gets that clip wrong when this
+       drawing is nested inside a bigger sheet (the framed print), and the
+       first photo swallows the page. -->
   {% for f in reel_panels %}
+  <clipPath id="panel{{ loop.index }}">
+    <rect x="{{ f.x }}" y="{{ f.y }}" width="{{ f.w }}" height="{{ f.h }}"/>
+  </clipPath>
   <image x="{{ f.x }}" y="{{ f.y }}" width="{{ f.w }}" height="{{ f.h }}"
-         preserveAspectRatio="xMidYMid slice" xlink:href="{{ f.href }}"/>
+         preserveAspectRatio="xMidYMid slice" xlink:href="{{ f.href }}"
+         clip-path="url(#panel{{ loop.index }})"/>
   <rect x="{{ f.x }}" y="{{ f.y }}" width="{{ f.w }}" height="{{ f.h }}" fill="url(#scrim)"/>
   {% if f.time %}
   <text x="{{ f.x + 46 }}" y="{{ f.y + f.h - 96 }}" font-family="{{ p.body_font }}"

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { api } from '../api/client';
 import { formatPrice } from '../utils/money';
+import { PRODUCT_NOUN } from '../utils/products';
 import Lightbox from './Lightbox';
 
 // Customise → see it on the product → send.
@@ -61,6 +62,7 @@ export default function GiftWizard({
     productKey: initialRendering.product_key || null,
   }));
   const slotCount = initialRendering.photo_slot_count || 0;
+  const noun = PRODUCT_NOUN[item.product_kind] || 'product';
   // Which panel the story grid is currently choosing for.
   const [activeSlot, setActiveSlot] = useState(0);
   const [products, setProducts] = useState(null);
@@ -397,7 +399,7 @@ export default function GiftWizard({
                       ? "Shows an earlier version — the new photo didn't come back."
                       : anglesBehind
                         ? 'Shows your design before this change — refreshed at the next step.'
-                        : 'On the mug.'}
+                        : `On the ${noun}.`}
                   </p>
                 </div>
               )}
@@ -479,7 +481,7 @@ export default function GiftWizard({
 
               {(products || []).length > 1 && (
                 <div>
-                  <span className="text-xs font-medium t-muted">Mug</span>
+                  <span className="text-xs font-medium t-muted">{item.product_kind === 'framed_print' ? 'Frame' : 'Mug'}</span>
                   <div className="mt-1 grid grid-cols-3 gap-1.5">
                     {products.map((product, i) => {
                       const chosen = (draft.productKey || products[0].product_key)
@@ -648,7 +650,7 @@ export default function GiftWizard({
                   style={{ borderColor: 'var(--t-accent)', borderTopColor: 'transparent' }}
                 />
                 <p className="text-sm t-muted text-center">
-                  Photographing your design on the mug — about a minute.
+                  Photographing your design on the {noun} — about a minute.
                 </p>
               </div>
             ) : angles.length > 0 ? (

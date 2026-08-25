@@ -15,7 +15,7 @@ line, a story path — set in Cormorant Garamond with Montserrat caps labels.
 """
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
 
 @dataclass(frozen=True)
@@ -54,6 +54,12 @@ class GiftTemplate:
     # ends well above the parent's own line, which therefore gets the whole
     # width whether the photo is there or not.
     text_widths: dict[str, tuple[float, float]] | None = None
+    # Another template whose artwork fills this one, fitted and centred with
+    # the theme background around it. This is how the framed prints work:
+    # the card designs are already drawn, and a frame is a bigger sheet with
+    # the same picture on it. Vector stays crisp at any size; only embedded
+    # photos need more pixels, and the renderer scales their budget.
+    inner: str | None = None
     scene: str | None = None  # richer data scene: "hours" | "story" | None
     # center of the labor clock, for scene == "hours" (defaults to canvas center)
     clock_cx: float | None = None
@@ -210,6 +216,30 @@ TEMPLATES: dict[str, GiftTemplate] = {
         scene="story",
     ),
 }
+
+
+# ── framed prints — 12×16 in at 300 DPI = 3600 × 4800 px (portrait) ────
+# The same three designs as the mug, on a matted framed poster. Each wraps a
+# card design rather than redrawing it: the card layouts are 5:7, the sheet is
+# 3:4, and the theme background fills the ~2% of margin the mat covers anyway.
+def _framed(template_id: str, inner: str) -> GiftTemplate:
+    base = TEMPLATES[inner]
+    return replace(
+        base,
+        template_id=template_id,
+        product_kind="framed_print",
+        width=3600,
+        height=4800,
+        inner=inner,
+    )
+
+
+for _fid, _inner in (
+    ("frame_hours", "card_hours_photo"),
+    ("frame_reel", "card_reel"),
+    ("frame_pool", "card_pool"),
+):
+    TEMPLATES[_fid] = _framed(_fid, _inner)
 
 
 def get(template_id: str) -> GiftTemplate | None:

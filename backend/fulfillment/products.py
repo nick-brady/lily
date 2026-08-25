@@ -86,10 +86,36 @@ SHORTLIST: dict[str, ShortlistProduct] = {
     ),
 }
 
+# ── framed prints ─────────────────────────────────────────────────────────
+# One size, three frames, one price. 12×16 is the nearest sheet to the card
+# designs' 5:7 (the margin the mat covers is 2% a side), and Printful charges
+# the same $35.70 whatever the frame, so the colour is a free choice rather
+# than a surcharge. The print file is 3600×4800 at 300 DPI.
+_FRAME_IMAGES = {
+    20256: "https://files.cdn.printful.com/products/795/20256_1722419854.jpg",
+    20257: "https://files.cdn.printful.com/products/795/20257_1722419975.jpg",
+    20258: "https://files.cdn.printful.com/products/795/20258_1722419996.jpg",
+}
+for _key, _name, _variant in (
+    ("frame_black_12x16", "Black frame (12×16 in, matted)", 20256),
+    ("frame_oak_12x16", "Oak frame (12×16 in, matted)", 20257),
+    ("frame_white_12x16", "White frame (12×16 in, matted)", 20258),
+):
+    SHORTLIST[_key] = ShortlistProduct(
+        key=_key,
+        display_name=_name,
+        product_kind="framed_print",
+        product_id=795,
+        variant_id=_variant,
+        blank_image_url=_FRAME_IMAGES[_variant],
+        cost_cents=3570,
+    )
+
 # The product used for the default hero mockup on the gift gallery, per
 # artwork product_kind. The picker offers the rest as alternatives.
 DEFAULT_PRODUCT_BY_KIND: dict[str, str] = {
     "mug": "white_glossy_11oz",
+    "framed_print": "frame_black_12x16",
 }
 
 

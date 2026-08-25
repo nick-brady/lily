@@ -9,6 +9,7 @@ from __future__ import annotations
 import base64
 import io
 import math
+from dataclasses import replace
 from functools import lru_cache
 import os
 from datetime import datetime, timedelta
@@ -22,7 +23,7 @@ from sqlalchemy.orm import Session
 
 import gift_stats
 import gift_themes
-from gift_templates import GiftTemplate
+from gift_templates import TEMPLATES, GiftTemplate
 from models import (
     AudienceScope,
     Birth,
@@ -92,6 +93,10 @@ def render(
     chewing the 399KB data URI that produces. At 500px that drops to 52ms and
     61KB, which is what makes a live preview feel live.
     """
+    # A framed print draws a card design onto a bigger sheet. Every layout
+    # decision below belongs to the design being drawn (`layout`); only the
+    # metadata and the final rasterization know about the sheet (`template`).
+    layout = _layout_of(template)
     events = list(
         db.scalars(
             select(TimelineEvent).where(
@@ -103,17 +108,17 @@ def render(
     stats = gift_stats.compute(birth, events)
     palette = gift_themes.for_theme(birth.theme)
 
-    photo = _photo_for(db, birth, template, rendering) if template.photo else None
+    photo = _photo_for(db, birth, layout, rendering) if layout.photo else None
     photo_data_uri = _photo_data_uri(photo, max_px=photo_max_px) if photo else None
     # Only designs that can't stand without a photo refuse to render. The rest
     # lay out around its absence, which is what makes "remove" possible.
-    if template.photo_required and photo_data_uri is None:
+    if layout.photo_required and photo_data_uri is None:
         raise ArtworkError("missing-photo")
 
     when = _localize(birth.child_dob or birth.birth_completed_at)
     first_at_local = _localize(stats.first_contraction_at)
     spark_last = _spark_last(stats.durations)
-    overrides = _text_overrides(template, rendering)
+    overrides = _text_overrides(layout, rendering)
     name = (
         overrides.get("child_name") or (birth.child_name or "").strip() or "Baby"
     )
@@ -123,14 +128,14 @@ def render(
         with it, so this is per line: on the mug the name has to clear the
         picture, while the parent's own line sits below it and gets the whole
         width either way."""
-        widths = (template.text_widths or {}).get(slot)
+        widths = (layout.text_widths or {}).get(slot)
         if not widths:
             return None
         with_photo, without = widths
         return with_photo if photo_data_uri else without
     context = {
-        "w": template.width,
-        "h": template.height,
+        "w": layout.width,
+        "h": layout.height,
         "p": palette,
         "child_name": name,
         # Shrink-to-fit, measured against the real font file. Only ever
@@ -173,10 +178,10 @@ def render(
         "photo_data_uri": photo_data_uri,
     }
 
-    if template.scene in ("hours", "hours_photo", "orbit"):
-        context["clock_cx"] = template.clock_cx or template.width / 2
-        context["clock_cy"] = template.clock_cy or template.height / 2
-    if template.scene in ("hours", "hours_photo"):
+    if layout.scene in ("hours", "hours_photo", "orbit"):
+        context["clock_cx"] = layout.clock_cx or layout.width / 2
+        context["clock_cy"] = layout.clock_cy or layout.height / 2
+    if layout.scene in ("hours", "hours_photo"):
         context.update(
             build_hours_clock(
                 durations=stats.durations,
@@ -187,25 +192,30 @@ def render(
                 cx=context["clock_cx"],
                 cy=context["clock_cy"],
                 milestones=_gather_milestones(db, birth, stats),
-                canvas_w=template.width,
-                **CLOCK_PRESETS[template.scene],
+                canvas_w=layout.width,
+                **CLOCK_PRESETS[layout.scene],
             )
         )
         context["clock_photo_r"] = CLOCK_PHOTO_R
-    elif template.scene == "orbit":
-        context.update(_build_orbit_scene(db, birth, template, stats))
-    elif template.scene == "story":
-        context.update(_build_story_scene(db, birth, template))
-    elif template.scene == "words":
-        context.update(_build_words_scene(db, birth, template))
-    elif template.scene == "reel":
+    elif layout.scene == "orbit":
+        context.update(_build_orbit_scene(db, birth, layout, stats))
+    elif layout.scene == "story":
+        context.update(_build_story_scene(db, birth, layout))
+    elif layout.scene == "words":
+        context.update(_build_words_scene(db, birth, layout))
+    elif layout.scene == "reel":
         context.update(
             _build_reel_scene(
-                db, birth, template, rendering, photo_max_px=photo_max_px
+                db,
+                birth,
+                layout,
+                rendering,
+                # the photos get more pixels the bigger the sheet is than the design
+                photo_max_px=photo_max_px or round(900 * template.width / layout.width),
             )
         )
-    elif template.scene == "pool":
-        context.update(_build_pool_scene(db, birth, template))
+    elif layout.scene == "pool":
+        context.update(_build_pool_scene(db, birth, layout))
 
     # Panel provenance rides to the metadata, not to Jinja.
     slot_media_ids = context.pop("reel_media_ids", None)
@@ -221,7 +231,7 @@ def render(
             "child_name": context["child_name_size"],
             "custom_line": context["custom_line_size"],
         },
-        "text_print_floor": print_floor_px(template.dpi),
+        "text_print_floor": print_floor_px(layout.dpi),
         "theme": birth.theme,
         "selected_media_id": str(photo.id) if photo else None,
         "selected_slot_media_ids": slot_media_ids,
@@ -234,6 +244,37 @@ def render(
     }
     return png, metadata
 
+
+def _layout_of(template: GiftTemplate) -> GiftTemplate:
+    """The design actually being drawn: the template itself, or — for a
+    framed print — the card design it wraps, carrying that card's canvas so
+    every absolute coordinate in its SVG still lands where it was drawn."""
+    if not template.inner:
+        return template
+    inner = TEMPLATES[template.inner]
+    return replace(template, width=inner.width, height=inner.height, svg=inner.svg)
+
+
+def _compose(
+    inner_png: bytes, layout: GiftTemplate, sheet: GiftTemplate, bg: str, out_w: int, out_h: int
+) -> bytes:
+    """Fit a finished design onto a bigger sheet, centred, with the theme
+    background filling whatever the aspect ratios leave over.
+
+    Done in pixels, not SVG. Nesting the design as an inner <svg viewBox> was
+    the elegant version, and cairosvg scaled some of its elements twice —
+    the reel's photos and captions landed a page down. A raster paste has no
+    such opinions."""
+    scale = min(out_w / layout.width, out_h / layout.height)
+    w, h = round(layout.width * scale), round(layout.height * scale)
+    canvas = Image.new("RGB", (out_w, out_h), bg)
+    art = Image.open(io.BytesIO(inner_png)).convert("RGB")
+    if art.size != (w, h):
+        art = art.resize((w, h), Image.LANCZOS)
+    canvas.paste(art, ((out_w - w) // 2, (out_h - h) // 2))
+    buf = io.BytesIO()
+    canvas.save(buf, format="PNG", optimize=False)
+    return buf.getvalue()
 
 def render_context(
     template: GiftTemplate, context: dict, output_width: int | None = None
@@ -248,17 +289,29 @@ def render_context(
     a smaller canvas doesn't scale the drawing, it crops it. cairosvg scales
     the finished picture instead, which is what "smaller" should mean.
     """
-    svg = _env.get_template(template.svg).render(**context)
+    layout = _layout_of(template)
+    svg = _env.get_template(layout.svg).render(**context)
     width = output_width or template.width
     height = max(1, round(template.height * (width / template.width)))
+    if template.inner:
+        # the design is drawn at the size it will occupy on the sheet, then
+        # the sheet is built around it
+        scale = min(width / layout.width, height / layout.height)
+        art_w = max(1, round(layout.width * scale))
+        art_h = max(1, round(layout.height * scale))
+    else:
+        art_w, art_h = width, height
     try:
-        return cairosvg.svg2png(
+        png = cairosvg.svg2png(
             bytestring=svg.encode("utf-8"),
-            output_width=width,
-            output_height=height,
+            output_width=art_w,
+            output_height=art_h,
         )
     except Exception as exc:  # cairosvg raises a grab-bag of errors
         raise ArtworkError(f"rasterize: {exc}") from exc
+    if template.inner:
+        png = _compose(png, layout, template, context["p"].bg, width, height)
+    return png
 
 
 # ── photo selection ──────────────────────────────────────────────────────

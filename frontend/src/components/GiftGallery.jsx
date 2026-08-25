@@ -3,6 +3,7 @@ import { api } from '../api/client';
 import AddressForm, { addressComplete, emptyAddress } from './AddressForm';
 import { formatPrice } from '../utils/money';
 import GiftWizard from './GiftWizard';
+import { PRODUCT_NOUN } from '../utils/products';
 
 function formatDate(timestamp) {
   return new Date(timestamp).toLocaleDateString([], { dateStyle: 'long' });
@@ -132,8 +133,7 @@ export default function GiftGallery({ birthId, isParent = true }) {
       ) : (
         <div className="space-y-6">
           {items
-            // once storage is forever there's nothing left to sell there
-            .filter((item) => !(storageLifetime && item.kind === 'storage_gift'))
+            .filter((item) => item.kind === 'physical')
             .map((item) => (
               <GiftItemCard
                 key={item.id}
@@ -142,27 +142,42 @@ export default function GiftGallery({ birthId, isParent = true }) {
                 familyHasAddress={familyHasAddress}
                 onPhotoChanged={load}
               />
-          ))}
+            ))}
+          <ComingNextSection />
+          {items
+            // once storage is forever there's nothing left to sell there
+            .filter((item) => item.kind === 'storage_gift' && !storageLifetime)
+            .map((item) => (
+              <GiftItemCard
+                key={item.id}
+                item={item}
+                birthId={birthId}
+                familyHasAddress={familyHasAddress}
+                onPhotoChanged={load}
+              />
+            ))}
         </div>
       )}
     </section>
   );
 }
 
-// Three beautiful designs reads "curated keepsakes"; nine reads "catalog".
-const VISIBLE_DESIGNS = 3;
+// Two designs lead each product; "see more" opens the third and the door to
+// something custom. Two reads "curated keepsakes"; a wall of them reads
+// "catalog", and this page is the former.
+const VISIBLE_DESIGNS = 2;
 
-// Taste-ordered: what shows in each product's visible three, best first.
+// Taste-ordered: what shows in each product's visible pair, best first.
 // Unlisted templates keep their generated order after these.
 const DESIGN_ORDER = [
   'mug_hours',
   'mug_reel',
   'mug_pool',
-  'card_story',
-  'card_pool',
-  'card_hours_photo',
-  'card_welcome',
+  'frame_hours',
+  'frame_reel',
+  'frame_pool',
 ];
+
 
 function GiftItemCard({ item, birthId, familyHasAddress, onPhotoChanged }) {
   const [showAll, setShowAll] = useState(false);
@@ -208,19 +223,80 @@ function GiftItemCard({ item, birthId, familyHasAddress, onPhotoChanged }) {
                 onPhotoChanged={onPhotoChanged}
               />
             ))}
+            {showAll && <CustomDesignTile noun={PRODUCT_NOUN[item.product_kind] || 'design'} />}
           </div>
-          {usable.length > VISIBLE_DESIGNS && !showAll && (
+          {!showAll && (
             <button
               type="button"
               onClick={() => setShowAll(true)}
               className="mt-2 text-xs t-muted hover:t-ink transition-colors"
             >
-              Show {usable.length - VISIBLE_DESIGNS} more design
-              {usable.length - VISIBLE_DESIGNS === 1 ? '' : 's'} →
+              See more →
             </button>
           )}
         </>
       )}
+    </div>
+  );
+}
+
+// A place held for the design that isn't drawn yet — the one a family would
+// describe if asked. Not a product: nothing to buy, no price, no editor. It
+// sits behind "see more" with the third design so the visible pair stays a
+// curated pair and the door is still there for anyone who looks.
+function CustomDesignTile({ noun }) {
+  return (
+    <div
+      className="rounded-lg border-2 border-dashed flex flex-col items-center justify-center text-center p-6 min-h-[180px]"
+      style={{ borderColor: 'var(--t-soft-ring)' }}
+    >
+      <span className="text-2xl mb-2" aria-hidden="true">✦</span>
+      <span className="text-sm font-medium t-ink">Something of your own</span>
+      <span className="text-xs t-muted mt-1">
+        A custom {noun} design, drawn for you — coming soon.
+      </span>
+    </div>
+  );
+}
+
+// What's next on the shelf, shown honestly as next: real products we've
+// priced from the catalogue but haven't drawn the artwork for yet.
+const COMING_NEXT = [
+  {
+    key: 'ornament',
+    icon: '🎄',
+    name: 'Wooden Ornament',
+    blurb: "Her name and the hour she arrived, for the first tree she'll see.",
+  },
+  {
+    key: 'book',
+    icon: '📖',
+    name: 'The Day, as a Book',
+    blurb: 'A hardcover of the whole story — the clock, the photos, the words.',
+  },
+];
+
+function ComingNextSection() {
+  return (
+    <div>
+      <div className="flex items-baseline justify-between mb-2">
+        <span className="text-sm font-medium t-ink">Coming next</span>
+      </div>
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        {COMING_NEXT.map((p) => (
+          <div
+            key={p.key}
+            className="rounded-lg border p-4 flex items-start gap-3"
+            style={{ borderColor: 'var(--t-soft-ring)', backgroundColor: 'var(--t-soft-bg)' }}
+          >
+            <span className="text-2xl" aria-hidden="true">{p.icon}</span>
+            <div>
+              <div className="text-sm font-medium t-ink">{p.name}</div>
+              <div className="text-xs t-muted mt-0.5">{p.blurb}</div>
+            </div>
+          </div>
+        ))}
+      </div>
     </div>
   );
 }
