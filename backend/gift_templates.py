@@ -225,9 +225,11 @@ TEMPLATES: dict[str, GiftTemplate] = {
 
 
 # ── framed prints — 12×16 in at 300 DPI = 3600 × 4800 px (portrait) ────
-# The same three designs as the mug, on a matted framed poster. Each wraps a
-# card design rather than redrawing it, fitted to the mat's opening; the theme
-# background fills the rest of the sheet, which the mat covers.
+# The wall, then the clock and the pool borrowed from the cards, on a matted
+# framed poster. The card designs are fitted to the mat's opening with the
+# theme background filling the rest of the sheet. The filmstrip isn't here:
+# the wall already hangs the day's photos, and the reel beside it was the same
+# idea told worse.
 # Where the 12×16 sheet shows through the mat, measured off a mockup of an
 # inch grid: about 7.5×11.5 in, centred. Designs drawn for a card fit a 7×11
 # box inside it, with slack for the cut; a design drawn *for* the opening
@@ -269,7 +271,6 @@ TEMPLATES["opening_wall"] = GiftTemplate(
 for _fid, _inner, _box in (
     ("frame_wall", "opening_wall", MAT_OPENING),   # first: the one designed for the frame
     ("frame_hours", "card_hours_photo", MAT_SAFE),
-    ("frame_reel", "card_reel", MAT_SAFE),
     ("frame_pool", "card_pool", MAT_SAFE),
 ):
     TEMPLATES[_fid] = _framed(_fid, _inner, _box)

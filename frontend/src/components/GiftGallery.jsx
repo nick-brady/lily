@@ -175,7 +175,6 @@ const DESIGN_ORDER = [
   'mug_pool',
   'frame_wall',
   'frame_hours',
-  'frame_reel',
   'frame_pool',
 ];
 
