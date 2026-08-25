@@ -11,12 +11,21 @@ credential (same trust model as a presigned URL, minus the bulk).
 """
 from __future__ import annotations
 
+import os
+
 import hashlib
 import hmac
 import time
 import uuid
 
 from auth import FRONTEND_URL, JWT_SECRET_KEY
+
+# Where the partner fetches artwork from. Normally the site itself; in local
+# dev it's a tunnel (scripts/dev-tunnel.sh), because Printful can't reach
+# localhost and every mockup here used to fail with "Invalid URL". Kept apart
+# from FRONTEND_URL on purpose: that one also decides cookie security and
+# Stripe's return address, and pointing it at a tunnel would break login.
+ARTWORK_PUBLIC_URL = os.environ.get("ARTWORK_PUBLIC_URL") or FRONTEND_URL
 
 
 def _sig(rendering_id: str, exp: int) -> str:
@@ -33,7 +42,7 @@ def signed_artwork_url(rendering_id: uuid.UUID | str, *, expires_in: int) -> str
     Routed via the site's /api prefix (nginx strips it)."""
     rid = str(rendering_id)
     exp = int(time.time()) + expires_in
-    return f"{FRONTEND_URL}/api/gift-artwork/{rid}.png?exp={exp}&sig={_sig(rid, exp)}"
+    return f"{ARTWORK_PUBLIC_URL}/api/gift-artwork/{rid}.png?exp={exp}&sig={_sig(rid, exp)}"
 
 
 def verify_artwork_sig(rendering_id: uuid.UUID | str, exp: int, sig: str) -> bool:

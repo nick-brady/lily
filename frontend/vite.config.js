@@ -9,6 +9,9 @@ export default defineConfig({
   plugins: [react()],
   server: {
     port: 3000,
+    // the dev tunnel (scripts/dev-tunnel.sh) reaches this server by a
+    // trycloudflare hostname; Vite refuses unknown hosts unless told
+    allowedHosts: ['.trycloudflare.com'],
     proxy: {
       // Same-origin API (and SSE) for the browser; the backend keeps no
       // published host port. http-proxy streams SSE responses unbuffered.

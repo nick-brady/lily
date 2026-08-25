@@ -54,6 +54,23 @@ def test_the_sheet_is_filled_with_the_theme_background():
     assert im.getpixel((180, 240)) == accent    # the design, centred
 
 
+def test_the_design_sits_inside_the_mat_opening():
+    """Measured off a Printful mockup of an inch grid: the mat shows about
+    7.5×11.5 in of the 12×16 sheet. The design fits a 7×11 box in the middle;
+    a design drawn to the sheet's edge had its footer under the mat."""
+    frame = gift_templates.get("frame_hours")
+    layout = gift_artwork._layout_of(frame)
+    x, y, w, h = gift_artwork._fit(layout, frame, 3600, 4800)
+    # 7 in wide at 300 DPI, centred on a 12 in sheet
+    assert w == 2100 and x == 750
+    # never taller than the 11 in opening, and centred in it
+    assert h <= 3300 and abs((y + h / 2) - 4800 * (2.5 + 5.5) / 16) < 2
+    assert gift_artwork.fit_scale(frame) == 1.4
+    # a plain template fills its own canvas
+    mug = gift_templates.get("mug_hours")
+    assert gift_artwork._fit(mug, mug, 2475, 1155) == (0, 0, 2475, 1155)
+
+
 def test_one_frame_product_per_colour_and_all_the_same_price():
     frames = fp.for_product_kind("framed_print")
     assert [p.variant_id for p in frames] == [20256, 20257, 20258]

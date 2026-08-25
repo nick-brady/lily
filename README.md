@@ -31,6 +31,32 @@ on your machine.
 
 Migrations are **not** run automatically. See the next section.
 
+### Product mockups need the tunnel — run it alongside the stack
+
+Printful photographs our artwork onto the real product by **fetching the
+artwork over the internet**. It cannot reach `localhost`, so without this
+every mockup in local dev fails with `Generator failed: Invalid URL` and the
+gallery shows flat artwork only. Whenever you're working on anything under
+the gift gallery, run this in a second terminal and leave it open:
+
+```bash
+./scripts/dev-tunnel.sh      # needs: brew install cloudflared
+```
+
+It opens a free Cloudflare quick tunnel to the frontend (`localhost:3000`,
+which proxies `/api` to the backend), writes the tunnel's URL into `.env` as
+`ARTWORK_PUBLIC_URL`, and recreates the backend so signed artwork links point
+at it. Ctrl-C closes the tunnel, clears the variable, and puts the backend
+back on localhost. A new hostname every run; nothing to configure.
+
+`ARTWORK_PUBLIC_URL` is deliberately separate from `FRONTEND_URL`: that one
+also decides cookie security and Stripe's return address, and pointing it at
+a tunnel would break login.
+
+Mockups still cost Printful's budget — **2 a minute for the whole store** —
+so the app generates one per design automatically and otherwise only when
+someone asks in the editor. Don't loop over them.
+
 ### Media storage (S3 / MinIO)
 
 Uploads go to S3 via boto3 — the same code path as production. In dev,

@@ -60,6 +60,12 @@ class GiftTemplate:
     # the same picture on it. Vector stays crisp at any size; only embedded
     # photos need more pixels, and the renderer scales their budget.
     inner: str | None = None
+    # Where on the sheet the design must land, as fractions (x, y, w, h).
+    # None means the whole sheet. The matted frames need it: the 12×16 sheet
+    # shows through a mat opening of roughly 7.5×11.5 in, measured off a
+    # mockup of an inch grid — so the design fits a 7×11 box in the middle
+    # and the rest is page colour under the mat.
+    safe_box: tuple[float, float, float, float] | None = None
     scene: str | None = None  # richer data scene: "hours" | "story" | None
     # center of the labor clock, for scene == "hours" (defaults to canvas center)
     clock_cx: float | None = None
@@ -220,8 +226,8 @@ TEMPLATES: dict[str, GiftTemplate] = {
 
 # ── framed prints — 12×16 in at 300 DPI = 3600 × 4800 px (portrait) ────
 # The same three designs as the mug, on a matted framed poster. Each wraps a
-# card design rather than redrawing it: the card layouts are 5:7, the sheet is
-# 3:4, and the theme background fills the ~2% of margin the mat covers anyway.
+# card design rather than redrawing it, fitted to the mat's opening; the theme
+# background fills the rest of the sheet, which the mat covers.
 def _framed(template_id: str, inner: str) -> GiftTemplate:
     base = TEMPLATES[inner]
     return replace(
@@ -231,6 +237,7 @@ def _framed(template_id: str, inner: str) -> GiftTemplate:
         width=3600,
         height=4800,
         inner=inner,
+        safe_box=(2.5 / 12, 2.5 / 16, 7 / 12, 11 / 16),
     )
 
 

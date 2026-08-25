@@ -211,7 +211,7 @@ def render(
                 layout,
                 rendering,
                 # the photos get more pixels the bigger the sheet is than the design
-                photo_max_px=photo_max_px or round(900 * template.width / layout.width),
+                photo_max_px=photo_max_px or round(900 * fit_scale(template)),
             )
         )
     elif layout.scene == "pool":
@@ -255,23 +255,41 @@ def _layout_of(template: GiftTemplate) -> GiftTemplate:
     return replace(template, width=inner.width, height=inner.height, svg=inner.svg)
 
 
+def _fit(layout: GiftTemplate, sheet: GiftTemplate, out_w: int, out_h: int) -> tuple[int, int, int, int]:
+    """Where the design lands on a sheet rendered at out_w × out_h: (x, y, w, h)
+    in output pixels. Fitted inside the sheet's safe box (the mat opening, for
+    a frame) or the whole sheet, and centred in it."""
+    bx, by, bw, bh = sheet.safe_box or (0.0, 0.0, 1.0, 1.0)
+    box_x, box_y, box_w, box_h = bx * out_w, by * out_h, bw * out_w, bh * out_h
+    scale = min(box_w / layout.width, box_h / layout.height)
+    w, h = max(1, round(layout.width * scale)), max(1, round(layout.height * scale))
+    return round(box_x + (box_w - w) / 2), round(box_y + (box_h - h) / 2), w, h
+
+
+def fit_scale(template: GiftTemplate) -> float:
+    """How much bigger the design is drawn on this sheet than on its own
+    canvas, at print size. 1.0 for a template that is its own layout."""
+    layout = _layout_of(template)
+    _, _, w, _ = _fit(layout, template, template.width, template.height)
+    return w / layout.width
+
+
 def _compose(
     inner_png: bytes, layout: GiftTemplate, sheet: GiftTemplate, bg: str, out_w: int, out_h: int
 ) -> bytes:
-    """Fit a finished design onto a bigger sheet, centred, with the theme
-    background filling whatever the aspect ratios leave over.
+    """Put a finished design onto a bigger sheet — inside its safe box,
+    centred — with the theme background everywhere else.
 
     Done in pixels, not SVG. Nesting the design as an inner <svg viewBox> was
     the elegant version, and cairosvg scaled some of its elements twice —
     the reel's photos and captions landed a page down. A raster paste has no
     such opinions."""
-    scale = min(out_w / layout.width, out_h / layout.height)
-    w, h = round(layout.width * scale), round(layout.height * scale)
+    x, y, w, h = _fit(layout, sheet, out_w, out_h)
     canvas = Image.new("RGB", (out_w, out_h), bg)
     art = Image.open(io.BytesIO(inner_png)).convert("RGB")
     if art.size != (w, h):
         art = art.resize((w, h), Image.LANCZOS)
-    canvas.paste(art, ((out_w - w) // 2, (out_h - h) // 2))
+    canvas.paste(art, (x, y))
     buf = io.BytesIO()
     canvas.save(buf, format="PNG", optimize=False)
     return buf.getvalue()
@@ -296,9 +314,7 @@ def render_context(
     if template.inner:
         # the design is drawn at the size it will occupy on the sheet, then
         # the sheet is built around it
-        scale = min(width / layout.width, height / layout.height)
-        art_w = max(1, round(layout.width * scale))
-        art_h = max(1, round(layout.height * scale))
+        _, _, art_w, art_h = _fit(layout, template, width, height)
     else:
         art_w, art_h = width, height
     try:
