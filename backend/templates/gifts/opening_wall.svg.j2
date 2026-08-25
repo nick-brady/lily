@@ -1,0 +1,85 @@
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink"
+     width="{{ w }}" height="{{ h }}" viewBox="0 0 {{ w }} {{ h }}">
+{% from "_clock.svg.j2" import legend with context %}
+{# The wall: the labor as a border around the mat opening, the day's photos
+   hung inside it. Drawn at the size of the opening itself (7.5 × 11.5 in);
+   the framed-print template puts it on the 12 × 16 sheet. #}
+  <defs>
+    {% for t in wall_tiles %}
+    <clipPath id="tile{{ loop.index }}">
+      <rect x="{{ t.px }}" y="{{ t.py }}" width="{{ t.pw }}" height="{{ t.ph }}"/>
+    </clipPath>
+    {% endfor %}
+  </defs>
+  <rect x="0" y="0" width="{{ w }}" height="{{ h }}" fill="{{ p.bg }}"/>
+
+  <!-- the border: an open loop, first contraction to arrival -->
+  <path d="{{ wall_path }}" fill="none" stroke="{{ p.ink }}" stroke-width="1.6" opacity="0.18"/>
+  {% for s in wall_ticks %}
+  <line x1="{{ s.x1 }}" y1="{{ s.y1 }}" x2="{{ s.x2 }}" y2="{{ s.y2 }}"
+        stroke="{{ p.dot if s.am else p.accent }}" stroke-width="{{ s.w }}"
+        stroke-linecap="round" opacity="{{ s.o }}"/>
+  {% endfor %}
+  {# the family, just outside the line: a dot for every comment and reaction #}
+  {% for d in wall_pulse %}
+  <circle cx="{{ d.cx }}" cy="{{ d.cy }}" r="{{ d.r }}" fill="{{ p.accent }}" opacity="{{ d.o }}"/>
+  {% endfor %}
+  {# markers of time #}
+  {% for m in wall_time_marks %}
+  <line x1="{{ m.x1 }}" y1="{{ m.y1 }}" x2="{{ m.x2 }}" y2="{{ m.y2 }}"
+        stroke="{{ p.ink }}" stroke-width="{{ m.w }}" opacity="{{ m.o }}"/>
+  <text x="{{ m.lx }}" y="{{ m.ly }}" text-anchor="middle" dominant-baseline="middle"
+        transform="rotate({{ m.ang }} {{ m.lx }} {{ m.ly }})"
+        font-family="{{ p.body_font }}" font-size="{{ m.size }}" font-weight="{{ m.weight }}"
+        letter-spacing="3" fill="{{ p.ink }}" opacity="{{ m.lo }}">{{ m.label }}</text>
+  {% endfor %}
+  {# the milestones, with the same marks as the mug #}
+  {% for m in wall_marks %}
+  <circle cx="{{ m.x }}" cy="{{ m.y }}" r="{{ m.halo }}" fill="{{ p.bg }}" opacity="0.95"/>
+  {% if m.transform %}
+  <g transform="{{ m.transform }}">
+    <path d="{{ m.d }}" fill="{{ p.accent }}" fill-rule="{{ m.rule }}" opacity="0.85"/>
+  </g>
+  {% else %}
+  <path d="{{ m.d }}" fill="none" stroke="{{ p.accent }}" stroke-width="{{ m.stroke }}"
+        stroke-linejoin="round" stroke-linecap="round" opacity="0.9"/>
+  {% endif %}
+  {% endfor %}
+  {# where it began, and where she arrived #}
+  <circle cx="{{ wall_first.x }}" cy="{{ wall_first.y }}" r="5" fill="{{ p.dot }}"/>
+  <text x="{{ wall_first.x }}" y="{{ wall_first.y + 50 }}" text-anchor="middle"
+        font-family="{{ p.body_font }}" font-size="26" letter-spacing="4"
+        fill="{{ p.ink }}" opacity="0.5">{{ wall_first.label }}</text>
+  <circle cx="{{ wall_born.x }}" cy="{{ wall_born.y }}" r="{{ wall_born.halo }}" fill="{{ p.bg }}" opacity="0.95"/>
+  <path d="{{ wall_born.d }}" fill="none" stroke="{{ p.accent }}" stroke-width="{{ wall_born.stroke }}"
+        stroke-linejoin="round" opacity="0.9"/>
+  <text x="{{ wall_born.x }}" y="{{ wall_born.y + 50 }}" text-anchor="middle"
+        font-family="{{ p.body_font }}" font-size="26" letter-spacing="4"
+        fill="{{ p.ink }}" opacity="0.5">{{ wall_born.label }}</text>
+  {{ legend(wall_legend.x, wall_legend.y) }}
+
+  <!-- her name -->
+  <text x="{{ w // 2 }}" y="400" text-anchor="middle" font-family="{{ p.display_font }}"
+        font-size="{{ child_name_size }}" font-weight="300" font-style="italic"
+        fill="{{ p.ink }}">{{ child_name }}</text>
+  <text x="{{ w // 2 }}" y="485" text-anchor="middle" font-family="{{ p.body_font }}"
+        font-size="34" letter-spacing="2" fill="{{ p.ink }}"
+        opacity="0.62">born {{ birth_date }} at {{ birth_time }}</text>
+
+  <!-- the wall -->
+  {% for t in wall_tiles %}
+  <rect x="{{ t.x }}" y="{{ t.y }}" width="{{ t.w }}" height="{{ t.h }}" fill="#ffffff"
+        stroke="{{ p.ink }}" stroke-width="1.4" stroke-opacity="0.28"/>
+  <image x="{{ t.px }}" y="{{ t.py }}" width="{{ t.pw }}" height="{{ t.ph }}"
+         preserveAspectRatio="xMidYMid slice" clip-path="url(#tile{{ loop.index }})"
+         xlink:href="{{ t.href }}"/>
+  {% if t.stamp %}
+  <text x="{{ t.px + 16 }}" y="{{ t.py + t.ph - 14 }}" font-family="{{ p.body_font }}"
+        font-size="24" letter-spacing="3" fill="#ffffff" opacity="0.9">{{ t.stamp }}</text>
+  {% endif %}
+  {% endfor %}
+
+  <text x="{{ w // 2 }}" y="{{ wall_stats_y }}" text-anchor="middle" font-family="{{ p.body_font }}"
+        font-size="26" letter-spacing="6" fill="{{ p.ink }}"
+        opacity="0.5">{{ count }} CONTRACTIONS · {{ labor_duration|upper }} · EVERY {{ avg_interval|upper }}</text>
+</svg>

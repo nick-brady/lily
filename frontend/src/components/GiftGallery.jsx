@@ -173,6 +173,7 @@ const DESIGN_ORDER = [
   'mug_hours',
   'mug_reel',
   'mug_pool',
+  'frame_wall',
   'frame_hours',
   'frame_reel',
   'frame_pool',

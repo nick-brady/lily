@@ -560,6 +560,26 @@ Frames are drawn by composing the existing card design onto the bigger sheet
 (`GiftTemplate.inner`), not by redrawing: vector stays crisp, the theme
 background fills the 2% the mat covers, and only photos need more pixels.
 
+### The wall leads the framed prints
+*2026-08-24*
+
+The first framed design is drawn *for* the frame rather than borrowed from
+the cards: the labor runs the perimeter of the mat opening as an open loop —
+first contraction bottom-left of centre, the heart of her arrival bottom-
+right — every tick a contraction sized by duration, AM pale / PM deep as on
+the mug, the milestone marks riding the line, six-hour time marks with the
+date at midnight. The family's comments and reactions dot the *outside* of
+the line at the moment they happened: their pulse alongside hers. Inside,
+seven photos hang like frames on a wall, the day in reading order.
+
+> "I love design C … the outer part of it with the contractions and the dots"
+
+The border is capped to the last 72 hours before the birth, so a long labor
+(or Braxton Hicks logged days early) shows its final three days rather than
+compressing weeks onto the line. Iterated as a scratch script against real
+data before touching production (`frame_proto.py`, session scratchpad); the
+comments/ruler interior of the earlier draft was dropped for the wall.
+
 ### Two designs lead, "see more" opens the third and a custom placeholder
 *2026-08-24*
 

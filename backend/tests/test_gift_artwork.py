@@ -123,6 +123,20 @@ def _context(template):
                 layout="mug" if template.product_kind == "mug" else "card",
             )
         )
+    elif template.scene == "wall":
+        ctx.update(
+            gift_artwork.build_wall_scene(
+                contractions=[(_FIRST_AT + timedelta(seconds=o), d) for o, d in zip(_OFFSETS, _DURATIONS)],
+                milestones=[("water_broke", _FIRST_AT + timedelta(hours=3)), ("arrived", _FIRST_AT + timedelta(hours=5))],
+                pulse=[(_FIRST_AT + timedelta(hours=1), "comment"), (_FIRST_AT + timedelta(hours=2), "reaction")],
+                photos=[{"uri": _PIXEL, "occurred_at": _FIRST_AT + timedelta(hours=i), "media_id": f"m{i}"} for i in range(7)],
+                start=_FIRST_AT,
+                end=_BORN_AT,
+                width=template.width,
+                height=template.height,
+            )
+        )
+        ctx["child_name_size"] = 180
     elif template.scene == "story":
         scene = gift_artwork.build_story_scene(
             [

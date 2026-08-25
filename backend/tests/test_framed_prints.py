@@ -11,9 +11,9 @@ import gift_themes
 from fulfillment import products as fp
 
 
-def test_the_frames_are_the_mug_designs():
+def test_the_frames_are_the_wall_and_the_mug_designs():
     frames = [t.template_id for t in gift_templates.for_product("framed_print")]
-    assert frames == ["frame_hours", "frame_reel", "frame_pool"]
+    assert frames == ["frame_wall", "frame_hours", "frame_reel", "frame_pool"]
     for t in map(gift_templates.get, frames):
         assert (t.width, t.height, t.dpi) == (3600, 4800, 300)  # 12×16 in
         inner = gift_templates.get(t.inner)

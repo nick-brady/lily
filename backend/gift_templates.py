@@ -228,7 +228,15 @@ TEMPLATES: dict[str, GiftTemplate] = {
 # The same three designs as the mug, on a matted framed poster. Each wraps a
 # card design rather than redrawing it, fitted to the mat's opening; the theme
 # background fills the rest of the sheet, which the mat covers.
-def _framed(template_id: str, inner: str) -> GiftTemplate:
+# Where the 12×16 sheet shows through the mat, measured off a mockup of an
+# inch grid: about 7.5×11.5 in, centred. Designs drawn for a card fit a 7×11
+# box inside it, with slack for the cut; a design drawn *for* the opening
+# takes the whole thing.
+MAT_OPENING = (2.25 / 12, 2.25 / 16, 7.5 / 12, 11.5 / 16)
+MAT_SAFE = (2.5 / 12, 2.5 / 16, 7 / 12, 11 / 16)
+
+
+def _framed(template_id: str, inner: str, safe_box=MAT_SAFE) -> GiftTemplate:
     base = TEMPLATES[inner]
     return replace(
         base,
@@ -237,16 +245,34 @@ def _framed(template_id: str, inner: str) -> GiftTemplate:
         width=3600,
         height=4800,
         inner=inner,
-        safe_box=(2.5 / 12, 2.5 / 16, 7 / 12, 11 / 16),
+        safe_box=safe_box,
     )
 
 
-for _fid, _inner in (
-    ("frame_hours", "card_hours_photo"),
-    ("frame_reel", "card_reel"),
-    ("frame_pool", "card_pool"),
+# The wall is drawn for the opening itself — 7.5×11.5 in at 300 DPI — so the
+# labor border can hug the mat. It's registered under a product kind no
+# catalog item has, so it only ever renders inside its frame.
+TEMPLATES["opening_wall"] = GiftTemplate(
+    template_id="opening_wall",
+    product_kind="frame_opening",
+    svg="opening_wall.svg.j2",
+    width=2250,
+    height=3450,
+    dpi=300,
+    photo=False,
+    photo_slots=7,
+    editable_text=("child_name",),
+    text_widths={"child_name": (1700, 1700)},
+    scene="wall",
+)
+
+for _fid, _inner, _box in (
+    ("frame_wall", "opening_wall", MAT_OPENING),   # first: the one designed for the frame
+    ("frame_hours", "card_hours_photo", MAT_SAFE),
+    ("frame_reel", "card_reel", MAT_SAFE),
+    ("frame_pool", "card_pool", MAT_SAFE),
 ):
-    TEMPLATES[_fid] = _framed(_fid, _inner)
+    TEMPLATES[_fid] = _framed(_fid, _inner, _box)
 
 
 def get(template_id: str) -> GiftTemplate | None:
