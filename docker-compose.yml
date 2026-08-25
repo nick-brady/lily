@@ -60,6 +60,8 @@ services:
       DATABASE_URL: postgresql://${POSTGRES_USER:-lily}:${POSTGRES_PASSWORD:-lily}@db:5432/${POSTGRES_DB:-lily}
       JWT_SECRET_KEY: ${JWT_SECRET_KEY:?set JWT_SECRET_KEY in .env}
       FRONTEND_URL: ${FRONTEND_URL:-http://localhost:3000}
+      # set by scripts/dev-tunnel.sh so Printful can fetch artwork for mockups
+      ARTWORK_PUBLIC_URL: ${ARTWORK_PUBLIC_URL:-}
       SEED_OWNER_EMAIL: ${SEED_OWNER_EMAIL:-}
       SEED_OWNER_PHONE: ${SEED_OWNER_PHONE:-}
       SEED_OWNER_NAME: ${SEED_OWNER_NAME:-}

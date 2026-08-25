@@ -16,11 +16,6 @@
 
   <rect x="0" y="0" width="{{ w }}" height="{{ h }}" fill="{{ p.bg }}"/>
 
-  <!-- eyebrow -->
-  <text x="{{ w // 2 }}" y="280" text-anchor="middle" font-family="{{ p.body_font }}"
-        font-size="36" font-weight="500" letter-spacing="14"
-        fill="{{ p.accent }}">THE HOURS BEFORE {{ child_name|upper }}</text>
-
   <!-- the labor clock -->
   {{ clock() }}
 

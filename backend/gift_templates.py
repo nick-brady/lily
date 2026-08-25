@@ -15,7 +15,7 @@ line, a story path — set in Cormorant Garamond with Montserrat caps labels.
 """
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
 
 @dataclass(frozen=True)
@@ -54,6 +54,18 @@ class GiftTemplate:
     # ends well above the parent's own line, which therefore gets the whole
     # width whether the photo is there or not.
     text_widths: dict[str, tuple[float, float]] | None = None
+    # Another template whose artwork fills this one, fitted and centred with
+    # the theme background around it. This is how the framed prints work:
+    # the card designs are already drawn, and a frame is a bigger sheet with
+    # the same picture on it. Vector stays crisp at any size; only embedded
+    # photos need more pixels, and the renderer scales their budget.
+    inner: str | None = None
+    # Where on the sheet the design must land, as fractions (x, y, w, h).
+    # None means the whole sheet. The matted frames need it: the 12×16 sheet
+    # shows through a mat opening of roughly 7.5×11.5 in, measured off a
+    # mockup of an inch grid — so the design fits a 7×11 box in the middle
+    # and the rest is page colour under the mat.
+    safe_box: tuple[float, float, float, float] | None = None
     scene: str | None = None  # richer data scene: "hours" | "story" | None
     # center of the labor clock, for scene == "hours" (defaults to canvas center)
     clock_cx: float | None = None
@@ -210,6 +222,58 @@ TEMPLATES: dict[str, GiftTemplate] = {
         scene="story",
     ),
 }
+
+
+# ── framed prints — 12×16 in at 300 DPI = 3600 × 4800 px (portrait) ────
+# The wall, then the clock and the pool borrowed from the cards, on a matted
+# framed poster. The card designs are fitted to the mat's opening with the
+# theme background filling the rest of the sheet. The filmstrip isn't here:
+# the wall already hangs the day's photos, and the reel beside it was the same
+# idea told worse.
+# Where the 12×16 sheet shows through the mat, measured off a mockup of an
+# inch grid: about 7.5×11.5 in, centred. Designs drawn for a card fit a 7×11
+# box inside it, with slack for the cut; a design drawn *for* the opening
+# takes the whole thing.
+MAT_OPENING = (2.25 / 12, 2.25 / 16, 7.5 / 12, 11.5 / 16)
+MAT_SAFE = (2.5 / 12, 2.5 / 16, 7 / 12, 11 / 16)
+
+
+def _framed(template_id: str, inner: str, safe_box=MAT_SAFE) -> GiftTemplate:
+    base = TEMPLATES[inner]
+    return replace(
+        base,
+        template_id=template_id,
+        product_kind="framed_print",
+        width=3600,
+        height=4800,
+        inner=inner,
+        safe_box=safe_box,
+    )
+
+
+# The wall is drawn for the opening itself — 7.5×11.5 in at 300 DPI — so the
+# labor border can hug the mat. It's registered under a product kind no
+# catalog item has, so it only ever renders inside its frame.
+TEMPLATES["opening_wall"] = GiftTemplate(
+    template_id="opening_wall",
+    product_kind="frame_opening",
+    svg="opening_wall.svg.j2",
+    width=2250,
+    height=3450,
+    dpi=300,
+    photo=False,
+    photo_slots=7,
+    editable_text=("child_name",),
+    text_widths={"child_name": (1700, 1700)},
+    scene="wall",
+)
+
+for _fid, _inner, _box in (
+    ("frame_wall", "opening_wall", MAT_OPENING),   # first: the one designed for the frame
+    ("frame_hours", "card_hours_photo", MAT_SAFE),
+    ("frame_pool", "card_pool", MAT_SAFE),
+):
+    TEMPLATES[_fid] = _framed(_fid, _inner, _box)
 
 
 def get(template_id: str) -> GiftTemplate | None:

@@ -493,6 +493,7 @@ def _try_generate_mockup(db: Session, rendering: GiftRendering) -> None:
             artwork_width=template.width,
             artwork_height=template.height,
             placement=product.placement,
+            option_groups=product.mockup_option_groups,
         )
         key = object_key(
             family_id=birth.family_id,
@@ -619,6 +620,7 @@ def render_product_mockup(mockup_id: uuid.UUID) -> None:
                 artwork_width=template.width if template else 2475,
                 artwork_height=template.height if template else 1155,
                 placement=product.placement,
+                option_groups=product.mockup_option_groups,
             )
             key = object_key(
                 family_id=birth.family_id,

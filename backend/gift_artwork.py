@@ -9,6 +9,7 @@ from __future__ import annotations
 import base64
 import io
 import math
+from dataclasses import replace
 from functools import lru_cache
 import os
 from datetime import datetime, timedelta
@@ -22,7 +23,7 @@ from sqlalchemy.orm import Session
 
 import gift_stats
 import gift_themes
-from gift_templates import GiftTemplate
+from gift_templates import TEMPLATES, GiftTemplate
 from models import (
     AudienceScope,
     Birth,
@@ -92,6 +93,10 @@ def render(
     chewing the 399KB data URI that produces. At 500px that drops to 52ms and
     61KB, which is what makes a live preview feel live.
     """
+    # A framed print draws a card design onto a bigger sheet. Every layout
+    # decision below belongs to the design being drawn (`layout`); only the
+    # metadata and the final rasterization know about the sheet (`template`).
+    layout = _layout_of(template)
     events = list(
         db.scalars(
             select(TimelineEvent).where(
@@ -103,17 +108,17 @@ def render(
     stats = gift_stats.compute(birth, events)
     palette = gift_themes.for_theme(birth.theme)
 
-    photo = _photo_for(db, birth, template, rendering) if template.photo else None
+    photo = _photo_for(db, birth, layout, rendering) if layout.photo else None
     photo_data_uri = _photo_data_uri(photo, max_px=photo_max_px) if photo else None
     # Only designs that can't stand without a photo refuse to render. The rest
     # lay out around its absence, which is what makes "remove" possible.
-    if template.photo_required and photo_data_uri is None:
+    if layout.photo_required and photo_data_uri is None:
         raise ArtworkError("missing-photo")
 
     when = _localize(birth.child_dob or birth.birth_completed_at)
     first_at_local = _localize(stats.first_contraction_at)
     spark_last = _spark_last(stats.durations)
-    overrides = _text_overrides(template, rendering)
+    overrides = _text_overrides(layout, rendering)
     name = (
         overrides.get("child_name") or (birth.child_name or "").strip() or "Baby"
     )
@@ -123,14 +128,14 @@ def render(
         with it, so this is per line: on the mug the name has to clear the
         picture, while the parent's own line sits below it and gets the whole
         width either way."""
-        widths = (template.text_widths or {}).get(slot)
+        widths = (layout.text_widths or {}).get(slot)
         if not widths:
             return None
         with_photo, without = widths
         return with_photo if photo_data_uri else without
     context = {
-        "w": template.width,
-        "h": template.height,
+        "w": layout.width,
+        "h": layout.height,
         "p": palette,
         "child_name": name,
         # Shrink-to-fit, measured against the real font file. Only ever
@@ -173,10 +178,10 @@ def render(
         "photo_data_uri": photo_data_uri,
     }
 
-    if template.scene in ("hours", "hours_photo", "orbit"):
-        context["clock_cx"] = template.clock_cx or template.width / 2
-        context["clock_cy"] = template.clock_cy or template.height / 2
-    if template.scene in ("hours", "hours_photo"):
+    if layout.scene in ("hours", "hours_photo", "orbit"):
+        context["clock_cx"] = layout.clock_cx or layout.width / 2
+        context["clock_cy"] = layout.clock_cy or layout.height / 2
+    if layout.scene in ("hours", "hours_photo"):
         context.update(
             build_hours_clock(
                 durations=stats.durations,
@@ -187,28 +192,43 @@ def render(
                 cx=context["clock_cx"],
                 cy=context["clock_cy"],
                 milestones=_gather_milestones(db, birth, stats),
-                canvas_w=template.width,
-                **CLOCK_PRESETS[template.scene],
+                canvas_w=layout.width,
+                **CLOCK_PRESETS[layout.scene],
             )
         )
         context["clock_photo_r"] = CLOCK_PHOTO_R
-    elif template.scene == "orbit":
-        context.update(_build_orbit_scene(db, birth, template, stats))
-    elif template.scene == "story":
-        context.update(_build_story_scene(db, birth, template))
-    elif template.scene == "words":
-        context.update(_build_words_scene(db, birth, template))
-    elif template.scene == "reel":
+    elif layout.scene == "orbit":
+        context.update(_build_orbit_scene(db, birth, layout, stats))
+    elif layout.scene == "story":
+        context.update(_build_story_scene(db, birth, layout))
+    elif layout.scene == "words":
+        context.update(_build_words_scene(db, birth, layout))
+    elif layout.scene == "reel":
         context.update(
             _build_reel_scene(
-                db, birth, template, rendering, photo_max_px=photo_max_px
+                db,
+                birth,
+                layout,
+                rendering,
+                # the photos get more pixels the bigger the sheet is than the design
+                photo_max_px=photo_max_px or round(900 * fit_scale(template)),
             )
         )
-    elif template.scene == "pool":
-        context.update(_build_pool_scene(db, birth, template))
+    elif layout.scene == "pool":
+        context.update(_build_pool_scene(db, birth, layout))
+    elif layout.scene == "wall":
+        context.update(
+            _build_wall_scene(
+                db,
+                birth,
+                layout,
+                rendering,
+                photo_max_px=photo_max_px or round(1100 * fit_scale(template)),
+            )
+        )
 
     # Panel provenance rides to the metadata, not to Jinja.
-    slot_media_ids = context.pop("reel_media_ids", None)
+    slot_media_ids = context.pop("slot_media_ids", None)
 
     png = render_context(template, context, output_width=output_width)
 
@@ -221,7 +241,7 @@ def render(
             "child_name": context["child_name_size"],
             "custom_line": context["custom_line_size"],
         },
-        "text_print_floor": print_floor_px(template.dpi),
+        "text_print_floor": print_floor_px(layout.dpi),
         "theme": birth.theme,
         "selected_media_id": str(photo.id) if photo else None,
         "selected_slot_media_ids": slot_media_ids,
@@ -234,6 +254,55 @@ def render(
     }
     return png, metadata
 
+
+def _layout_of(template: GiftTemplate) -> GiftTemplate:
+    """The design actually being drawn: the template itself, or — for a
+    framed print — the card design it wraps, carrying that card's canvas so
+    every absolute coordinate in its SVG still lands where it was drawn."""
+    if not template.inner:
+        return template
+    inner = TEMPLATES[template.inner]
+    return replace(template, width=inner.width, height=inner.height, svg=inner.svg)
+
+
+def _fit(layout: GiftTemplate, sheet: GiftTemplate, out_w: int, out_h: int) -> tuple[int, int, int, int]:
+    """Where the design lands on a sheet rendered at out_w × out_h: (x, y, w, h)
+    in output pixels. Fitted inside the sheet's safe box (the mat opening, for
+    a frame) or the whole sheet, and centred in it."""
+    bx, by, bw, bh = sheet.safe_box or (0.0, 0.0, 1.0, 1.0)
+    box_x, box_y, box_w, box_h = bx * out_w, by * out_h, bw * out_w, bh * out_h
+    scale = min(box_w / layout.width, box_h / layout.height)
+    w, h = max(1, round(layout.width * scale)), max(1, round(layout.height * scale))
+    return round(box_x + (box_w - w) / 2), round(box_y + (box_h - h) / 2), w, h
+
+
+def fit_scale(template: GiftTemplate) -> float:
+    """How much bigger the design is drawn on this sheet than on its own
+    canvas, at print size. 1.0 for a template that is its own layout."""
+    layout = _layout_of(template)
+    _, _, w, _ = _fit(layout, template, template.width, template.height)
+    return w / layout.width
+
+
+def _compose(
+    inner_png: bytes, layout: GiftTemplate, sheet: GiftTemplate, bg: str, out_w: int, out_h: int
+) -> bytes:
+    """Put a finished design onto a bigger sheet — inside its safe box,
+    centred — with the theme background everywhere else.
+
+    Done in pixels, not SVG. Nesting the design as an inner <svg viewBox> was
+    the elegant version, and cairosvg scaled some of its elements twice —
+    the reel's photos and captions landed a page down. A raster paste has no
+    such opinions."""
+    x, y, w, h = _fit(layout, sheet, out_w, out_h)
+    canvas = Image.new("RGB", (out_w, out_h), bg)
+    art = Image.open(io.BytesIO(inner_png)).convert("RGB")
+    if art.size != (w, h):
+        art = art.resize((w, h), Image.LANCZOS)
+    canvas.paste(art, (x, y))
+    buf = io.BytesIO()
+    canvas.save(buf, format="PNG", optimize=False)
+    return buf.getvalue()
 
 def render_context(
     template: GiftTemplate, context: dict, output_width: int | None = None
@@ -248,17 +317,27 @@ def render_context(
     a smaller canvas doesn't scale the drawing, it crops it. cairosvg scales
     the finished picture instead, which is what "smaller" should mean.
     """
-    svg = _env.get_template(template.svg).render(**context)
+    layout = _layout_of(template)
+    svg = _env.get_template(layout.svg).render(**context)
     width = output_width or template.width
     height = max(1, round(template.height * (width / template.width)))
+    if template.inner:
+        # the design is drawn at the size it will occupy on the sheet, then
+        # the sheet is built around it
+        _, _, art_w, art_h = _fit(layout, template, width, height)
+    else:
+        art_w, art_h = width, height
     try:
-        return cairosvg.svg2png(
+        png = cairosvg.svg2png(
             bytestring=svg.encode("utf-8"),
-            output_width=width,
-            output_height=height,
+            output_width=art_w,
+            output_height=art_h,
         )
     except Exception as exc:  # cairosvg raises a grab-bag of errors
         raise ArtworkError(f"rasterize: {exc}") from exc
+    if template.inner:
+        png = _compose(png, layout, template, context["p"].bg, width, height)
+    return png
 
 
 # ── photo selection ──────────────────────────────────────────────────────
@@ -1491,21 +1570,17 @@ def slot_overrides(rendering, slot_count: int) -> dict[int, str]:
     return out
 
 
-def _build_reel_scene(
-    db: Session,
-    birth: Birth,
-    template: GiftTemplate,
-    rendering=None,
-    *,
-    photo_max_px: int | None = None,
-) -> dict:
-    layout = "mug" if template.product_kind == "mug" else "card"
-    n = template.photo_slots or (4 if layout == "mug" else 3)
+def _slot_photos(
+    db: Session, birth: Birth, rendering, n: int, *, photo_max_px: int
+) -> list[dict]:
+    """The photos for an n-panel design: the auto sample across the day, with
+    the parent's per-slot choices laid over it. A choice replaces its slot's
+    auto pick; the other slots keep theirs. A chosen photo that has since
+    been deleted falls back to the auto pick rather than failing — same
+    posture as the single-photo designs. Each comes back with its data URI,
+    caption, time and media id."""
     refs = _reel_refs(db, birth)
     chosen = _sample_spaced(refs, n)
-    # A choice replaces its slot's auto pick; the other slots keep theirs.
-    # A chosen photo that has since been deleted falls back to the auto pick
-    # rather than failing — same posture as the single-photo designs.
     by_id = {r["media_id"]: r for r in refs}
     for i, media_id in sorted(slot_overrides(rendering, n).items()):
         ref = by_id.get(media_id) or _keepsake_ref(db, birth, media_id)
@@ -1514,13 +1589,11 @@ def _build_reel_scene(
         if i < len(chosen):
             chosen[i] = ref
         elif i == len(chosen):
-            # a story shorter than the strip, extended by hand
+            # a story shorter than the design, extended by hand
             chosen.append(ref)
-    if not chosen:
-        raise ArtworkError("missing-photo")
     photos = []
     for ref in chosen:
-        uri = _photo_data_uri(ref["asset"], max_px=photo_max_px or 900)
+        uri = _photo_data_uri(ref["asset"], max_px=photo_max_px)
         if uri is None:
             continue
         photos.append(
@@ -1533,14 +1606,310 @@ def _build_reel_scene(
         )
     if not photos:
         raise ArtworkError("missing-photo")
+    return photos
+
+
+def _build_reel_scene(
+    db: Session,
+    birth: Birth,
+    template: GiftTemplate,
+    rendering=None,
+    *,
+    photo_max_px: int | None = None,
+) -> dict:
+    layout = "mug" if template.product_kind == "mug" else "card"
+    n = template.photo_slots or (4 if layout == "mug" else 3)
+    photos = _slot_photos(db, birth, rendering, n, photo_max_px=photo_max_px or 900)
     scene = build_reel_scene(
         photos, width=template.width, height=template.height, layout=layout
     )
     # What each panel actually shows, for the metadata — the editor seeds its
     # slot pickers from this, exactly as the single photo seeds from
     # selected_media_id.
-    scene["reel_media_ids"] = [p["media_id"] for p in photos]
+    scene["slot_media_ids"] = [p["media_id"] for p in photos]
     return scene
+
+
+# ── the wall: the labor as a border, the day hung inside it ──────────────
+# The contraction timeline runs the perimeter of the mat opening — an open
+# loop that starts bottom-left of centre and arrives, at the heart, bottom-
+# right. Every tick is a contraction, length by duration, AM pale / PM deep
+# as on the mug; the milestone glyphs ride the line; the family's comments
+# and reactions dot the outside of it at the moment they happened. Inside,
+# the day's photos hang like frames on a wall.
+
+WALL_INSET = 105          # border centreline, in from the opening's edge
+WALL_CORNER = 170         # rounded corner radius
+WALL_GAP = 300            # the loop stays open at the bottom
+WALL_TICK_LO, WALL_TICK_HI = 16.0, 82.0
+WALL_WINDOW_HOURS = 72    # a long labor shows its last three days
+WALL_MAT = 22             # the slim white mat around each hung picture
+# (x, y, w, h) as fractions of the wall box — seven pictures, three rows,
+# read left to right, top to bottom: the day in order
+WALL_TILES = (
+    (0.00, 0.00, 0.62, 0.32), (0.64, 0.00, 0.36, 0.32),
+    (0.00, 0.34, 0.30, 0.24), (0.32, 0.34, 0.32, 0.24), (0.66, 0.34, 0.34, 0.24),
+    (0.00, 0.60, 0.38, 0.40), (0.40, 0.60, 0.60, 0.40),
+)
+
+
+class _Along:
+    """A dense polyline with arc length, so a moment in time becomes a point
+    on the border and the direction 'inward' at that point."""
+
+    def __init__(self, pts: list[tuple[float, float]], cx: float, cy: float):
+        self.pts = pts
+        self.cum = [0.0]
+        for (ax, ay), (bx, by) in zip(pts, pts[1:]):
+            self.cum.append(self.cum[-1] + math.hypot(bx - ax, by - ay))
+        self.length = self.cum[-1]
+        self.cx, self.cy = cx, cy
+
+    @property
+    def d(self) -> str:
+        return "M " + " L ".join(f"{x:.1f},{y:.1f}" for x, y in self.pts)
+
+    def at(self, frac: float) -> tuple[float, float, float, float]:
+        s = max(0.0, min(1.0, frac)) * self.length
+        i = next((k for k, c in enumerate(self.cum) if c >= s), len(self.cum) - 1)
+        i = max(1, min(len(self.cum) - 1, i))
+        (ax, ay), (bx, by) = self.pts[i - 1], self.pts[i]
+        seg = (self.cum[i] - self.cum[i - 1]) or 1.0
+        u = (s - self.cum[i - 1]) / seg
+        x, y = ax + (bx - ax) * u, ay + (by - ay) * u
+        tx, ty = (bx - ax) / seg, (by - ay) / seg
+        nx, ny = -ty, tx
+        if (self.cx - x) * nx + (self.cy - y) * ny < 0:  # inward means toward the centre
+            nx, ny = -nx, -ny
+        return x, y, nx, ny
+
+
+def _open_loop(x0, y0, x1, y1, r, gap, n_arc=40) -> list[tuple[float, float]]:
+    """A rounded rectangle drawn clockwise from just left of bottom-centre to
+    just right of it, leaving a gap where the two ends are labelled."""
+    pts: list[tuple[float, float]] = []
+    cx = (x0 + x1) / 2
+
+    def arc(acx, acy, a0, a1):
+        for i in range(n_arc + 1):
+            a = a0 + (a1 - a0) * i / n_arc
+            pts.append((acx + r * math.cos(a), acy + r * math.sin(a)))
+
+    pts.append((cx - gap / 2, y1))
+    pts.append((x0 + r, y1)); arc(x0 + r, y1 - r, math.pi / 2, math.pi)
+    pts.append((x0, y0 + r)); arc(x0 + r, y0 + r, math.pi, 3 * math.pi / 2)
+    pts.append((x1 - r, y0)); arc(x1 - r, y0 + r, 3 * math.pi / 2, 2 * math.pi)
+    pts.append((x1, y1 - r)); arc(x1 - r, y1 - r, 0, math.pi / 2)
+    pts.append((cx + gap / 2, y1))
+    return pts
+
+
+def build_wall_scene(
+    *,
+    contractions: list[tuple[datetime, int]],
+    milestones: list[tuple[str, datetime]],
+    pulse: list[tuple[datetime, str]],
+    photos: list[dict],
+    start: datetime,
+    end: datetime,
+    width: float,
+    height: float,
+) -> dict:
+    """Geometry for the wall design. `contractions` are (when, duration s);
+    `milestones` (kind, when); `pulse` (when, "comment" | "reaction");
+    `photos` carry uri / occurred_at / media_id. The window [start, end] is
+    what the border spans — the caller has already capped it."""
+    W, H = width, height
+    loop = _Along(_open_loop(WALL_INSET, WALL_INSET, W - WALL_INSET, H - WALL_INSET, WALL_CORNER, WALL_GAP), W / 2, H / 2)
+    span_s = max(1.0, (end - start).total_seconds())
+
+    def frac(t: datetime) -> float:
+        return (t - start).total_seconds() / span_s
+
+    inside = [(t, d) for t, d in contractions if start <= t <= end]
+    lo = min((d for _, d in inside), default=0)
+    hi = max((d for _, d in inside), default=1)
+    dspan = (hi - lo) or 1
+    ticks = []
+    for t, d in inside:
+        x, y, nx, ny = loop.at(frac(t))
+        ln = WALL_TICK_LO + (d - lo) / dspan * (WALL_TICK_HI - WALL_TICK_LO)
+        am = t.hour < 12
+        ticks.append(
+            {
+                "x1": round(x, 1), "y1": round(y, 1),
+                "x2": round(x + nx * ln, 1), "y2": round(y + ny * ln, 1),
+                "am": am,
+                "w": AM_WIDTH if am else PM_WIDTH,
+                "o": round((AM_ALPHA if am else PM_ALPHA) + 0.12, 2),
+            }
+        )
+
+    dots = []
+    for t, kind in pulse:
+        if not (start <= t <= end):
+            continue
+        x, y, nx, ny = loop.at(frac(t))
+        dots.append(
+            {
+                "cx": round(x - nx * 22, 1), "cy": round(y - ny * 22, 1),
+                "r": 5.5 if kind == "comment" else 3.5,
+                "o": 0.85 if kind == "comment" else 0.45,
+            }
+        )
+
+    marks, placed = [], []
+    for kind, t in milestones:
+        if not has_mark(kind) or not (start <= t <= end):
+            continue
+        f = frac(t)
+        if any(abs(f - q) < 0.012 for q in placed):
+            continue
+        placed.append(f)
+        x, y, _, _ = loop.at(f)
+        marks.append(_mark_at(kind, x, y))
+
+    ex, ey, _, _ = loop.at(1.0)
+    sx, sy, _, _ = loop.at(0.0)
+    born = {
+        "x": round(ex, 1), "y": round(ey, 1),
+        "d": _heart_path(ex, ey, BORN_MARK_R), "halo": BORN_HALO_R, "stroke": BORN_STROKE,
+        "label": _fmt_time(end).upper(),
+    }
+    first = {"x": round(sx, 1), "y": round(sy, 1), "label": _fmt_time(start).upper()}
+
+    # markers of time along the line: every six hours a tick and a label,
+    # midnight a longer one with the date; labels run along their edge
+    time_marks = []
+    mark = start.replace(minute=0, second=0, microsecond=0)
+    while mark.hour % 6:
+        mark += timedelta(hours=1)
+    while mark < end:
+        if start + timedelta(minutes=50) < mark < end - timedelta(minutes=50):
+            x, y, nx, ny = loop.at(frac(mark))
+            midnight = mark.hour == 0
+            ln = 22 if midnight else 12
+            ang = math.degrees(math.atan2(-ny, -nx)) - 90
+            if ang < -90 or ang > 90:
+                ang += 180
+            lx, ly = x - nx * (ln + 30), y - ny * (ln + 30)
+            time_marks.append(
+                {
+                    "x1": round(x, 1), "y1": round(y, 1),
+                    "x2": round(x - nx * ln, 1), "y2": round(y - ny * ln, 1),
+                    "w": 1.8 if midnight else 1.3, "o": 0.5 if midnight else 0.32,
+                    "lx": round(lx, 1), "ly": round(ly, 1), "ang": round(ang, 1),
+                    "label": (
+                        f"{mark.strftime('%b').upper()} {mark.day}" if midnight
+                        else {6: "6 AM", 12: "NOON", 18: "6 PM"}[mark.hour]
+                    ),
+                    "size": 28 if midnight else 24,
+                    "weight": 500 if midnight else 400,
+                    "lo": 0.6 if midnight else 0.42,
+                }
+            )
+        mark += timedelta(hours=6)
+
+    # the wall: seven mats between the title block and the stats line
+    pad = WALL_INSET + 150
+    top, bottom = 600, H - WALL_INSET - 250
+    box_w, box_h = W - 2 * pad, bottom - top
+    tiles = []
+    for (fx, fy, fw, fh), ph in zip(WALL_TILES, photos):
+        x, y, tw, th = pad + fx * box_w, top + fy * box_h, fw * box_w, fh * box_h
+        tiles.append(
+            {
+                "x": round(x, 1), "y": round(y, 1), "w": round(tw, 1), "h": round(th, 1),
+                "px": round(x + WALL_MAT, 1), "py": round(y + WALL_MAT, 1),
+                "pw": round(tw - 2 * WALL_MAT, 1), "ph": round(th - 2 * WALL_MAT, 1),
+                "href": ph["uri"],
+                "stamp": _fmt_time(ph.get("occurred_at")).upper() if th > 240 else "",
+            }
+        )
+
+    both_tones = any(t["am"] for t in ticks) and any(not t["am"] for t in ticks)
+    return {
+        "wall_path": loop.d,
+        "wall_ticks": ticks,
+        "wall_pulse": dots,
+        "wall_marks": marks,
+        "wall_born": born,
+        "wall_first": first,
+        "wall_time_marks": time_marks,
+        "wall_tiles": tiles,
+        "wall_stats_y": round(bottom + 105, 1),
+        "wall_legend": {"x": round(W / 2 - 100, 1), "y": round(H - WALL_INSET + 2, 1)},
+        "clock_legend": (
+            {"am_w": AM_WIDTH, "pm_w": PM_WIDTH, "am_o": round(AM_ALPHA + 0.14, 2), "pm_o": PM_ALPHA}
+            if both_tones else None
+        ),
+        "slot_media_ids": [ph.get("media_id") for ph in photos],
+    }
+
+
+def _family_pulse(db: Session, birth: Birth) -> list[tuple[datetime, str]]:
+    """When the family spoke up: every comment and reaction on this birth's
+    story, as (when, kind). Empty for a birth that predates the features."""
+    out: list[tuple[datetime, str]] = []
+    for model, kind in ((TimelineEventComment, "comment"), (TimelineEventReaction, "reaction")):
+        rows = db.execute(
+            select(model.created_at)
+            .join(TimelineEvent, TimelineEvent.id == model.event_id)
+            .where(TimelineEvent.birth_id == birth.id)
+        ).all()
+        out.extend((_localize(r[0]), kind) for r in rows if r[0] is not None)
+    return out
+
+
+def _build_wall_scene(
+    db: Session,
+    birth: Birth,
+    template: GiftTemplate,
+    rendering=None,
+    *,
+    photo_max_px: int | None = None,
+) -> dict:
+    events = list(
+        db.scalars(
+            select(TimelineEvent).where(
+                TimelineEvent.birth_id == birth.id, TimelineEvent.deleted_at.is_(None)
+            )
+        ).all()
+    )
+    stats = gift_stats.compute(birth, events)
+    first = _localize(stats.first_contraction_at)
+    if first is None or not stats.offsets_seconds:
+        raise ArtworkError("no-contractions")
+    times = [first + timedelta(seconds=o) for o in stats.offsets_seconds]
+    contractions = list(zip(times, stats.durations))
+    milestones = [
+        (m["kind"], first + timedelta(seconds=int(m["offset_seconds"])))
+        for m in _gather_milestones(db, birth, stats)
+    ]
+    born = _localize(birth.child_dob or birth.birth_completed_at)
+    # The border ends where she arrives. When the recorded birth is nowhere
+    # near the contractions (test data; a date typed wrong), end at the last
+    # thing that happened instead of stretching the line across empty months.
+    last_event = max([times[-1]] + [t for _, t in milestones])
+    if born is not None and timedelta(0) <= born - times[-1] <= timedelta(hours=24):
+        end = born
+    else:
+        end = last_event + timedelta(minutes=20)
+    start = max(first, end - timedelta(hours=WALL_WINDOW_HOURS))
+    photos = _slot_photos(
+        db, birth, rendering, template.photo_slots or len(WALL_TILES),
+        photo_max_px=photo_max_px or 1100,
+    )
+    return build_wall_scene(
+        contractions=contractions,
+        milestones=milestones,
+        pulse=_family_pulse(db, birth),
+        photos=photos,
+        start=start,
+        end=end,
+        width=template.width,
+        height=template.height,
+    )
 
 
 # ── the pool: the family's predictions vs. the actuals ───────────────────

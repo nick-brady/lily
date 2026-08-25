@@ -542,6 +542,62 @@ geometry as every other clock template.
 
 ## Shipping address
 
+### Framed prints in, announcement cards out
+*2026-08-24*
+
+The cards were never a product: no fulfillment mapping, so they sat as
+"$25.00 coming soon" — a placeholder wearing a price tag. Gone (catalog row
+deactivated, renderings soft-deleted; `0032`).
+
+A framed print takes their place: the same three designs as the mug on a
+matted 12×16 poster (Printful 795), $79. It costs $35.70 + ~$10.50 shipping
+against the mug's $5.95 + $6.49 — roughly 3.5× the margin per order, and it's
+the thing people hang in a nursery.
+
+> "that kinda seems like a better gift option than the cards"
+
+Frames are drawn by composing the existing card design onto the bigger sheet
+(`GiftTemplate.inner`), not by redrawing: vector stays crisp, the theme
+background fills the 2% the mat covers, and only photos need more pixels.
+
+### The wall leads the framed prints
+*2026-08-24*
+
+The first framed design is drawn *for* the frame rather than borrowed from
+the cards: the labor runs the perimeter of the mat opening as an open loop —
+first contraction bottom-left of centre, the heart of her arrival bottom-
+right — every tick a contraction sized by duration, AM pale / PM deep as on
+the mug, the milestone marks riding the line, six-hour time marks with the
+date at midnight. The family's comments and reactions dot the *outside* of
+the line at the moment they happened: their pulse alongside hers. Inside,
+seven photos hang like frames on a wall, the day in reading order.
+
+> "I love design C … the outer part of it with the contractions and the dots"
+
+The border is capped to the last 72 hours before the birth, so a long labor
+(or Braxton Hicks logged days early) shows its final three days rather than
+compressing weeks onto the line. Iterated as a scratch script against real
+data before touching production (`frame_proto.py`, session scratchpad); the
+comments/ruler interior of the earlier draft was dropped for the wall.
+
+### Two designs lead, "see more" opens the third and a custom placeholder
+*2026-08-24*
+
+Each product family shows two designs; "See more" reveals the third and a
+dashed "Something of your own — coming soon" tile. Two reads curated; a wall
+reads catalog. The custom tile is a door, not a product: no price, nothing to
+buy, no editor.
+
+### The shelf: mugs, frames, coming next, storage
+*2026-08-24*
+
+Physical products first (mug, then framed print), then a "Coming next"
+section naming the ornament and the photo book as real products we've priced
+but not drawn, then the storage gifts. Both next products are verified on the
+Printful catalogue: wooden ornaments ($8.21, six shapes, 585×945 @150 DPI,
+front and back), hardcover photo book ($11–12, cover + 24 per-page image
+files — not a PDF).
+
 ### The address ask must explain itself, and stay optional
 *2026-07-30*
 
