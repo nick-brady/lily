@@ -9,6 +9,7 @@ from __future__ import annotations
 import base64
 import io
 import math
+import uuid
 from dataclasses import replace
 from functools import lru_cache
 import os
@@ -216,6 +217,16 @@ def render(
         )
     elif layout.scene == "pool":
         context.update(_build_pool_scene(db, birth, layout))
+    elif layout.scene == "frame_story":
+        context.update(
+            _build_frame_story_scene(
+                db,
+                birth,
+                layout,
+                rendering,
+                photo_max_px=photo_max_px or round(420 * fit_scale(template)),
+            )
+        )
     elif layout.scene == "wall":
         context.update(
             _build_wall_scene(
@@ -1846,6 +1857,330 @@ def build_wall_scene(
         "slot_media_ids": [ph.get("media_id") for ph in photos],
     }
 
+
+# ── the story: every moment of the timeline wrapping the frame ───────────
+# Photos, milestones and short notes, in order, around the mat opening —
+# starting on the top edge just past the top-left corner, clockwise, back up
+# the left edge. Spaced by beat, not by clock: thirty weeks to the delivery
+# room is months and the labor is hours, and a story reads by its moments.
+# The labor clock sits small in the middle, her name beneath it.
+
+STORY_INSET = 200          # the line, in from the opening's edge
+STORY_CORNER = 230
+STORY_THUMB = 300          # a photo is an inch, with its mat — decided for the print
+STORY_MAT = 9
+STORY_MAX_NOTES = 8
+STORY_MIN_PHOTOS = 4
+STORY_NOTE_CHARS = 44
+STORY_NOTE_SIDE_CHARS = 28
+# how much of the line each kind of moment claims, in photo-units
+STORY_WEIGHT = {"photo": 1.0, "note": 0.55, "milestone": 0.7}
+STORY_CLOCK_R = 430
+
+
+def _story_edges(W: float, H: float):
+    """The four straight runs of the border, in travel order, each with its
+    inward normal. Nothing is placed on the corner arcs: two pictures
+    straddling one overlap, since the chord is shorter than the arc."""
+    x0 = y0 = STORY_INSET
+    x1, y1 = W - STORY_INSET, H - STORY_INSET
+    r = STORY_CORNER
+    return [
+        ((x0 + r + 40, y0), (x1 - r, y0), (0.0, 1.0)),
+        ((x1, y0 + r), (x1, y1 - r), (-1.0, 0.0)),
+        ((x1 - r, y1), (x0 + r, y1), (0.0, -1.0)),
+        ((x0, y1 - r), (x0, y0 + r + 40), (1.0, 0.0)),
+    ]
+
+
+def _story_path(W: float, H: float) -> str:
+    """The border as drawn: the straight runs joined by corner arcs, open at
+    the top-left corner where the story begins and ends."""
+    x0 = y0 = STORY_INSET
+    x1, y1 = W - STORY_INSET, H - STORY_INSET
+    r = STORY_CORNER
+    pts: list[tuple[float, float]] = [(x0 + r + 40, y0), (x1 - r, y0)]
+
+    def arc(acx, acy, a0, a1, n=40):
+        for i in range(n + 1):
+            a = a0 + (a1 - a0) * i / n
+            pts.append((acx + r * math.cos(a), acy + r * math.sin(a)))
+
+    arc(x1 - r, y0 + r, -math.pi / 2, 0)
+    pts.append((x1, y1 - r)); arc(x1 - r, y1 - r, 0, math.pi / 2)
+    pts.append((x0 + r, y1)); arc(x0 + r, y1 - r, math.pi / 2, math.pi)
+    pts.append((x0, y0 + r + 40))
+    return "M " + " L ".join(f"{x:.1f},{y:.1f}" for x, y in pts)
+
+
+def story_thin(moments: list[dict], straight: float) -> list[dict]:
+    """What fits on the line at an inch a photo. Notes are capped first;
+    then photos come off one at a time, evenly, until the rest fit. Every
+    milestone stays. Pure, so the choice of *which* photos is testable."""
+    def wt(m):
+        return STORY_WEIGHT.get(m["kind"], STORY_WEIGHT["milestone"])
+
+    notes = [m for m in moments if m["kind"] == "note"]
+    if len(notes) > STORY_MAX_NOTES:
+        keep = {id(m) for m in _sample_spaced(notes, STORY_MAX_NOTES)}
+        moments = [m for m in moments if m["kind"] != "note" or id(m) in keep]
+    budget = straight / (STORY_THUMB * 1.25)
+    while sum(wt(m) for m in moments) > budget:
+        photos = [m for m in moments if m["kind"] == "photo"]
+        if len(photos) <= STORY_MIN_PHOTOS:
+            break
+        keep = {id(m) for m in _sample_spaced(photos, len(photos) - 1)}
+        moments = [m for m in moments if m["kind"] != "photo" or id(m) in keep]
+    return moments
+
+
+def _weeks_label(when: datetime, due_date) -> str | None:
+    """'30 WEEKS' for a moment in pregnancy, from the due date (40 weeks)."""
+    if due_date is None:
+        return None
+    days_to_go = (due_date - when.date()).days
+    weeks = 40 - math.ceil(days_to_go / 7)
+    if not 4 <= weeks <= 42:
+        return None
+    return f"{weeks} WEEKS"
+
+
+def build_frame_story_scene(
+    *,
+    moments: list[dict],
+    labor_start: datetime | None,
+    due_date,
+    width: float,
+    height: float,
+) -> dict:
+    """Geometry for the story border. `moments` are already thinned and in
+    order: {"kind": "photo", "uri", "when", "media_id"} |
+    {"kind": "note", "text", "when"} | {"kind": <milestone kind>, "when"}.
+    Positions go by cumulative weight along the straight edges. The first
+    moment of each day (or, before labor, each pregnancy week) names it
+    outside the line."""
+    W, H = width, height
+    edges = _story_edges(W, H)
+    lens = [math.hypot(b[0] - a[0], b[1] - a[1]) for a, b, _ in edges]
+    straight = sum(lens)
+
+    def at(frac):
+        s_ = max(0.0, min(1.0, frac)) * straight
+        for (a, b, nrm), ln in zip(edges, lens):
+            if s_ <= ln or (a, b, nrm) is edges[-1]:
+                u = min(1.0, s_ / ln)
+                return a[0] + (b[0] - a[0]) * u, a[1] + (b[1] - a[1]) * u, nrm[0], nrm[1]
+            s_ -= ln
+        return edges[-1][1][0], edges[-1][1][1], 1.0, 0.0  # pragma: no cover
+
+    def wt(m):
+        return STORY_WEIGHT.get(m["kind"], STORY_WEIGHT["milestone"])
+
+    total = sum(wt(m) for m in moments) or 1.0
+    acc = 0.0
+    photos, notes, marks, born, day_labels = [], [], [], None, []
+    last_day_key = None
+    half = STORY_THUMB / 2
+    for m in moments:
+        f = (acc + wt(m) / 2) / total
+        acc += wt(m)
+        x, y, nx, ny = at(f)
+        ang = math.degrees(math.atan2(-ny, -nx)) - 90
+        if ang < -90 or ang > 90:
+            ang += 180
+        when = m["when"]
+        side = abs(nx) > abs(ny)
+        # the day, named the first time it appears — outside the line
+        in_pregnancy = labor_start is not None and when < labor_start
+        key = _weeks_label(when, due_date) if in_pregnancy else None
+        key = key or when.strftime("%b %-d").upper()
+        if key != last_day_key:
+            last_day_key = key
+            lx, ly = x - nx * (half + 34), y - ny * (half + 34)
+            day_labels.append({"x": round(lx, 1), "y": round(ly, 1), "ang": round(ang, 1), "label": key})
+        if m["kind"] == "photo":
+            tx, ty = x - half, y - half
+            lx, ly = x + nx * (half + 30), y + ny * (half + 30)
+            photos.append(
+                {
+                    "x": round(tx, 1), "y": round(ty, 1), "size": STORY_THUMB,
+                    "px": round(tx + STORY_MAT, 1), "py": round(ty + STORY_MAT, 1),
+                    "psize": STORY_THUMB - 2 * STORY_MAT,
+                    "href": m["uri"],
+                    "lx": round(lx, 1), "ly": round(ly, 1), "ang": round(ang, 1),
+                    "label": _fmt_time(when).upper(),
+                }
+            )
+        elif m["kind"] == "note":
+            when_s = _fmt_time(when)
+            if side:
+                lines = [_truncate(m["text"], STORY_NOTE_SIDE_CHARS)]
+                anchor = "start" if nx > 0 else "end"
+                lx, ly = x + nx * 40, y
+                notes.append(
+                    {
+                        "x": round(x, 1), "y": round(y, 1), "side": True, "anchor": anchor,
+                        "lx": round(lx, 1), "ly": round(ly, 1), "lines": lines, "when": when_s,
+                    }
+                )
+            else:
+                words, lines, cur = m["text"].split(), [], ""
+                for w_ in words:
+                    if len(cur) + len(w_) + 1 > 16 and cur:
+                        lines.append(cur); cur = w_
+                    else:
+                        cur = (cur + " " + w_).strip()
+                if cur:
+                    lines.append(cur)
+                lines = lines[:3]
+                stack = len(lines) * 38 + 30
+                ly0 = y + ny * 44 + (0 if ny > 0 else -(stack - 38))
+                notes.append(
+                    {
+                        "x": round(x, 1), "y": round(y, 1), "side": False, "anchor": "middle",
+                        "lx": round(x, 1), "ly": round(ly0, 1), "lines": lines, "when": when_s,
+                    }
+                )
+        elif m["kind"] == "born":
+            lx, ly = x + nx * 72, y + ny * 72
+            born = {
+                "x": round(x, 1), "y": round(y, 1),
+                "d": _heart_path(x, y, BORN_MARK_R + 6), "halo": BORN_HALO_R + 8, "stroke": BORN_STROKE,
+                "lx": round(lx, 1), "ly": round(ly, 1), "ang": round(ang, 1),
+                "label": _fmt_time(when).upper(),
+            }
+        else:
+            mk = _mark_at(m["kind"], x, y)
+            mk["halo"] = mk["halo"] + 6
+            lx, ly = x + nx * 62, y + ny * 62
+            mk.update({"lx": round(lx, 1), "ly": round(ly, 1), "ang": round(ang, 1), "label": _humanize_kind(m["kind"]).upper()})
+            marks.append(mk)
+
+    # the middle: the clock, then her name, stats and legend, a touch high of centre
+    inner_top = STORY_INSET + half + 50
+    inner_bot = H - STORY_INSET - half - 50
+    block_h = 2 * (STORY_CLOCK_R + 60) + 480 + 330
+    cy = inner_top + (inner_bot - inner_top - block_h) / 2 + STORY_CLOCK_R + 60 - 90
+    name_y = cy + STORY_CLOCK_R + 60 + 250   # a clear breath between the dial and the name
+    stats_rule_y = name_y + 200
+    return {
+        "story_path": _story_path(W, H),
+        "story_photos": photos,
+        "story_notes": notes,
+        "story_marks": marks,
+        "story_born": born,
+        "story_day_labels": day_labels,
+        "story_clock_cx": round(W / 2, 1),
+        "story_clock_cy": round(cy, 1),
+        # the shared clock macro draws its ring circles from these
+        "clock_cx": round(W / 2, 1),
+        "clock_cy": round(cy, 1),
+        "story_name_y": round(name_y, 1),
+        "story_rule_y": round(stats_rule_y, 1),
+        "story_stats_y": round(stats_rule_y + 80, 1),
+        "story_legend": {"x": round(W / 2 - 100, 1), "y": round(stats_rule_y + 150, 1)},
+        "slot_media_ids": [m["media_id"] for m in moments if m["kind"] == "photo"],
+    }
+
+
+def _story_moments(db: Session, birth: Birth, rendering, straight: float, *, photo_max_px: int) -> list[dict]:
+    """The timeline as moments, thinned to what fits, with the parent's
+    per-slot photo choices laid over the photos that made the cut."""
+    events = list(
+        db.scalars(
+            select(TimelineEvent)
+            .where(TimelineEvent.birth_id == birth.id, TimelineEvent.deleted_at.is_(None))
+            .order_by(TimelineEvent.occurred_at.asc())
+        ).all()
+    )
+    raw: list[dict] = []
+    for e in events:
+        pl = e.payload or {}
+        when = _localize(e.occurred_at)
+        if e.event_type == TimelineEventType.photo:
+            media_id = pl.get("media_id")
+            asset = db.get(MediaAsset, media_id) if media_id else None
+            if (
+                asset is None or asset.kind != MediaKind.photo
+                or asset.archived_at is not None or not asset.is_visible_to_viewers
+            ):
+                continue
+            raw.append({"kind": "photo", "asset": asset, "media_id": str(media_id), "when": when})
+        elif e.event_type == TimelineEventType.text_note:
+            body = _clean_text(pl.get("body") or pl.get("text"))
+            if body:
+                raw.append({"kind": "note", "text": _truncate(body, STORY_NOTE_CHARS), "when": when})
+        elif e.event_type == TimelineEventType.milestone:
+            kind = pl.get("kind")
+            if kind == "born" or has_mark(kind):
+                raw.append({"kind": kind, "when": when})
+    moments = story_thin(raw, straight)
+    # the parent's choices, slot by slot, over the photos that made the cut
+    photo_slots = [m for m in moments if m["kind"] == "photo"]
+    for i, media_id in sorted(slot_overrides(rendering, len(photo_slots)).items()):
+        if i >= len(photo_slots):
+            continue
+        try:
+            asset = db.get(MediaAsset, uuid.UUID(media_id))
+        except (ValueError, TypeError):
+            continue
+        if asset is None or asset.birth_id != birth.id or asset.archived_at is not None:
+            continue
+        photo_slots[i]["asset"] = asset
+        photo_slots[i]["media_id"] = media_id
+    out = []
+    for m in moments:
+        if m["kind"] == "photo":
+            uri = _photo_data_uri(m["asset"], max_px=photo_max_px)
+            if uri is None:
+                continue
+            out.append({**m, "uri": uri})
+        else:
+            out.append(m)
+    return out
+
+
+def _build_frame_story_scene(
+    db: Session,
+    birth: Birth,
+    template: GiftTemplate,
+    rendering=None,
+    *,
+    photo_max_px: int | None = None,
+) -> dict:
+    edges = _story_edges(template.width, template.height)
+    straight = sum(math.hypot(b[0] - a[0], b[1] - a[1]) for a, b, _ in edges)
+    moments = _story_moments(db, birth, rendering, straight, photo_max_px=photo_max_px or 420)
+    if not any(m["kind"] == "photo" for m in moments):
+        raise ArtworkError("missing-photo")
+    all_events = list(
+        db.scalars(select(TimelineEvent).where(TimelineEvent.birth_id == birth.id, TimelineEvent.deleted_at.is_(None))).all()
+    )
+    stats = gift_stats.compute(birth, all_events)
+    scene = build_frame_story_scene(
+        moments=moments,
+        labor_start=_localize(stats.first_contraction_at),
+        due_date=birth.due_date,
+        width=template.width,
+        height=template.height,
+    )
+    # the clock, small, in the middle
+    when = _localize(birth.child_dob or birth.birth_completed_at)
+    scene.update(
+        build_hours_clock(
+            durations=stats.durations,
+            offsets_seconds=stats.offsets_seconds,
+            first_contraction_at=_localize(stats.first_contraction_at),
+            born_at=when,
+            cx=scene["story_clock_cx"],
+            cy=scene["story_clock_cy"],
+            r_ring=STORY_CLOCK_R,
+            r_in=180,
+            milestones=_gather_milestones(db, birth, stats),
+            canvas_w=template.width,
+        )
+    )
+    return scene
 
 def _family_pulse(db: Session, birth: Birth) -> list[tuple[datetime, str]]:
     """When the family spoke up: every comment and reaction on this birth's

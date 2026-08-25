@@ -268,9 +268,30 @@ TEMPLATES["opening_wall"] = GiftTemplate(
     scene="wall",
 )
 
+# The story: every moment of the timeline wrapping the opening, the labor
+# clock small in the middle. Same footing as the wall — drawn for the opening,
+# never sold on its own. Its photo slots are the pictures that fit on the
+# line (up to 24 at an inch each); the editor shows as many as the render
+# actually placed.
+TEMPLATES["opening_story"] = GiftTemplate(
+    template_id="opening_story",
+    product_kind="frame_opening",
+    svg="opening_story.svg.j2",
+    width=2250,
+    height=3450,
+    dpi=300,
+    photo=False,
+    photo_slots=24,
+    editable_text=("child_name",),
+    text_widths={"child_name": (1500, 1500)},
+    scene="frame_story",
+    clock_cx=1125,
+    clock_cy=1300,
+)
+
 for _fid, _inner, _box in (
-    ("frame_wall", "opening_wall", MAT_OPENING),   # first: the one designed for the frame
-    ("frame_hours", "card_hours_photo", MAT_SAFE),
+    ("frame_wall", "opening_wall", MAT_OPENING),    # the labor as the border, the day hung inside
+    ("frame_story", "opening_story", MAT_OPENING),  # the whole story as the border, the clock inside
     ("frame_pool", "card_pool", MAT_SAFE),
 ):
     TEMPLATES[_fid] = _framed(_fid, _inner, _box)

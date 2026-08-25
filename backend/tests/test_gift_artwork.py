@@ -31,6 +31,14 @@ _DURATIONS = [45 + (i * 7) % 50 for i in range(40)]
 _OFFSETS = [i * 14 * 60 for i in range(40)]
 
 
+def _render_strict(template, ctx):
+    """Render with undefined variables raising, so a template that reaches
+    for a key the scene forgot fails here rather than in production."""
+    from jinja2 import StrictUndefined
+    env = gift_artwork._env.overlay(undefined=StrictUndefined)
+    return env.get_template(template.svg).render(**ctx)
+
+
 def _context(template):
     durations = _DURATIONS
     spark_last = gift_artwork._spark_last(durations)
@@ -123,6 +131,30 @@ def _context(template):
                 layout="mug" if template.product_kind == "mug" else "card",
             )
         )
+    elif template.scene == "frame_story":
+        moments = [
+            {"kind": "photo", "uri": _PIXEL, "when": _FIRST_AT - timedelta(days=70), "media_id": "m0"},
+            {"kind": "photo", "uri": _PIXEL, "when": _FIRST_AT + timedelta(hours=1), "media_id": "m1"},
+            {"kind": "note", "text": "Just got out of the tub", "when": _FIRST_AT + timedelta(hours=2)},
+            {"kind": "water_broke", "when": _FIRST_AT + timedelta(hours=3)},
+            {"kind": "photo", "uri": _PIXEL, "when": _FIRST_AT + timedelta(hours=4), "media_id": "m2"},
+            {"kind": "born", "when": _BORN_AT},
+        ]
+        ctx.update(
+            gift_artwork.build_frame_story_scene(
+                moments=moments, labor_start=_FIRST_AT, due_date=None,
+                width=template.width, height=template.height,
+            )
+        )
+        ctx.update(
+            gift_artwork.build_hours_clock(
+                durations=_DURATIONS, offsets_seconds=_OFFSETS,
+                first_contraction_at=_FIRST_AT, born_at=_BORN_AT,
+                cx=ctx["story_clock_cx"], cy=ctx["story_clock_cy"],
+                r_ring=gift_artwork.STORY_CLOCK_R, r_in=180, canvas_w=template.width,
+            )
+        )
+        ctx["child_name_size"] = 160
     elif template.scene == "wall":
         ctx.update(
             gift_artwork.build_wall_scene(
@@ -150,6 +182,18 @@ def _context(template):
         scene["notes"] = ["yay!", "welcome, little one"]
         ctx.update(scene)
     return ctx
+
+
+@pytest.mark.parametrize(
+    "template_id", [t for t in TEMPLATES if TEMPLATES[t].scene in ("wall", "frame_story")]
+)
+def test_frame_openings_reach_for_nothing_undefined(template_id):
+    """cairosvg paints an undefined Jinja variable as an empty attribute and
+    carries on — which is how a missing `clock_cx` shipped a render that
+    failed only in production. Render these strictly."""
+    template = gift_artwork._layout_of(TEMPLATES[template_id])
+    svg = _render_strict(template, _context(template))
+    assert "<svg" in svg
 
 
 @pytest.mark.parametrize("template_id", list(TEMPLATES))

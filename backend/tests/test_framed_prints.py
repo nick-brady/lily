@@ -13,7 +13,7 @@ from fulfillment import products as fp
 
 def test_the_frames_are_the_wall_and_the_mug_designs():
     frames = [t.template_id for t in gift_templates.for_product("framed_print")]
-    assert frames == ["frame_wall", "frame_hours", "frame_pool"]
+    assert frames == ["frame_wall", "frame_story", "frame_pool"]
     for t in map(gift_templates.get, frames):
         assert (t.width, t.height, t.dpi) == (3600, 4800, 300)  # 12×16 in
         inner = gift_templates.get(t.inner)
@@ -58,7 +58,7 @@ def test_the_design_sits_inside_the_mat_opening():
     """Measured off a Printful mockup of an inch grid: the mat shows about
     7.5×11.5 in of the 12×16 sheet. The design fits a 7×11 box in the middle;
     a design drawn to the sheet's edge had its footer under the mat."""
-    frame = gift_templates.get("frame_hours")
+    frame = gift_templates.get("frame_pool")
     layout = gift_artwork._layout_of(frame)
     x, y, w, h = gift_artwork._fit(layout, frame, 3600, 4800)
     # 7 in wide at 300 DPI, centred on a 12 in sheet
