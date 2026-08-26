@@ -143,9 +143,9 @@ SHORTLIST["ornament_oval"] = ShortlistProduct(
 # Hardcover 8×8, twenty-four pages, $11.23 + about $7.50 to ship. Matte is
 # the default because two of its pages are for a pen, and glossy paper takes
 # ink badly. Same price either way.
-for _key, _name, _variant in (
-    ("book_8x8_matte", "Matte pages (8×8 in hardcover)", 49376),
-    ("book_8x8_glossy", "Glossy pages (8×8 in hardcover)", 49375),
+for _key, _name, _variant, _image in (
+    ("book_8x8_matte", "Matte pages (8×8 in hardcover)", 49376, "https://files.cdn.printful.com/products/1564/49376_1781805692.jpg"),
+    ("book_8x8_glossy", "Glossy pages (8×8 in hardcover)", 49375, "https://files.cdn.printful.com/products/1564/49375_1781805691.jpg"),
 ):
     SHORTLIST[_key] = ShortlistProduct(
         key=_key,
@@ -154,7 +154,7 @@ for _key, _name, _variant in (
         product_id=1564,
         variant_id=_variant,
         placement="cover",
-        blank_image_url="https://files.cdn.printful.com/products/1564/%d_1735896974.jpg" % _variant,
+        blank_image_url=_image,
         cost_cents=1123,
     )
 
