@@ -6,11 +6,17 @@
    grey circle is the ground its rays stand on and the line its milestone
    marks ride — so a mark sits on the day it happened, inside the face,
    instead of floating outside it. #}
-{% macro clock(label_size=30) %}
+{# `marks` and `day_labels` can be turned off for a dial too small to carry
+   them — the ornament's — where a 13px glyph and its page-coloured halo
+   would swamp the rays and print as a pale blob on wood. #}
+{# `ink` scales every ink opacity on the face. The dial is drawn for pale
+   paper, where a tick at 16% reads; printed on wood it vanishes, so the
+   ornament turns the ink up. Capped at 1. #}
+{% macro clock(label_size=30, marks=True, day_labels=True, ink=1.0) %}
   {% for t in clock_ticks %}
   <line x1="{{ t.x1 }}" y1="{{ t.y1 }}" x2="{{ t.x2 }}" y2="{{ t.y2 }}"
         stroke="{{ p.ink }}" stroke-width="{{ 3 if t.hour else 1.6 }}"
-        opacity="{{ 0.38 if t.hour else 0.16 }}"/>
+        opacity="{{ [(0.38 if t.hour else 0.16) * ink, 1]|min }}"/>
   {% endfor %}
 
   {# it wasn't obvious this was a clock, which left every angle on it
@@ -18,12 +24,12 @@
   {% for n in clock_numerals %}
   <text x="{{ n.x }}" y="{{ n.y }}" text-anchor="middle"
         font-family="{{ p.body_font }}" font-size="{{ label_size + 4 }}"
-        letter-spacing="2" fill="{{ p.ink }}" opacity="0.42">{{ n.t }}</text>
+        letter-spacing="2" fill="{{ p.ink }}" opacity="{{ [0.42 * ink, 1]|min }}">{{ n.t }}</text>
   {% endfor %}
 
   {% for ring in clock_rings %}
   <circle cx="{{ clock_cx }}" cy="{{ clock_cy }}" r="{{ ring.base }}" fill="none"
-          stroke="{{ p.ink }}" stroke-width="1.4" opacity="0.13"/>
+          stroke="{{ p.ink }}" stroke-width="1.4" opacity="{{ [0.13 * ink, 1]|min }}"/>
   {% endfor %}
 
   {# AM pale and fine, PM deep and heavy — three cues at once, because the
@@ -32,11 +38,11 @@
   {% for s in ring.strokes %}
   <line x1="{{ s.x1 }}" y1="{{ s.y1 }}" x2="{{ s.x2 }}" y2="{{ s.y2 }}"
         stroke="{{ p.dot if s.am else p.accent }}" stroke-width="{{ s.w }}"
-        stroke-linecap="round" opacity="{{ s.o }}"/>
+        stroke-linecap="round" opacity="{{ [s.o * ink, 1]|min }}"/>
   {% endfor %}
   {% endfor %}
 
-  {% if clock_day_labels %}
+  {% if clock_day_labels and day_labels %}
   {% for ring in clock_rings %}
   <rect x="{{ clock_cx - 62 }}" y="{{ clock_cy + ring.base - 19 }}"
         width="124" height="34" rx="17" fill="{{ p.bg }}" opacity="0.92"/>
@@ -49,7 +55,7 @@
   {# the marks: a ground of page colour so each reads clear of the rays it
      crosses, then the mark itself. Hand-drawn ones are stroked; imported
      icons carry their own outline and bring their own transform. #}
-  {% for m in clock_marks + ([clock_born_mark] if clock_born_mark else []) %}
+  {% for m in (clock_marks + ([clock_born_mark] if clock_born_mark else [])) if marks %}
   <circle cx="{{ m.x }}" cy="{{ m.y }}" r="{{ m.halo }}"
           fill="{{ p.bg }}" opacity="0.9"/>
   {% if m.transform %}

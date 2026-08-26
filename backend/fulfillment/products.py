@@ -118,11 +118,28 @@ for _key, _name, _variant in (
         mockup_option_groups=("Flat", "Lifestyle"),
     )
 
+# ── ornaments ─────────────────────────────────────────────────────────────
+# Wooden, die-cut, printed on the front. One shape for now — the oval is the
+# only one our design is fitted to; the others share the print file but not
+# the silhouette. $8.21 + about $5 to ship.
+SHORTLIST["ornament_oval"] = ShortlistProduct(
+    key="ornament_oval",
+    display_name="Oval wooden ornament",
+    product_kind="ornament",
+    product_id=634,
+    variant_id=16091,
+    placement="front",
+    blank_image_url="https://files.cdn.printful.com/products/634/16091_1661492451.jpg",
+    cost_cents=821,
+    mockup_option_groups=("Flat", "Lifestyle"),
+)
+
 # The product used for the default hero mockup on the gift gallery, per
 # artwork product_kind. The picker offers the rest as alternatives.
 DEFAULT_PRODUCT_BY_KIND: dict[str, str] = {
     "mug": "white_glossy_11oz",
     "framed_print": "frame_black_12x16",
+    "ornament": "ornament_oval",
 }
 
 

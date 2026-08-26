@@ -492,7 +492,7 @@ export default function GiftWizard({
 
               {(products || []).length > 1 && (
                 <div>
-                  <span className="text-xs font-medium t-muted">{item.product_kind === 'framed_print' ? 'Frame' : 'Mug'}</span>
+                  <span className="text-xs font-medium t-muted">{({ framed_print: 'Frame', ornament: 'Shape' })[item.product_kind] || 'Mug'}</span>
                   <div className="mt-1 grid grid-cols-3 gap-1.5">
                     {products.map((product, i) => {
                       const chosen = (draft.productKey || products[0].product_key)

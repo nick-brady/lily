@@ -61,10 +61,10 @@ def _context(template):
         "labor_start_time": "7:04 pm",
         "photo_data_uri": _PIXEL if template.photo else None,
     }
-    if template.scene in ("hours", "hours_photo", "orbit"):
+    if template.scene in ("hours", "hours_photo", "orbit", "ornament"):
         ctx["clock_cx"] = template.clock_cx or template.width / 2
         ctx["clock_cy"] = template.clock_cy or template.height / 2
-    if template.scene in ("hours", "hours_photo"):
+    if template.scene in ("hours", "hours_photo", "ornament"):
         ctx.update(
             gift_artwork.build_hours_clock(
                 durations=durations,
@@ -184,6 +184,10 @@ def _context(template):
         scene["reaction_summary"] = "12 reactions · 3 notes"
         scene["notes"] = ["yay!", "welcome, little one"]
         ctx.update(scene)
+    # render() always supplies these; a template may depend on them being numbers
+    ctx.setdefault("child_name_size", 175)
+    ctx.setdefault("custom_line", "")
+    ctx.setdefault("custom_line_size", 42)
     return ctx
 
 
@@ -601,7 +605,7 @@ def test_every_shortlist_product_is_profitable():
     from fulfillment import products as fp
 
     # list prices, per product kind (the catalog rows in 0009 and 0032)
-    list_price = {"mug": 1800, "framed_print": 7900}
+    list_price = {"mug": 1800, "framed_print": 7900, "ornament": 2400}
     for product in fp.SHORTLIST.values():
         charged = list_price[product.product_kind] + product.surcharge_cents
         assert product.cost_cents > 0, product.key
