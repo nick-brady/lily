@@ -2063,12 +2063,15 @@ def build_frame_story_scene(
     # higher for it and the name a little lower, and the two balance across it.
     weights, actual = pool if pool else ([], None)
     has_ruler = bool(weights) and actual is not None
-    ruler_room = 300 if has_ruler else 0
+    # more air on both sides of the ruler than a tidy layout would give: the
+    # three elements were reading as one squished stack, and a frame is looked
+    # at from across a room
+    ruler_room = 440 if has_ruler else 0
     inner_top = STORY_INSET + half + 50
     inner_bot = H - STORY_INSET - half - 50
     block_h = 2 * (STORY_CLOCK_R + 60) + 480 + 330 + ruler_room
-    cy = inner_top + (inner_bot - inner_top - block_h) / 2 + STORY_CLOCK_R + 60 - 90
-    ruler_y = cy + STORY_CLOCK_R + 60 + 190
+    cy = inner_top + (inner_bot - inner_top - block_h) / 2 + STORY_CLOCK_R + 60 - 130
+    ruler_y = cy + STORY_CLOCK_R + 60 + 260
     name_y = cy + STORY_CLOCK_R + 60 + 250 + ruler_room   # a clear breath between the dial and the name
     stats_rule_y = name_y + 200
     pool_ruler = (
