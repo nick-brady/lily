@@ -129,3 +129,18 @@ def test_the_pool_divides_the_dial_from_the_name():
     assert ruled["story_name_y"] > plain["story_name_y"]
     # centred on the page
     assert abs((r["x1"] + r["x2"]) / 2 - W / 2) < 1
+
+
+def test_guesses_wear_their_names_without_overlapping():
+    """Three people at the same weight get three rows, not one smear."""
+    r = ga.weight_ruler(
+        [7.5, 7.5, 7.5, 9.0], 8.4, x1=0, x2=860, y=100, names=["Nina", "Copa", "Kim", "Nathan"]
+    )
+    tagged = [d for d in r["dots"] if d.get("label")]
+    assert sorted(d["label"] for d in tagged) == ["Copa", "Kim", "Nathan", "Nina"]
+    same_x = [d for d in tagged if d["x"] == tagged[0]["x"]]
+    assert sorted(d["row"] for d in same_x) == [0, 1, 2]
+    # a lone guess goes on the bottom row
+    assert next(d for d in tagged if d["label"] == "Nathan")["row"] == 0
+    # no names, no tags — the pool card's ruler is unchanged
+    assert all("label" not in d for d in ga.weight_ruler([7.5], 8.4, x1=0, x2=860, y=100)["dots"])

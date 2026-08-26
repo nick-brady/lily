@@ -90,7 +90,7 @@
 
   <!-- the middle: the labor clock, the family's guesses as a divider, her name, the numbers -->
   {{ clock(label_size=26) }}
-  {{ pool_ruler_strip(label_size=22) }}
+  {{ pool_ruler_strip(heading=False) }}
   <text x="{{ w // 2 }}" y="{{ story_name_y }}" text-anchor="middle"
         font-family="{{ p.display_font }}" font-size="{{ child_name_size }}" font-weight="300"
         font-style="italic" fill="{{ p.ink }}">{{ child_name }}</text>

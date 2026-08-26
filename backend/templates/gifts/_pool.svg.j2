@@ -38,11 +38,23 @@
         stroke="{{ p.ink }}" stroke-width="2" opacity="0.2"/>
 {% endmacro %}
 
-{% macro pool_ruler_strip(label_size=24) %}
+{% macro pool_ruler_strip(label_size=24, heading=True) %}
   {% if pool_ruler %}
+  {% if heading %}
   <text x="{{ pool_ruler.x1 }}" y="{{ pool_ruler.y - 46 }}" font-family="{{ p.body_font }}"
         font-size="{{ label_size }}" letter-spacing="4" fill="{{ p.ink }}"
         opacity="0.45">EVERY GUESS, BY WEIGHT</text>
+  {% endif %}
+  {# who guessed what: a small italic name over each dot, in rows where they
+     bunch. Three rows above the line; a crowd past that hangs below the pound
+     marks rather than building a tower toward whatever sits above. #}
+  {% for d in pool_ruler.dots if d.get('label') %}
+  {% set row = d.get('row', 0) %}
+  {% set ny = (pool_ruler.y - 30 - row * 30) if row < 3 else (pool_ruler.y + 96 + (row - 3) * 30) %}
+  <text x="{{ d.x }}" y="{{ ny }}" text-anchor="middle"
+        font-family="{{ p.display_font }}" font-size="24" font-style="italic"
+        fill="{{ p.ink }}" opacity="0.6">{{ d.label }}</text>
+  {% endfor %}
   <line x1="{{ pool_ruler.x1 }}" y1="{{ pool_ruler.y }}" x2="{{ pool_ruler.x2 }}" y2="{{ pool_ruler.y }}"
         stroke="{{ p.ink }}" stroke-width="2" opacity="0.3"/>
   {% for t in pool_ruler.ticks %}
