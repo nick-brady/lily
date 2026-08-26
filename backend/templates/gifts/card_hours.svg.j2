@@ -22,7 +22,7 @@
   <line x1="{{ w // 2 - 80 }}" y1="1895" x2="{{ w // 2 + 80 }}" y2="1895"
         stroke="{{ p.ink }}" stroke-width="2" opacity="0.25"/>
   <text x="{{ w // 2 }}" y="1975" text-anchor="middle" font-family="{{ p.body_font }}"
-        font-size="30" letter-spacing="6" fill="{{ p.ink }}"
-        opacity="0.5">{{ count }} CONTRACTIONS · {{ labor_duration|upper }} OF LABOR · EVERY {{ avg_interval|upper }}</text>
+        font-size="24" letter-spacing="4" fill="{{ p.ink }}"
+        opacity="0.5">{{ count }} CONTRACTIONS TIMED{% if labor_start_time %} · FIRST AT {{ labor_start_time|upper }}{% endif %} · BORN {{ birth_time|upper }}</text>
   {{ legend(w // 2, 2038, anchor='middle') }}
 </svg>

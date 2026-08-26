@@ -60,5 +60,5 @@
   {% set tally = (reaction_summary ~ ' · ' if reaction_summary else '') %}
   <text x="{{ w // 2 }}" y="{{ h - 62 }}" text-anchor="middle" font-family="{{ p.body_font }}"
         font-size="28" letter-spacing="5" fill="{{ p.ink }}"
-        opacity="0.5">{{ tally|upper }}{{ count }} CONTRACTIONS · {{ labor_duration|upper }}</text>
+        opacity="0.5">{{ tally|upper }}{{ count }} CONTRACTIONS TIMED{% if labor_start_time %} · FIRST AT {{ labor_start_time|upper }}{% endif %} · BORN {{ birth_time|upper }}</text>
 </svg>

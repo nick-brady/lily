@@ -29,9 +29,9 @@
   <text x="70" y="756" font-family="{{ p.body_font }}" font-size="29"
         letter-spacing="3" fill="{{ p.ink }}" opacity="0.6">{{ birth_date|upper }}</text>
   <text x="70" y="822" font-family="{{ p.body_font }}" font-size="26"
-        letter-spacing="3" fill="{{ p.ink }}" opacity="0.55">{{ count }} CONTRACTIONS</text>
+        letter-spacing="3" fill="{{ p.ink }}" opacity="0.55">{{ count }} CONTRACTIONS TIMED</text>
   <text x="70" y="878" font-family="{{ p.body_font }}" font-size="26"
-        letter-spacing="3" fill="{{ p.ink }}" opacity="0.55">{{ labor_duration|upper }} OF LABOR</text>
+        letter-spacing="3" fill="{{ p.ink }}" opacity="0.55">{% if labor_start_time %}FIRST AT {{ labor_start_time|upper }} · {% endif %}BORN {{ birth_time|upper }}</text>
 
   <!-- the frames: rotate the mug, the day plays -->
   {% for f in reel_panels %}
