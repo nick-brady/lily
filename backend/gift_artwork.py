@@ -2066,12 +2066,12 @@ def build_frame_story_scene(
     # more air on both sides of the ruler than a tidy layout would give: the
     # three elements were reading as one squished stack, and a frame is looked
     # at from across a room
-    ruler_room = 440 if has_ruler else 0
+    ruler_room = 500 if has_ruler else 0
     inner_top = STORY_INSET + half + 50
     inner_bot = H - STORY_INSET - half - 50
     block_h = 2 * (STORY_CLOCK_R + 60) + 480 + 330 + ruler_room
     cy = inner_top + (inner_bot - inner_top - block_h) / 2 + STORY_CLOCK_R + 60 - 130
-    ruler_y = cy + STORY_CLOCK_R + 60 + 260
+    ruler_y = cy + STORY_CLOCK_R + 60 + 320   # the AM/PM key sits in the gap above it
     name_y = cy + STORY_CLOCK_R + 60 + 250 + ruler_room   # a clear breath between the dial and the name
     stats_rule_y = name_y + 200
     pool_ruler = (
@@ -2094,7 +2094,8 @@ def build_frame_story_scene(
         "story_name_y": round(name_y, 1),
         "story_rule_y": round(stats_rule_y, 1),
         "story_stats_y": round(stats_rule_y + 80, 1),
-        "story_legend": {"x": round(W / 2 - 100, 1), "y": round(stats_rule_y + 150, 1)},
+        # the AM/PM key sits under the dial it explains, not under the name
+        "story_legend": {"x": round(W / 2 - 100, 1), "y": round(cy + STORY_CLOCK_R + 60 + 120, 1)},
         "pool_ruler": pool_ruler,
         "slot_media_ids": [m["media_id"] for m in moments if m["kind"] == "photo"],
     }
