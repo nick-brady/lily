@@ -282,8 +282,10 @@ TEMPLATES["opening_story"] = GiftTemplate(
     dpi=300,
     photo=False,
     photo_slots=24,
-    editable_text=("child_name",),
-    text_widths={"child_name": (1500, 1500)},
+    # the name, and one line of the parents' own under the numbers — the only
+    # words on this frame that aren't the birth's or the family's
+    editable_text=("child_name", "custom_line"),
+    text_widths={"child_name": (1500, 1500), "custom_line": (1400, 1400)},
     scene="frame_story",
     clock_cx=1125,
     clock_cy=1300,

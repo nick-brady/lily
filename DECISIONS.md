@@ -580,6 +580,24 @@ compressing weeks onto the line. Iterated as a scratch script against real
 data before touching production (`frame_proto.py`, session scratchpad); the
 comments/ruler interior of the earlier draft was dropped for the wall.
 
+### The numbers say what was timed, not what happened
+*2026-08-25*
+
+Every design's numbers line read "97 CONTRACTIONS · 26H 56M · EVERY 6.5 MIN".
+Two of those three infer what wasn't recorded: not every contraction gets
+timed, the first and last are the likeliest to be missed, and a start marked
+late turns the duration into nonsense on a $79 print. A number a partner
+"corrects" at the dinner table is a print nobody buys.
+
+Now: **"97 CONTRACTIONS TIMED · FIRST AT 7:58 AM"** — a count of what was
+logged, and a moment that happened. The birth time isn't repeated here: every
+design already says it in the "born … at" line an inch above. The average
+interval is gone everywhere; so is the labor duration. The dial keeps its
+rays: they show what was logged without asserting anything about what wasn't.
+
+> "not every contraction will be recorded.. the first and last may be
+> missed.. afraid that it's going to be wrong"
+
 ### The story is the second framed print
 *2026-08-24*
 

@@ -1952,6 +1952,8 @@ def build_frame_story_scene(
     due_date,
     width: float,
     height: float,
+    pool: tuple[list[float], float] | None = None,
+    names: list[str] | None = None,
 ) -> dict:
     """Geometry for the story border. `moments` are already thinned and in
     order: {"kind": "photo", "uri", "when", "media_id"} |
@@ -2056,13 +2058,31 @@ def build_frame_story_scene(
             mk.update({"lx": round(lx, 1), "ly": round(ly, 1), "ang": round(ang, 1), "label": _humanize_kind(m["kind"]).upper()})
             marks.append(mk)
 
-    # the middle: the clock, then her name, stats and legend, a touch high of centre
+    # the middle: the clock, then her name, stats and legend, a touch high of
+    # centre. When the family guessed her weight, the pool's ruler runs
+    # between the dial and the name as a divider — the dial sits a little
+    # higher for it and the name a little lower, and the two balance across it.
+    weights, actual = pool if pool else ([], None)
+    has_ruler = bool(weights) and actual is not None
+    # more air on both sides of the ruler than a tidy layout would give: the
+    # three elements were reading as one squished stack, and a frame is looked
+    # at from across a room
+    ruler_room = 500 if has_ruler else 0
     inner_top = STORY_INSET + half + 50
     inner_bot = H - STORY_INSET - half - 50
-    block_h = 2 * (STORY_CLOCK_R + 60) + 480 + 330
-    cy = inner_top + (inner_bot - inner_top - block_h) / 2 + STORY_CLOCK_R + 60 - 90
-    name_y = cy + STORY_CLOCK_R + 60 + 250   # a clear breath between the dial and the name
+    block_h = 2 * (STORY_CLOCK_R + 60) + 480 + 330 + ruler_room
+    cy = inner_top + (inner_bot - inner_top - block_h) / 2 + STORY_CLOCK_R + 60 - 130
+    ruler_y = cy + STORY_CLOCK_R + 60 + 320   # the AM/PM key sits in the gap above it
+    name_y = cy + STORY_CLOCK_R + 60 + 250 + ruler_room   # a clear breath between the dial and the name
     stats_rule_y = name_y + 200
+    pool_ruler = (
+        # as wide as the dial, so the ends stay clear of the notes hanging in from the sides
+        weight_ruler(
+            weights, actual, x1=W / 2 - STORY_CLOCK_R, x2=W / 2 + STORY_CLOCK_R,
+            y=round(ruler_y, 1), names=names,
+        )
+        if has_ruler else None
+    )
     return {
         "story_path": _story_path(W, H),
         "story_photos": photos,
@@ -2078,7 +2098,9 @@ def build_frame_story_scene(
         "story_name_y": round(name_y, 1),
         "story_rule_y": round(stats_rule_y, 1),
         "story_stats_y": round(stats_rule_y + 80, 1),
-        "story_legend": {"x": round(W / 2 - 100, 1), "y": round(stats_rule_y + 150, 1)},
+        # the AM/PM key sits under the dial it explains, not under the name
+        "story_legend": {"x": round(W / 2 - 100, 1), "y": round(cy + STORY_CLOCK_R + 60 + 120, 1)},
+        "pool_ruler": pool_ruler,
         "slot_media_ids": [m["media_id"] for m in moments if m["kind"] == "photo"],
     }
 
@@ -2157,12 +2179,20 @@ def _build_frame_story_scene(
         db.scalars(select(TimelineEvent).where(TimelineEvent.birth_id == birth.id, TimelineEvent.deleted_at.is_(None))).all()
     )
     stats = gift_stats.compute(birth, all_events)
+    from repositories import guesses as guesses_repo
+
+    guessed = [g for g in guesses_repo.list_guesses(db, birth_id=birth.id) if g.weight_lbs]
+    weights = [g.weight_lbs for g in guessed]
+    # first names only: the ruler is a line of small tags, not a register
+    names = [_clean_text((g.display_name or "").split()[0] if g.display_name else "") for g in guessed]
     scene = build_frame_story_scene(
         moments=moments,
         labor_start=_localize(stats.first_contraction_at),
         due_date=birth.due_date,
         width=template.width,
         height=template.height,
+        pool=(weights, birth.child_weight_lbs) if weights and birth.child_weight_lbs else None,
+        names=names,
     )
     # the clock, small, in the middle
     when = _localize(birth.child_dob or birth.birth_completed_at)
@@ -2302,6 +2332,58 @@ def _pool_score(prediction: dict, actual_weight: float) -> float | None:
     )
 
 
+RULER_NAME_GAP = 118   # px a small italic first name needs along the line
+
+
+def weight_ruler(
+    weights: list[float],
+    actual_lbs: float,
+    *,
+    x1: float,
+    x2: float,
+    y: float,
+    names: list[str] | None = None,
+) -> dict | None:
+    """Every guess a dot, the actual the star, on one quiet line — the pool
+    card's ruler, and the divider on the story frame. None without guesses.
+
+    With `names`, each dot carries who guessed it, in a small tag above the
+    line. Guesses bunch — three people say 7 lb 2 oz — so tags are laid into
+    rows: a name takes the lowest row where nothing sits within its width."""
+    if not weights:
+        return None
+    lo = min(weights + [actual_lbs]) - 0.35
+    hi = max(weights + [actual_lbs]) + 0.35
+    span = (hi - lo) or 1
+
+    def rx(w: float) -> float:
+        return x1 + (w - lo) / span * (x2 - x1)
+
+    dots = [{"x": round(rx(w), 1)} for w in weights]
+    if names:
+        rows: list[list[float]] = []
+        for d, name in sorted(zip(dots, names), key=lambda t: t[0]["x"]):
+            if not name:
+                continue
+            for r, taken in enumerate(rows):
+                if all(abs(d["x"] - tx) >= RULER_NAME_GAP for tx in taken):
+                    taken.append(d["x"]); d.update(label=name, row=r); break
+            else:
+                rows.append([d["x"]]); d.update(label=name, row=len(rows) - 1)
+
+    return {
+        "y": y,
+        "x1": x1,
+        "x2": x2,
+        "dots": dots,
+        "star_x": round(rx(actual_lbs), 1),
+        "ticks": [
+            {"x": round(rx(lb), 1), "label": f"{lb} LB"}
+            for lb in range(math.ceil(lo), math.floor(hi) + 1)
+        ],
+    }
+
+
 def build_pool_scene(
     predictions: list[dict],
     *,
@@ -2352,26 +2434,9 @@ def build_pool_scene(
 
     # the weight ruler: every guess a dot, the actual the star
     weights = [r["weight_lbs"] for r in scored if r["weight_lbs"]]
-    ruler = None
-    if weights:
-        lo = min(weights + [actual_weight_lbs]) - 0.35
-        hi = max(weights + [actual_weight_lbs]) + 0.35
-        span = (hi - lo) or 1
-
-        def rx(w: float) -> float:
-            return lay["ruler_x1"] + (w - lo) / span * (lay["ruler_x2"] - lay["ruler_x1"])
-
-        ruler = {
-            "y": lay["ruler_y"],
-            "x1": lay["ruler_x1"],
-            "x2": lay["ruler_x2"],
-            "dots": [{"x": round(rx(w), 1)} for w in weights],
-            "star_x": round(rx(actual_weight_lbs), 1),
-            "ticks": [
-                {"x": round(rx(lb), 1), "label": f"{lb} LB"}
-                for lb in range(math.ceil(lo), math.floor(hi) + 1)
-            ],
-        }
+    ruler = weight_ruler(
+        weights, actual_weight_lbs, x1=lay["ruler_x1"], x2=lay["ruler_x2"], y=lay["ruler_y"]
+    )
 
     actual_y = lay["y0"] + len(rows) * lay["step"] + 42
     return {

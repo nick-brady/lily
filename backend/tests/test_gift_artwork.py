@@ -144,6 +144,7 @@ def _context(template):
             gift_artwork.build_frame_story_scene(
                 moments=moments, labor_start=_FIRST_AT, due_date=None,
                 width=template.width, height=template.height,
+                pool=([7.5, 8.0, 8.25, 9.1], 8.4375),
             )
         )
         ctx.update(
@@ -155,6 +156,8 @@ def _context(template):
             )
         )
         ctx["child_name_size"] = 160
+        ctx["custom_line"] = "worth every hour"
+        ctx["custom_line_size"] = 42
     elif template.scene == "wall":
         ctx.update(
             gift_artwork.build_wall_scene(

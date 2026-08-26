@@ -111,3 +111,36 @@ def test_the_born_heart_is_on_the_line_where_it_happened():
     bx, by = sc["story_born"]["x"], sc["story_born"]["y"]
     inset = ga.STORY_INSET
     assert min(abs(bx - inset), abs(bx - (W - inset)), abs(by - inset), abs(by - (H - inset))) < 1
+
+
+def test_the_pool_divides_the_dial_from_the_name():
+    ms = [_photo(i, T0 + timedelta(hours=i)) for i in range(6)]
+    plain = ga.build_frame_story_scene(moments=ms, labor_start=T0, due_date=None, width=W, height=H)
+    ruled = ga.build_frame_story_scene(
+        moments=ms, labor_start=T0, due_date=None, width=W, height=H, pool=([7.5, 8.0, 9.1], 8.4375)
+    )
+    assert plain["pool_ruler"] is None
+    r = ruled["pool_ruler"]
+    assert r is not None and len(r["dots"]) == 3 and [t["label"] for t in r["ticks"]] == ["8 LB", "9 LB"]
+    # between the dial and the name, and the pair moves apart to make room
+    dial_bottom = ruled["story_clock_cy"] + ga.STORY_CLOCK_R
+    assert dial_bottom < r["y"] < ruled["story_name_y"]
+    assert ruled["story_clock_cy"] < plain["story_clock_cy"]
+    assert ruled["story_name_y"] > plain["story_name_y"]
+    # centred on the page
+    assert abs((r["x1"] + r["x2"]) / 2 - W / 2) < 1
+
+
+def test_guesses_wear_their_names_without_overlapping():
+    """Three people at the same weight get three rows, not one smear."""
+    r = ga.weight_ruler(
+        [7.5, 7.5, 7.5, 9.0], 8.4, x1=0, x2=860, y=100, names=["Nina", "Copa", "Kim", "Nathan"]
+    )
+    tagged = [d for d in r["dots"] if d.get("label")]
+    assert sorted(d["label"] for d in tagged) == ["Copa", "Kim", "Nathan", "Nina"]
+    same_x = [d for d in tagged if d["x"] == tagged[0]["x"]]
+    assert sorted(d["row"] for d in same_x) == [0, 1, 2]
+    # a lone guess goes on the bottom row
+    assert next(d for d in tagged if d["label"] == "Nathan")["row"] == 0
+    # no names, no tags — the pool card's ruler is unchanged
+    assert all("label" not in d for d in ga.weight_ruler([7.5], 8.4, x1=0, x2=860, y=100)["dots"])

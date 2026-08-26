@@ -25,20 +25,26 @@
 
   <line x1="1366" y1="700" x2="1526" y2="700" stroke="{{ p.ink }}"
         stroke-width="2" opacity="0.25"/>
-  <text x="1366" y="785" font-family="{{ p.body_font }}" font-size="29"
+  {# What was timed, and two moments that happened — not a duration or an
+     average, which infer what wasn't recorded. Two lines: the column is
+     narrower than the sentence. #}
+  <text x="1366" y="770" font-family="{{ p.body_font }}" font-size="29"
         letter-spacing="5" fill="{{ p.ink }}"
-        opacity="0.5">{{ count }} CONTRACTIONS · {{ labor_duration|upper }} · EVERY {{ avg_interval|upper }}</text>
+        opacity="0.5">{{ count }} CONTRACTIONS TIMED</text>
+  <text x="1366" y="816" font-family="{{ p.body_font }}" font-size="29"
+        letter-spacing="5" fill="{{ p.ink }}"
+        opacity="0.5">{% if labor_start_time %}FIRST AT {{ labor_start_time|upper }}{% endif %}</text>
 
   {# A line of the parent's own, under the derived one. Skipped entirely when
      they haven't written anything — nothing should hold space for a line that
      isn't there. #}
   {% if custom_line %}
-  <text x="1366" y="862" font-family="{{ p.display_font }}" font-size="{{ custom_line_size }}"
+  <text x="1366" y="884" font-family="{{ p.display_font }}" font-size="{{ custom_line_size }}"
         font-style="italic" fill="{{ p.ink }}" opacity="0.72">{{ custom_line }}</text>
   {% endif %}
 
   {# the tones, named at the foot of the text block #}
-  {{ legend(1366, 940 if custom_line else 862) }}
+  {{ legend(1366, 960 if custom_line else 884) }}
 
   <!-- her, at the far end of the wrap -->
   {% if photo_data_uri %}
