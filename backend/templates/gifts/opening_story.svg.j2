@@ -1,6 +1,7 @@
 <svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink"
      width="{{ w }}" height="{{ h }}" viewBox="0 0 {{ w }} {{ h }}">
 {% from "_clock.svg.j2" import clock, legend with context %}
+{% from "_pool.svg.j2" import pool_ruler_strip with context %}
 {# The story: every moment of the timeline — photos, milestones, short notes
    — wrapping the mat opening in order, the labor clock small in the middle,
    her name beneath it. Drawn at the size of the opening (7.5 × 11.5 in). #}
@@ -87,8 +88,9 @@
         fill="{{ p.accent }}" opacity="0.9">{{ story_born.label }}</text>
   {% endif %}
 
-  <!-- the middle: the labor clock, her name, the numbers -->
+  <!-- the middle: the labor clock, the family's guesses as a divider, her name, the numbers -->
   {{ clock(label_size=26) }}
+  {{ pool_ruler_strip(label_size=22) }}
   <text x="{{ w // 2 }}" y="{{ story_name_y }}" text-anchor="middle"
         font-family="{{ p.display_font }}" font-size="{{ child_name_size }}" font-weight="300"
         font-style="italic" fill="{{ p.ink }}">{{ child_name }}</text>
