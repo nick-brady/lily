@@ -37,6 +37,10 @@ class ShortlistProduct:
     # for the flat and the in-room ones too, to give the tile the same
     # three-image rhythm the mug has.
     mockup_option_groups: tuple[str, ...] = ()
+    # Which sides to photograph. The ornament has a front and a back placement
+    # and we print the front; left unsaid, the partner also sends a picture of
+    # the blank back, which the tile then shows as if it were ours.
+    mockup_options: tuple[str, ...] = ()
     # Added to the item price when this product is chosen. The default mug is
     # the price on the tin; the larger and darker ones cost us $2–$3.55 more,
     # so they carry a flat surcharge rather than eating the margin.
@@ -132,6 +136,7 @@ SHORTLIST["ornament_oval"] = ShortlistProduct(
     blank_image_url="https://files.cdn.printful.com/products/634/16091_1661492451.jpg",
     cost_cents=821,
     mockup_option_groups=("Flat", "Lifestyle"),
+    mockup_options=("Front",),
 )
 
 # The product used for the default hero mockup on the gift gallery, per
