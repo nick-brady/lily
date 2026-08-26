@@ -156,6 +156,8 @@ def _context(template):
             )
         )
         ctx["child_name_size"] = 160
+        ctx["custom_line"] = "worth every hour"
+        ctx["custom_line_size"] = 42
     elif template.scene == "wall":
         ctx.update(
             gift_artwork.build_wall_scene(
