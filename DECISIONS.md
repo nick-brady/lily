@@ -589,10 +589,11 @@ timed, the first and last are the likeliest to be missed, and a start marked
 late turns the duration into nonsense on a $79 print. A number a partner
 "corrects" at the dinner table is a print nobody buys.
 
-Now: **"97 CONTRACTIONS TIMED · FIRST AT 7:58 AM · BORN 8:20 PM"** — a count
-of what was logged, and two moments that happened. The average interval is
-gone everywhere; so is the labor duration. The dial keeps its rays: they show
-what was logged without asserting anything about what wasn't.
+Now: **"97 CONTRACTIONS TIMED · FIRST AT 7:58 AM"** — a count of what was
+logged, and a moment that happened. The birth time isn't repeated here: every
+design already says it in the "born … at" line an inch above. The average
+interval is gone everywhere; so is the labor duration. The dial keeps its
+rays: they show what was logged without asserting anything about what wasn't.
 
 > "not every contraction will be recorded.. the first and last may be
 > missed.. afraid that it's going to be wrong"

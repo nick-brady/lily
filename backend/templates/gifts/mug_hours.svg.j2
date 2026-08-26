@@ -33,7 +33,7 @@
         opacity="0.5">{{ count }} CONTRACTIONS TIMED</text>
   <text x="1366" y="816" font-family="{{ p.body_font }}" font-size="29"
         letter-spacing="5" fill="{{ p.ink }}"
-        opacity="0.5">{% if labor_start_time %}FIRST AT {{ labor_start_time|upper }} · {% endif %}BORN {{ birth_time|upper }}</text>
+        opacity="0.5">{% if labor_start_time %}FIRST AT {{ labor_start_time|upper }}{% endif %}</text>
 
   {# A line of the parent's own, under the derived one. Skipped entirely when
      they haven't written anything — nothing should hold space for a line that
