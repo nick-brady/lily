@@ -73,6 +73,7 @@ class FulfillmentAdapter(ABC):
         artwork_height: int,
         placement: str = "default",
         option_groups: tuple[str, ...] = (),
+        options: tuple[str, ...] = (),
     ) -> MockupResult:
         """Render `artwork_url` onto the partner's product/variant and return
         the mockup image, plus any extra angle/view mockups the partner

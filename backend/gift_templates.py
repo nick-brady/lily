@@ -299,6 +299,27 @@ for _fid, _inner, _box in (
     TEMPLATES[_fid] = _framed(_fid, _inner, _box)
 
 
+# ── ornaments — wooden, die-cut; the oval is 3.9 × 6.3 in at 150 DPI ──────
+# Printed straight onto the wood, so the template draws no page colour. Only
+# the oval for now: each other shape (heart, star, tree, bell, stocking) needs
+# a layout fitted to its own silhouette, and the die-cut forgives nothing.
+TEMPLATES["ornament_oval"] = GiftTemplate(
+    template_id="ornament_oval",
+    product_kind="ornament",
+    svg="ornament_oval.svg.j2",
+    width=585,
+    height=945,
+    dpi=150,
+    photo=False,
+    editable_text=("child_name", "custom_line"),
+    # the safe ellipse is ~480 px wide at the name's height, less at the line's
+    text_widths={"child_name": (420, 420), "custom_line": (340, 340)},
+    scene="ornament",
+    clock_cx=292,
+    clock_cy=400,
+)
+
+
 def get(template_id: str) -> GiftTemplate | None:
     return TEMPLATES.get(template_id)
 

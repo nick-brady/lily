@@ -179,10 +179,10 @@ def render(
         "photo_data_uri": photo_data_uri,
     }
 
-    if layout.scene in ("hours", "hours_photo", "orbit"):
+    if layout.scene in ("hours", "hours_photo", "orbit", "ornament"):
         context["clock_cx"] = layout.clock_cx or layout.width / 2
         context["clock_cy"] = layout.clock_cy or layout.height / 2
-    if layout.scene in ("hours", "hours_photo"):
+    if layout.scene in ("hours", "hours_photo", "ornament"):
         context.update(
             build_hours_clock(
                 durations=stats.durations,
@@ -1141,6 +1141,8 @@ CLOCK_PRESETS: dict[str, dict] = {
     # rings are built inward from r_in.
     "hours_photo": {"r_ring": 460.0, "r_in": 205.0, "len_lo": 80.0, "len_hi": 225.0},
     "orbit": {"r_ring": 420.0, "r_in": 190.0, "len_lo": 70.0, "len_hi": 190.0},
+    # the ornament: the whole dial in a 3.9 in wide oval, at 150 DPI
+    "ornament": {"r_ring": 150.0, "r_in": 68.0, "len_lo": 26.0, "len_hi": 74.0},
 }
 # Hero-photo radius inside the hours_photo face (hairline ring sits just out).
 CLOCK_PHOTO_R = 195.0
