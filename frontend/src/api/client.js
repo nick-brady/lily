@@ -639,9 +639,12 @@ export const api = {
 
   // Renders the draft and returns an object URL. Nothing is saved — this is
   // what the editor debounces onto while someone types.
-  async previewGiftDesign(birthId, renderingId, draft, { signal, full } = {}) {
+  async previewGiftDesign(birthId, renderingId, draft, { signal, full, page } = {}) {
+    const qs = new URLSearchParams();
+    if (full) qs.set('full', 'true');
+    if (page) qs.set('page', page);   // one page of a many-page design (the book)
     const res = await fetch(
-      `${API_URL}/birth/${birthId}/gifts/${renderingId}/preview${full ? '?full=true' : ''}`,
+      `${API_URL}/birth/${birthId}/gifts/${renderingId}/preview${qs.toString() ? `?${qs}` : ''}`,
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },

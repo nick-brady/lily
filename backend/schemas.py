@@ -702,6 +702,9 @@ class GiftRenderingOut(BaseModel):
     photo_slot_count: int = 0
     photo_slots: dict[str, uuid.UUID] = {}
     photo_slots_effective: list[Optional[uuid.UUID]] = []
+    # The book: its pages in order — key, kind, which photo slots each holds,
+    # and a URL for the rendered page once there is one.
+    pages: list[dict] = []
     # Slots this design lets a parent edit, and what they currently say.
     editable_text: list[str] = []
     text_overrides: dict[str, str] = {}

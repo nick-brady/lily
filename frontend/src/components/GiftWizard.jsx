@@ -65,6 +65,11 @@ export default function GiftWizard({
   const noun = PRODUCT_NOUN[item.product_kind] || 'product';
   // Which panel the story grid is currently choosing for.
   const [activeSlot, setActiveSlot] = useState(0);
+  // The book is many pages. The editor shows one at a time — the cover, then
+  // page 1..24 — and only that page's photo slots. `pageIdx` 0 is the cover.
+  const isBook = item.product_kind === 'photo_book';
+  const [pageIdx, setPageIdx] = useState(0);
+  const pageKeyRef = useRef('cover_front');
   const [products, setProducts] = useState(null);
   const [dirty, setDirty] = useState(false);
   const [previewUrl, setPreviewUrl] = useState(null);
@@ -156,7 +161,7 @@ export default function GiftWizard({
             birthId,
             rendering.id,
             next,
-            { signal: controller.signal },
+            { signal: controller.signal, page: isBook ? pageKeyRef.current : undefined },
           );
           if (urlRef.current) URL.revokeObjectURL(urlRef.current);
           urlRef.current = url;
@@ -236,7 +241,7 @@ export default function GiftWizard({
     try {
       const added = await api.uploadGiftPhoto(birthId, file);
       setPhotos((rows) => [...(rows || []), added]);
-      if (slotCount > 0) {
+      if (visibleSlots.length > 0) {
         edit({ slots: { ...draft.slots, [activeSlot]: added.media_id } });
       } else {
         edit({ mediaId: added.media_id, removed: false });
@@ -289,7 +294,16 @@ export default function GiftWizard({
     setSaving(true);
     setError('');
     try {
-      const saved = await api.saveGiftDesign(birthId, rendering.id, draft);
+      let saved = await api.saveGiftDesign(birthId, rendering.id, draft);
+      // The book renders its twenty-six files in the background; wait for it
+      // here rather than moving on with a design that isn't drawn yet.
+      for (let i = 0; saved?.status === 'pending' && i < 60; i += 1) {
+        await new Promise((r) => setTimeout(r, 2500));
+        saved = (await refetch()) || saved;
+      }
+      if (saved?.status === 'failed') {
+        throw new Error("The book couldn't be drawn — your changes are kept.");
+      }
       setRendering(saved);
       setDirty(false);
       onChanged?.();
@@ -302,7 +316,37 @@ export default function GiftWizard({
     }
   };
 
-  const shown = previewUrl || rendering.artwork_url;
+  // The book: its pages, and which one is on screen. `pages` is the saved
+  // plan — kind and slots per page — with a URL once each has been drawn.
+  const pages = isBook ? rendering.pages || [] : [];
+  const pageKeys = isBook ? ['cover_front', ...pages.map((pg) => pg.key)] : [];
+  const currentPage = isBook && pageIdx > 0 ? pages[pageIdx - 1] : null;
+  const savedPageUrl = isBook
+    ? pageIdx === 0
+      ? rendering.artwork_url
+      : currentPage?.url || null
+    : rendering.artwork_url;
+  const goToPage = (idx) => {
+    const next = Math.max(0, Math.min(pageKeys.length - 1, idx));
+    setPageIdx(next);
+    pageKeyRef.current = pageKeys[next];
+    const pg = next > 0 ? pages[next - 1] : null;
+    if (pg?.slots?.length) setActiveSlot(pg.slots[0]);
+    if (hiResRef.current) {
+      URL.revokeObjectURL(hiResRef.current);
+      hiResRef.current = null;
+    }
+    setHiResUrl(null);
+    if (dirty) schedulePreview(draft);   // the draft, on the new page
+    else setPreviewUrl(null);            // the saved page as drawn
+  };
+  // Which photo slots the picker offers: the current page's on a book, all
+  // of them on a filmstrip or the wall.
+  const visibleSlots = isBook
+    ? currentPage?.slots || []
+    : Array.from({ length: slotCount }, (_, i) => i);
+
+  const shown = previewUrl || savedPageUrl;
   const slots = rendering.editable_text || [];
 
   return (
@@ -383,6 +427,40 @@ export default function GiftWizard({
                   </span>
                 )}
               </div>
+
+              {isBook && pageKeys.length > 1 && (
+                <div className="w-full sm:flex-none">
+                  <div className="flex items-center gap-2">
+                    <button type="button" onClick={() => goToPage(pageIdx - 1)} disabled={pageIdx === 0}
+                      className="px-2 py-1 text-sm t-muted disabled:opacity-30" aria-label="Previous page">‹</button>
+                    <div className="flex-1 flex gap-1.5 overflow-x-auto py-1">
+                      {pageKeys.map((key, idx) => {
+                        const pg = idx > 0 ? pages[idx - 1] : null;
+                        const url = idx === 0 ? rendering.artwork_url : pg?.url;
+                        return (
+                          <button
+                            key={key}
+                            type="button"
+                            onClick={() => goToPage(idx)}
+                            title={idx === 0 ? 'Cover' : `Page ${idx} · ${(pg?.kind || '').replace('_', ' ')}`}
+                            className="flex-none w-12 h-12 rounded border-2 overflow-hidden bg-white text-[10px] t-muted"
+                            style={{ borderColor: idx === pageIdx ? 'var(--t-accent)' : 'var(--t-soft-ring)' }}
+                          >
+                            {url ? <img src={url} alt="" className="w-full h-full object-cover" /> : idx === 0 ? 'cover' : idx}
+                          </button>
+                        );
+                      })}
+                    </div>
+                    <button type="button" onClick={() => goToPage(pageIdx + 1)} disabled={pageIdx >= pageKeys.length - 1}
+                      className="px-2 py-1 text-sm t-muted disabled:opacity-30" aria-label="Next page">›</button>
+                  </div>
+                  <p className="text-[11px] t-muted text-center mt-1">
+                    {pageIdx === 0 ? 'The cover' : `Page ${pageIdx} of ${pages.length}`}
+                    {currentPage?.kind === 'gallery' ? ' — pick a photo below to fill it' : ''}
+                    {currentPage?.kind === 'write_in' ? ' — left blank, for a pen' : ''}
+                  </p>
+                </div>
+              )}
 
               {angles.length > 0 && (
                 <div className="w-full sm:flex-none">
@@ -492,7 +570,7 @@ export default function GiftWizard({
 
               {(products || []).length > 1 && (
                 <div>
-                  <span className="text-xs font-medium t-muted">{({ framed_print: 'Frame', ornament: 'Shape' })[item.product_kind] || 'Mug'}</span>
+                  <span className="text-xs font-medium t-muted">{({ framed_print: 'Frame', ornament: 'Shape', photo_book: 'Paper' })[item.product_kind] || 'Mug'}</span>
                   <div className="mt-1 grid grid-cols-3 gap-1.5">
                     {products.map((product, i) => {
                       const chosen = (draft.productKey || products[0].product_key)
@@ -523,24 +601,25 @@ export default function GiftWizard({
                 </div>
               )}
 
-              {(rendering.has_photo || slotCount > 0) && (
+              {(rendering.has_photo || visibleSlots.length > 0) && (
                 <div>
                   <span className="text-xs font-medium t-muted">
-                    {slotCount > 0 ? 'Photos' : 'Photo'}
+                    {visibleSlots.length > 0 ? 'Photos' : 'Photo'}
                   </span>
-                  {slotCount > 0 && (
+                  {visibleSlots.length > 0 && (
                     <>
                       <p className="text-[11px] t-faint mt-0.5">
-                        The strip plays the day in order — pick a panel, then
-                        choose its photo below.
+                        {isBook
+                          ? `This page holds ${visibleSlots.length} photo${visibleSlots.length === 1 ? '' : 's'} — pick a spot, then choose below. Upload more and more pages fill.`
+                          : 'The strip plays the day in order — pick a panel, then choose its photo below.'}
                       </p>
                       <div className="mt-1.5 grid grid-cols-4 gap-1.5">
-                        {Array.from({ length: slotCount }, (_, i) => (
+                        {visibleSlots.map((i, n) => (
                           <button
                             key={i}
                             type="button"
                             onClick={() => setActiveSlot(i)}
-                            aria-label={`Photo ${i + 1}`}
+                            aria-label={`Photo ${n + 1}`}
                             className="relative rounded overflow-hidden border-2 aspect-square"
                             style={{
                               borderColor:
@@ -561,7 +640,7 @@ export default function GiftWizard({
                               </span>
                             )}
                             <span className="absolute bottom-0.5 right-1 text-[10px] px-1 rounded bg-black/50 text-white">
-                              {i + 1}
+                              {n + 1}
                             </span>
                           </button>
                         ))}
@@ -587,12 +666,15 @@ export default function GiftWizard({
                         key={photo.media_id}
                         type="button"
                         onClick={() => {
-                          if (slotCount > 0) {
+                          if (visibleSlots.length > 0) {
                             edit({
                               slots: { ...draft.slots, [activeSlot]: photo.media_id },
                             });
-                            // filling the strip in order is the common case
-                            setActiveSlot((i) => Math.min(i + 1, slotCount - 1));
+                            // filling in order is the common case
+                            setActiveSlot((cur) => {
+                              const k = visibleSlots.indexOf(cur);
+                              return visibleSlots[Math.min(k + 1, visibleSlots.length - 1)] ?? cur;
+                            });
                           } else {
                             edit({ mediaId: photo.media_id, removed: false });
                           }
@@ -600,7 +682,7 @@ export default function GiftWizard({
                         className="block rounded overflow-hidden border-2"
                         style={{
                           borderColor: (
-                            slotCount > 0
+                            visibleSlots.length > 0
                               ? draft.slots?.[activeSlot] === photo.media_id
                               : draft.mediaId === photo.media_id && !draft.removed
                           )

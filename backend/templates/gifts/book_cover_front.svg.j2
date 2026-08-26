@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink"
+     width="{{ w }}" height="{{ h }}" viewBox="0 0 {{ w }} {{ h }}">
+{% from "_clock.svg.j2" import clock with context %}
+{# The front cover alone, square — what the gallery and the editor lead with.
+   Not a print file. #}
+  <rect x="0" y="0" width="{{ w }}" height="{{ h }}" fill="{{ p.bg }}"/>
+  {{ clock(label_size=30) }}
+  <text x="{{ w // 2 }}" y="2050" text-anchor="middle" font-family="{{ p.display_font }}"
+        font-size="{{ [child_name_size, 200]|min }}" font-weight="300" font-style="italic"
+        fill="{{ p.ink }}">{{ child_name }}</text>
+  <text x="{{ w // 2 }}" y="2150" text-anchor="middle" font-family="{{ p.body_font }}"
+        font-size="40" letter-spacing="3" fill="{{ p.ink }}" opacity="0.62">born {{ birth_date }} at {{ birth_time }}</text>
+  <text x="{{ w // 2 }}" y="{{ h - 200 }}" text-anchor="middle" font-family="{{ p.body_font }}"
+        font-size="34" letter-spacing="12" fill="{{ p.accent }}">THE DAY</text>
+</svg>

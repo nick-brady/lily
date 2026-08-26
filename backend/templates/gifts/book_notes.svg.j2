@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink"
+     width="{{ w }}" height="{{ h }}" viewBox="0 0 {{ w }} {{ h }}">
+{% from "_book.svg.j2" import eyebrow, folio with context %}
+  <rect x="0" y="0" width="{{ w }}" height="{{ h }}" fill="{{ p.bg }}"/>
+  {{ eyebrow("WHILE WE WAITED") }}
+  {% for q in book_quotes %}
+  {% for line in q.lines %}
+  <text x="{{ w // 2 }}" y="{{ q.y + loop.index0 * 74 }}" text-anchor="middle" font-family="{{ p.display_font }}"
+        font-size="62" font-style="italic" fill="{{ p.ink }}" opacity="0.85">{{ line }}</text>
+  {% endfor %}
+  <text x="{{ w // 2 }}" y="{{ q.y + q.lines|length * 74 + 6 }}" text-anchor="middle" font-family="{{ p.body_font }}"
+        font-size="26" letter-spacing="5" fill="{{ p.ink }}" opacity="0.5">{{ q.when }}</text>
+  {% endfor %}
+  {{ folio() }}
+</svg>

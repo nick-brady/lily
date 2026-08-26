@@ -139,12 +139,32 @@ SHORTLIST["ornament_oval"] = ShortlistProduct(
     mockup_options=("Front",),
 )
 
+# ── the photo book ────────────────────────────────────────────────────────
+# Hardcover 8×8, twenty-four pages, $11.23 + about $7.50 to ship. Matte is
+# the default because two of its pages are for a pen, and glossy paper takes
+# ink badly. Same price either way.
+for _key, _name, _variant in (
+    ("book_8x8_matte", "Matte pages (8×8 in hardcover)", 49376),
+    ("book_8x8_glossy", "Glossy pages (8×8 in hardcover)", 49375),
+):
+    SHORTLIST[_key] = ShortlistProduct(
+        key=_key,
+        display_name=_name,
+        product_kind="photo_book",
+        product_id=1564,
+        variant_id=_variant,
+        placement="cover",
+        blank_image_url="https://files.cdn.printful.com/products/1564/%d_1735896974.jpg" % _variant,
+        cost_cents=1123,
+    )
+
 # The product used for the default hero mockup on the gift gallery, per
 # artwork product_kind. The picker offers the rest as alternatives.
 DEFAULT_PRODUCT_BY_KIND: dict[str, str] = {
     "mug": "white_glossy_11oz",
     "framed_print": "frame_black_12x16",
     "ornament": "ornament_oval",
+    "photo_book": "book_8x8_matte",
 }
 
 

@@ -83,6 +83,7 @@ def _serialize_rendering(rendering) -> GiftRenderingOut:
         # how many slot pickers to show: what the last render actually placed
         # when it recorded that (the story fits as many photos as its line
         # holds), else the template's count
+        pages=gifts_repo.book_pages(rendering),
         photo_slot_count=(
             len((rendering.rendering_metadata or {}).get("selected_slot_media_ids") or [])
             or (template.photo_slots if template else 0)
@@ -169,6 +170,25 @@ def gift_artwork_file(
         raise HTTPException(status_code=404, detail="Unknown artwork")
     body = get_object_bytes(rendering.artwork_s3_key)
     return Response(content=body, media_type="image/png")
+
+
+@router.get("/gift-artwork/{rendering_id}/{page}.png")
+def gift_artwork_page_file(
+    rendering_id: uuid.UUID,
+    page: str,
+    exp: int,
+    sig: str,
+    db: Session = Depends(get_db),
+) -> Response:
+    """One file of a many-file design — the book's cover wrap or a page —
+    for the partner. Same credential as the single-file route."""
+    if not artwork_links.verify_artwork_sig(rendering_id, exp, sig, page):
+        raise HTTPException(status_code=403, detail="Invalid or expired link")
+    rendering = db.get(GiftRendering, rendering_id)
+    key = ((rendering.rendering_metadata or {}).get("pages") or {}).get(page) if rendering else None
+    if rendering is None or rendering.deleted_at is not None or not key:
+        raise HTTPException(status_code=404, detail="Unknown artwork")
+    return Response(content=get_object_bytes(key), media_type="image/png")
 
 
 @router.get("/gifts/catalog", response_model=list[GiftItemOut])
@@ -457,6 +477,7 @@ def preview_gift_design(
     rendering_id: uuid.UUID,
     payload: GiftDesignIn,
     full: bool = False,
+    page: str | None = None,
     access: BirthAccess = Depends(require_parent_access),
     db: Session = Depends(get_db),
 ) -> Response:
@@ -475,14 +496,29 @@ def preview_gift_design(
     rendering, template = _load_editable(db, access, rendering_id)
     _check_photo(db, access, payload, template)
     try:
-        png, _meta = gift_artwork.render(
-            access.birth,
-            template,
-            db,
-            _Draft(rendering, payload),
-            photo_max_px=None if full else _PREVIEW_PHOTO_PX,
-            output_width=None if full else _PREVIEW_W,
-        )
+        if template.scene == "book":
+            # one page at a time: the editor is looking at one
+            files, _meta = gift_artwork.render_book(
+                access.birth,
+                template,
+                db,
+                _Draft(rendering, payload),
+                only=page or "cover_front",
+                photo_max_px=None if full else _PREVIEW_PHOTO_PX,
+                output_width=None if full else _PREVIEW_W,
+            )
+            if not files:
+                raise HTTPException(status_code=404, detail="No such page")
+            png = next(iter(files.values()))
+        else:
+            png, _meta = gift_artwork.render(
+                access.birth,
+                template,
+                db,
+                _Draft(rendering, payload),
+                photo_max_px=None if full else _PREVIEW_PHOTO_PX,
+                output_width=None if full else _PREVIEW_W,
+            )
     except gift_artwork.ArtworkError as exc:
         raise HTTPException(status_code=422, detail=str(exc))
     return Response(
@@ -509,6 +545,7 @@ def preview_gift_design(
 def save_gift_design(
     rendering_id: uuid.UUID,
     payload: GiftDesignIn,
+    background_tasks: BackgroundTasks,
     access: BirthAccess = Depends(require_parent_access),
     db: Session = Depends(get_db),
 ) -> GiftRenderingOut:
@@ -524,7 +561,13 @@ def save_gift_design(
     _apply_draft(rendering, payload)
     db.commit()
 
-    gifts_repo.render_rendering(rendering.id)
+    if template.scene == "book":
+        # twenty-six files, not one — too long to hold the request open.
+        # The editor sees `pending` and waits for `ready`.
+        gifts_repo.reset_to_pending(db, birth_id=access.birth.id, rendering_id=rendering.id)
+        background_tasks.add_task(gifts_repo.render_rendering, rendering.id)
+    else:
+        gifts_repo.render_rendering(rendering.id)
     db.expire_all()
     rendering = gifts_repo.get_rendering(
         db, birth_id=access.birth.id, rendering_id=rendering_id

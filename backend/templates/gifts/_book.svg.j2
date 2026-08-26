@@ -1,0 +1,13 @@
+{# The photo book's shared pieces. Import `with context`. Pages are 2325 px
+   square (7.75 in at 300 DPI); the cover is a 5370 × 2850 wrap. #}
+{% macro eyebrow(text, y=360) %}
+  <text x="{{ w // 2 }}" y="{{ y }}" text-anchor="middle" font-family="{{ p.body_font }}"
+        font-size="36" letter-spacing="12" fill="{{ p.accent }}">{{ text }}</text>
+{% endmacro %}
+{% macro folio() %}
+  {# the page number, small, at the foot #}
+  {% if book_page_number %}
+  <text x="{{ w // 2 }}" y="{{ h - 110 }}" text-anchor="middle" font-family="{{ p.body_font }}"
+        font-size="22" letter-spacing="3" fill="{{ p.ink }}" opacity="0.35">{{ book_page_number }}</text>
+  {% endif %}
+{% endmacro %}

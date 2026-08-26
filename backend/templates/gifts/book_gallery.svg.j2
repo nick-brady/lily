@@ -1,0 +1,35 @@
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink"
+     width="{{ w }}" height="{{ h }}" viewBox="0 0 {{ w }} {{ h }}">
+{% from "_book.svg.j2" import folio with context %}
+{# One to four photos in slim mats, each with its time; a note beneath when
+   one fell in this stretch of the day. The page a parent fills slot by slot. #}
+  <defs>
+    {% for t in book_tiles %}
+    <clipPath id="tile{{ loop.index }}"><rect x="{{ t.px }}" y="{{ t.py }}" width="{{ t.pw }}" height="{{ t.ph }}"/></clipPath>
+    {% endfor %}
+  </defs>
+  <rect x="0" y="0" width="{{ w }}" height="{{ h }}" fill="{{ p.bg }}"/>
+  {% for t in book_tiles %}
+  <rect x="{{ t.x }}" y="{{ t.y }}" width="{{ t.w }}" height="{{ t.h }}" fill="#ffffff"
+        stroke="{{ p.ink }}" stroke-width="1.6" stroke-opacity="0.28"/>
+  {% if t.href %}
+  <image x="{{ t.px }}" y="{{ t.py }}" width="{{ t.pw }}" height="{{ t.ph }}"
+         preserveAspectRatio="xMidYMid slice" clip-path="url(#tile{{ loop.index }})" xlink:href="{{ t.href }}"/>
+  {% if t.stamp %}
+  <text x="{{ t.px + 22 }}" y="{{ t.py + t.ph - 20 }}" font-family="{{ p.body_font }}"
+        font-size="24" letter-spacing="4" fill="#ffffff" opacity="0.9">{{ t.stamp }}</text>
+  {% endif %}
+  {% else %}
+  {# an empty mat: in the editor this is where "add a photo" lives; in print
+     it's left as a blank mat, which is a thing a real album has #}
+  <rect x="{{ t.px }}" y="{{ t.py }}" width="{{ t.pw }}" height="{{ t.ph }}" fill="{{ p.bg }}" opacity="0.6"/>
+  {% endif %}
+  {% endfor %}
+  {% if book_note %}
+  <text x="{{ w // 2 }}" y="{{ h - 250 }}" text-anchor="middle" font-family="{{ p.display_font }}"
+        font-size="54" font-style="italic" fill="{{ p.ink }}" opacity="0.8">{{ book_note.text }}</text>
+  <text x="{{ w // 2 }}" y="{{ h - 190 }}" text-anchor="middle" font-family="{{ p.body_font }}"
+        font-size="26" letter-spacing="5" fill="{{ p.ink }}" opacity="0.5">{{ book_note.when }}</text>
+  {% endif %}
+  {{ folio() }}
+</svg>

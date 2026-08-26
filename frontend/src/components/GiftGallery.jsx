@@ -176,6 +176,7 @@ const DESIGN_ORDER = [
   'frame_wall',
   'frame_story',
   'frame_pool',
+  'book_8x8',
   'ornament_oval',
 ];
 
@@ -262,16 +263,10 @@ function CustomDesignTile({ noun }) {
 
 // What's next on the shelf, shown honestly as next: real products we've
 // priced from the catalogue but haven't drawn the artwork for yet.
-const COMING_NEXT = [
-  {
-    key: 'book',
-    icon: '📖',
-    name: 'The Day, as a Book',
-    blurb: 'A hardcover of the whole story — the clock, the photos, the words.',
-  },
-];
+const COMING_NEXT = [];
 
 function ComingNextSection() {
+  if (COMING_NEXT.length === 0) return null;
   return (
     <div>
       <div className="flex items-baseline justify-between mb-2">

@@ -38,6 +38,7 @@ from models import (
     User,
 )
 from artwork_links import signed_artwork_url
+from repositories import gifts as gifts_repo
 
 # Draft orders can sit in the Printful dashboard for days before a human
 # confirms them; the artwork link must outlive that window (7 days).
@@ -316,16 +317,23 @@ def submit_shipment(shipment_id: uuid.UUID) -> None:
             "zip": addr.get("postal_code"),
         }
         try:
-            artwork = signed_artwork_url(
-                rendering.id, expires_in=_ORDER_FILE_TTL_SECONDS
-            )
+            pages = gifts_repo.print_pages(rendering)
+            if pages:
+                # a many-file design: the cover and every page, each to its
+                # placement — the partner assembles the book from them
+                files = [
+                    {"type": page_key, "url": signed_artwork_url(rendering.id, expires_in=_ORDER_FILE_TTL_SECONDS, page=page_key)}
+                    for page_key in pages
+                ]
+            else:
+                files = [{"url": signed_artwork_url(rendering.id, expires_in=_ORDER_FILE_TTL_SECONDS)}]
             result = adapter.create_order(
                 recipient=recipient,
                 items=[
                     {
                         "variant_id": product.variant_id,
                         "quantity": 1,
-                        "files": [{"url": artwork}],
+                        "files": files,
                     }
                 ],
                 external_id=str(order.id),

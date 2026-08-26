@@ -598,6 +598,26 @@ rays: they show what was logged without asserting anything about what wasn't.
 > "not every contraction will be recorded.. the first and last may be
 > missed.. afraid that it's going to be wrong"
 
+### The photo book: twenty-four pages, a photo a page while pages last
+*2026-08-25*
+
+A hardcover 8×8 (Printful 1564), $49, matte by default because two of its
+pages are for a pen and glossy paper takes ink badly. Title → the clock → the
+pool in full (leaderboard, medal, named ruler) → the day: photos hung one to
+a page while pages last, two to four per page as the story grows, the
+family's notes on pages spread between them → the milestones → pages ruled
+for writing → a closing. A story with few photos gets more ruled pages, each
+under its own heading, not blank ones.
+
+> "add a few blank pages for people to write in … make it clear the pages
+> are for writing in"
+
+Always offered, whatever the photo count — the editor says that uploading
+more fills more pages. Copy uses the child's name, never a pronoun. The book
+is the first design that is many files (`render_book`): the cover wrap is the
+template's canvas and what the partner photographs; the pages travel with the
+order as their own files; the front face alone is what the gallery shows.
+
 ### The story is the second framed print
 *2026-08-24*
 

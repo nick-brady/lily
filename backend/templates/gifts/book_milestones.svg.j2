@@ -1,0 +1,24 @@
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink"
+     width="{{ w }}" height="{{ h }}" viewBox="0 0 {{ w }} {{ h }}">
+{% from "_book.svg.j2" import eyebrow, folio with context %}
+  <rect x="0" y="0" width="{{ w }}" height="{{ h }}" fill="{{ p.bg }}"/>
+  {{ eyebrow("THE MILESTONES") }}
+  {% for m in book_milestones %}
+  {% if m.mark %}
+  {% if m.mark.transform %}
+  <g transform="{{ m.mark.transform }}"><path d="{{ m.mark.d }}" fill="{{ p.accent }}" fill-rule="{{ m.mark.rule }}" opacity="0.85"/></g>
+  {% else %}
+  <path d="{{ m.mark.d }}" fill="none" stroke="{{ p.accent }}" stroke-width="{{ m.mark.stroke }}"
+        stroke-linejoin="round" stroke-linecap="round" opacity="0.9"/>
+  {% endif %}
+  {% endif %}
+  <text x="640" y="{{ m.y }}" font-family="{{ p.display_font }}" font-size="64" font-style="italic"
+        fill="{{ p.ink if not m.born else p.ink }}" opacity="{{ 1 if m.born else 0.85 }}">{{ m.label }}</text>
+  <text x="{{ w - 560 }}" y="{{ m.y }}" text-anchor="end" font-family="{{ p.body_font }}" font-size="32"
+        letter-spacing="4" fill="{{ p.accent if m.born else p.ink }}" opacity="{{ 1 if m.born else 0.5 }}">{{ m.when }}</text>
+  {% if not m.born %}
+  <line x1="560" y1="{{ m.y + 40 }}" x2="{{ w - 560 }}" y2="{{ m.y + 40 }}" stroke="{{ p.ink }}" stroke-width="1.5" opacity="0.15"/>
+  {% endif %}
+  {% endfor %}
+  {{ folio() }}
+</svg>

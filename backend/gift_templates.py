@@ -320,6 +320,25 @@ TEMPLATES["ornament_oval"] = GiftTemplate(
 )
 
 
+# ── the photo book — hardcover 8×8, twenty-four pages and a wrap cover ─────
+# The template's canvas is the cover wrap (the one file the partner's mockup
+# generator photographs); the pages are rendered alongside it by
+# `gift_artwork.render_book` and travel with the order as their own files.
+TEMPLATES["book_8x8"] = GiftTemplate(
+    template_id="book_8x8",
+    product_kind="photo_book",
+    svg="book_cover.svg.j2",
+    width=5370,
+    height=2850,
+    dpi=300,
+    photo=False,
+    photo_slots=96,   # an upper bound; the plan decides how many pages hold photos
+    editable_text=("child_name", "custom_line"),
+    text_widths={"child_name": (2100, 2100), "custom_line": (1900, 1900)},
+    scene="book",
+)
+
+
 def get(template_id: str) -> GiftTemplate | None:
     return TEMPLATES.get(template_id)
 

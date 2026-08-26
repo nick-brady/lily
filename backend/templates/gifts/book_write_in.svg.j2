@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink"
+     width="{{ w }}" height="{{ h }}" viewBox="0 0 {{ w }} {{ h }}">
+{% from "_book.svg.j2" import eyebrow, folio with context %}
+{# A page left for a pen. Faint rules say what it's for; the heading says
+   who it's from. Matte paper takes ink; that's why it's the default. #}
+  <rect x="0" y="0" width="{{ w }}" height="{{ h }}" fill="{{ p.bg }}"/>
+  {{ eyebrow(book_heading, 380) }}
+  <text x="{{ w // 2 }}" y="470" text-anchor="middle" font-family="{{ p.display_font }}"
+        font-size="54" font-style="italic" fill="{{ p.ink }}" opacity="0.6">{{ book_subheading }}</text>
+  {% for y in book_rules %}
+  <line x1="260" y1="{{ y }}" x2="{{ w - 260 }}" y2="{{ y }}" stroke="{{ p.ink }}" stroke-width="1.6" opacity="0.16"/>
+  {% endfor %}
+  <path d="{{ book_small_heart }}" fill="none" stroke="{{ p.accent }}" stroke-width="2.4" stroke-linejoin="round" opacity="0.6"/>
+  {{ folio() }}
+</svg>
