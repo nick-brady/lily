@@ -133,7 +133,7 @@ export default function GiftGallery({ birthId, isParent = true }) {
       ) : (
         <div className="space-y-6">
           {items
-            .filter((item) => item.kind === 'physical')
+            .filter((item) => item.kind === 'physical' && !PAIRED_KINDS.includes(item.product_kind))
             .map((item) => (
               <GiftItemCard
                 key={item.id}
@@ -143,6 +143,12 @@ export default function GiftGallery({ birthId, isParent = true }) {
                 onPhotoChanged={load}
               />
             ))}
+          <PairedRow
+            items={items.filter((item) => item.kind === 'physical' && PAIRED_KINDS.includes(item.product_kind))}
+            birthId={birthId}
+            familyHasAddress={familyHasAddress}
+            onPhotoChanged={load}
+          />
           <ComingNextSection />
           {items
             // once storage is forever there's nothing left to sell there
@@ -161,6 +167,11 @@ export default function GiftGallery({ birthId, isParent = true }) {
     </section>
   );
 }
+
+// The book and the ornament each have one design, so they share a row rather
+// than each taking a section of their own — two small things side by side
+// under the two big ones. Order here is display order.
+const PAIRED_KINDS = ['photo_book', 'ornament'];
 
 // Two designs lead each product; "see more" opens the third and the door to
 // something custom. Two reads "curated keepsakes"; a wall of them reads
@@ -287,6 +298,44 @@ function ComingNextSection() {
           </div>
         ))}
       </div>
+    </div>
+  );
+}
+
+function PairedRow({ items, birthId, familyHasAddress, onPhotoChanged }) {
+  const ordered = PAIRED_KINDS.map((k) => items.find((it) => it.product_kind === k)).filter(Boolean);
+  if (ordered.length === 0) return null;
+  return (
+    <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+      {ordered.map((item) => {
+        const usable = (item.renderings || []).filter((r) => r.status !== 'failed');
+        return (
+          <div key={item.id}>
+            <div className="flex items-baseline justify-between mb-2">
+              <span className="text-sm font-medium t-ink">{item.display_name}</span>
+              <span className="text-sm t-muted">
+                {formatPrice(item.base_price_cents)}
+                {item.is_claimed_for_family && (
+                  <span className="ml-2 text-xs" title="A family-bound copy has been gifted">
+                    Already gifted 🤍
+                  </span>
+                )}
+              </span>
+            </div>
+            {usable.length === 0 ? (
+              <p className="text-sm t-muted">No designs yet.</p>
+            ) : (
+              <RenderingTile
+                rendering={usable[0]}
+                birthId={birthId}
+                item={item}
+                familyHasAddress={familyHasAddress}
+                onPhotoChanged={onPhotoChanged}
+              />
+            )}
+          </div>
+        );
+      })}
     </div>
   );
 }
