@@ -273,6 +273,22 @@ export const api = {
     return jsonOrThrow(res);
   },
 
+  // What posting one copy to `address` costs (and the item's own price for
+  // this design). `address` may be omitted for a family copy when the
+  // parents have saved theirs.
+  async quoteShipping(birthId, renderingId, { recipientKind, address }, { signal } = {}) {
+    const res = await fetch(
+      `${API_URL}/birth/${birthId}/gifts/${renderingId}/shipping-quote`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ recipient_kind: recipientKind, address: address || null }),
+        signal,
+      },
+    );
+    return jsonOrThrow(res);
+  },
+
   async createGiftCheckout(
     birthId,
     renderingId,

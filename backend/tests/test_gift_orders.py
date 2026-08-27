@@ -176,9 +176,12 @@ class _FakeOrderSession:
     def get(self, _model, _pk):
         return self._order
 
-    def execute(self, _stmt):
+    def execute(self, stmt):
         if self._integrity:
             raise IntegrityError("claim", None, Exception("unique"))
+        # what the UPDATE would have written, for tests about the amounts
+        params = getattr(stmt, "_values", None) or {}
+        self.values = {getattr(k, "key", str(k)): v.value if hasattr(v, "value") else v for k, v in params.items()}
         return _Result(self._rowcount)
 
     def commit(self):
@@ -223,6 +226,21 @@ def test_mark_paid_winner():
     db = _FakeOrderSession(order, rowcount=1)
     outcome, _ = repo.mark_paid(db, order_id=order.id, session_obj=_session_obj(order))
     assert outcome == "paid" and db.commits == 1
+
+
+def test_mark_paid_in_a_shared_session_records_this_copys_own_price():
+    from repositories import gift_orders as repo
+
+    order = _order(session_id="cs_both")
+    order.amount_cents = 2499  # $18 mug + its own postage
+    db = _FakeOrderSession(order, rowcount=1)
+    session_obj = _session_obj(order, session_id="cs_both")
+    session_obj["amount_total"] = 4599  # the other copy's postage differed
+    outcome, _ = repo.mark_paid(
+        db, order_id=order.id, session_obj=session_obj, orders_in_session=2
+    )
+    assert outcome == "paid"
+    assert db.values["amount_cents"] == 2499
 
 
 def test_mark_paid_duplicate_is_noop():
@@ -454,8 +472,8 @@ def test_funnel_both_orders_fulfill_from_one_session(monkeypatch):
 
     seen = []
 
-    def fake_mark_paid(db, *, order_id, session_obj, charged_cents=None):
-        seen.append((order_id, charged_cents))
+    def fake_mark_paid(db, *, order_id, session_obj, orders_in_session=1):
+        seen.append((order_id, orders_in_session))
         return "paid", orders[order_id]
 
     monkeypatch.setattr(gift_fulfillment.gift_orders_repo, "mark_paid", fake_mark_paid)
@@ -477,7 +495,8 @@ def test_funnel_both_orders_fulfill_from_one_session(monkeypatch):
     assert status == "fulfilled"
     assert len(tasks.scheduled) == 2
     # each order records its share of the doubled charge
-    assert seen == [(family.id, 1800), (selfo.id, 1800)]
+    # each copy records its own price, so mark_paid is told it shares a session
+    assert seen == [(family.id, 2), (selfo.id, 2)]
     # family copy → saved address; self copy → the address Stripe collected
     by_kind = {c["order"].recipient_kind: c["address"] for c in created}
     assert by_kind["family"]["name"] == "Fam"
@@ -504,7 +523,7 @@ def test_funnel_both_family_claim_lost_refunds_half_fulfills_self(monkeypatch):
     monkeypatch.setattr(
         gift_fulfillment.gift_orders_repo,
         "mark_paid",
-        lambda db, *, order_id, session_obj, charged_cents=None: outcomes[order_id],
+        lambda db, *, order_id, session_obj, orders_in_session=1: outcomes[order_id],
     )
     refunds, marked = [], []
     monkeypatch.setattr(

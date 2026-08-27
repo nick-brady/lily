@@ -49,6 +49,12 @@ class ShortlistProduct:
     # the price on the tin; the larger and darker ones cost us $2–$3.55 more,
     # so they carry a flat surcharge rather than eating the margin.
     surcharge_cents: int = 0
+    # What posting one of these inside the US has cost, roughly, for when the
+    # partner can't be asked (their rates call is down, or no partner is
+    # configured). The live quote is the price; this is the stand-in, and an
+    # order priced from it says so (`gift_orders.shipping_estimated`). The
+    # numbers are Printful's flat US rates as quoted in Aug 2026.
+    shipping_estimate_cents: int = 700
 
 
 # Insertion order is the display order in the picker; the first is the default.
@@ -68,6 +74,7 @@ SHORTLIST: dict[str, ShortlistProduct] = {
         variant_id=1320,
         blank_image_url="https://files.cdn.printful.com/products/19/1320_1663762583.jpg",
         cost_cents=595,
+        shipping_estimate_cents=650,
     ),
     "white_glossy_15oz": ShortlistProduct(
         key="white_glossy_15oz",
@@ -78,6 +85,7 @@ SHORTLIST: dict[str, ShortlistProduct] = {
         variant_id=4830,
         blank_image_url="https://files.cdn.printful.com/products/19/4830_1519394046.jpg",
         cost_cents=795,
+        shipping_estimate_cents=750,
         surcharge_cents=300,
     ),
     "white_glossy_20oz": ShortlistProduct(
@@ -89,6 +97,7 @@ SHORTLIST: dict[str, ShortlistProduct] = {
         variant_id=16586,
         blank_image_url="https://files.cdn.printful.com/products/19/16586_1680616351.jpg",
         cost_cents=950,
+        shipping_estimate_cents=850,
         surcharge_cents=300,
     ),
     "latte_mug": ShortlistProduct(
@@ -100,6 +109,7 @@ SHORTLIST: dict[str, ShortlistProduct] = {
         variant_id=21352,
         blank_image_url="https://files.cdn.printful.com/products/837/21352_1735896974.jpg",
         cost_cents=829,
+        shipping_estimate_cents=750,
         surcharge_cents=300,
     ),
 }
@@ -128,6 +138,7 @@ for _key, _name, _variant in (
         variant_id=_variant,
         blank_image_url=_FRAME_IMAGES[_variant],
         cost_cents=3570,
+        shipping_estimate_cents=1050,
         mockup_option_groups=("Flat", "Lifestyle"),
     )
 
@@ -145,6 +156,7 @@ SHORTLIST["ornament_circle"] = ShortlistProduct(
     placement="front",
     blank_image_url="https://files.cdn.printful.com/products/881/22782_1747141509.jpg",
     cost_cents=622,
+    shipping_estimate_cents=530,
     mockup_option_groups=("Flat", "Lifestyle"),
     mockup_options=("Front",),
 )
@@ -167,6 +179,7 @@ for _key, _name, _variant, _image in (
         placement="cover",
         blank_image_url=_image,
         cost_cents=1123,
+        shipping_estimate_cents=750,
         mockup_options=("Front", "Back"),   # the closed book, both sides
     )
 

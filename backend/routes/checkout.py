@@ -20,6 +20,7 @@ from sqlalchemy.orm import Session
 
 import address_validation
 import gift_fulfillment
+import gift_shipping
 import payments
 from auth import get_current_user
 from db import get_db
@@ -43,6 +44,8 @@ from schemas import (
     GiftOrderAdminOut,
     ShippingAddressIn,
     ShippingAddressOut,
+    ShippingQuoteIn,
+    ShippingQuoteOut,
     StorageGiftCheckoutIn,
 )
 
@@ -159,9 +162,23 @@ def create_gift_checkout(
         )
     self_address = _checked(payload.self_address, "your address") if wants_self else None
 
+    # Bigger and darker mugs cost us more, so the choice carries a flat
+    # surcharge. Priced off the rendering rather than the request: what ships
+    # is what the design says, so what's charged should be too.
+    product = fulfillment_products.for_rendering(
+        getattr(rendering, "product_key", None), item.product_kind
+    )
+    item_cents = item.base_price_cents + fulfillment_products.surcharge_for(
+        getattr(rendering, "product_key", None)
+    )
+    # Postage, per parcel, for the address it's going to — the partner bills
+    # us for every one, so every one is charged. Quoted now and written onto
+    # the order, so the number on the pay button, the Stripe line and the
+    # record all say the same thing.
     message = (payload.gift_message or "").strip() or None
     orders = []
     if wants_family:
+        postage = gift_shipping.quote(product, family_address)
         orders.append(
             gift_orders_repo.create_pending_order(
                 db,
@@ -172,9 +189,13 @@ def create_gift_checkout(
                 recipient_kind="family",
                 gift_message=message,
                 shipping_address=family_address,
+                item_cents=item_cents,
+                shipping_cents=postage.cents,
+                shipping_estimated=postage.estimated,
             )
         )
     if wants_self:
+        postage = gift_shipping.quote(product, self_address)
         orders.append(
             gift_orders_repo.create_pending_order(
                 db,
@@ -185,14 +206,12 @@ def create_gift_checkout(
                 recipient_kind="self",
                 gift_message=None if wants_family else message,
                 shipping_address=self_address,
+                item_cents=item_cents,
+                shipping_cents=postage.cents,
+                shipping_estimated=postage.estimated,
             )
         )
-    # Bigger and darker mugs cost us more, so the choice carries a flat
-    # surcharge. Priced off the rendering rather than the request: what ships
-    # is what the design says, so what's charged should be too.
-    amount_cents = item.base_price_cents + fulfillment_products.surcharge_for(
-        getattr(rendering, "product_key", None)
-    )
+    shipping_cents = sum(order.shipping_cents for order in orders)
     # Stripe takes the payment; it no longer takes the destination. It never
     # needed one — Printful ships the mug — and its page can only hold a
     # single address, which is what made two parcels in one payment
@@ -205,11 +224,13 @@ def create_gift_checkout(
             user_id=str(current_user.id),
             slug=access.birth.slug,
             product_name=item.display_name,
-            amount_cents=amount_cents,
+            amount_cents=item_cents,
             collect_shipping=collect_shipping,
             allowed_countries=payments.gift_shipping_countries(),
             quantity=len(orders),
             extra_order_id=str(orders[1].id) if len(orders) > 1 else None,
+            shipping_cents=shipping_cents,
+            shipping_label="Shipping" if len(orders) == 1 else "Shipping (2 parcels)",
         )
     except payments.StripeError:
         # the pending rows are inert; leave them
@@ -305,6 +326,52 @@ async def confirm_gift(
         db, stripe, session, background_tasks, raise_on_refund_error=False
     )
     return GiftConfirmOut(status=status)
+
+
+@router.post(
+    "/birth/{birth_id}/gifts/{rendering_id}/shipping-quote",
+    response_model=ShippingQuoteOut,
+)
+def quote_shipping(
+    rendering_id: uuid.UUID,
+    payload: ShippingQuoteIn,
+    access: BirthAccess = Depends(require_birth_access),
+    db: Session = Depends(get_db),
+) -> ShippingQuoteOut:
+    """What posting this design to one address will cost, before anyone pays.
+
+    The same quote the checkout takes, so the sheet's total and Stripe's
+    agree. A family copy to the parents' saved address is priced without the
+    address ever leaving the server. Any family member may ask: buyers are
+    viewers."""
+    rendering = load_rendering_for_products(db, access, rendering_id)
+    item = db.get(GiftCatalogItem, rendering.gift_catalog_item_id)
+    product = (
+        fulfillment_products.for_rendering(
+            getattr(rendering, "product_key", None), item.product_kind
+        )
+        if item is not None
+        else None
+    )
+    if product is None:
+        raise HTTPException(status_code=409, detail={"code": "not_purchasable"})
+    if payload.recipient_kind == "family" and access.birth.shipping_address:
+        address = dict(access.birth.shipping_address)
+    else:
+        address = _checked(
+            payload.address,
+            "the family's address" if payload.recipient_kind == "family" else "your address",
+        )
+    postage = gift_shipping.quote(product, address)
+    return ShippingQuoteOut(
+        shipping_cents=postage.cents,
+        estimated=postage.estimated,
+        service=postage.service,
+        item_cents=item.base_price_cents
+        + fulfillment_products.surcharge_for(getattr(rendering, "product_key", None)),
+        min_days=postage.min_days,
+        max_days=postage.max_days,
+    )
 
 
 @router.post(

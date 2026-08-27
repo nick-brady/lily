@@ -35,6 +35,8 @@ from fulfillment.base import (
     MockupResult,
     OrderError,
     OrderResult,
+    RateError,
+    ShippingRate,
 )
 
 _BASE_URL = "https://api.printful.com"
@@ -179,6 +181,47 @@ class PrintfulAdapter(FulfillmentAdapter):
         except httpx.HTTPError as exc:
             raise OrderError(f"printful order: {exc}") from exc
 
+    def shipping_rate(self, *, recipient: dict, items: list[dict]) -> ShippingRate:
+        """POST /shipping/rates. Printful quotes every service it can offer
+        (STANDARD, and sometimes an express tier); we ship by the cheapest,
+        so that is the one we charge for. Rates come back as dollar strings."""
+        body = {
+            "recipient": {
+                "address1": recipient.get("address1"),
+                "city": recipient.get("city"),
+                "country_code": recipient.get("country_code") or "US",
+                "state_code": recipient.get("state_code") or "",
+                "zip": recipient.get("zip"),
+            },
+            "items": [
+                {"variant_id": it["variant_id"], "quantity": it.get("quantity", 1)}
+                for it in items
+            ],
+            "currency": "USD",
+        }
+        try:
+            resp = self._client.post("/shipping/rates", json=body)
+            resp.raise_for_status()
+            options = (resp.json() or {}).get("result") or []
+        except httpx.HTTPError as exc:
+            raise RateError(f"printful shipping rates: {exc}") from exc
+        priced = []
+        for opt in options:
+            try:
+                cents = int(round(float(opt.get("rate")) * 100))
+            except (TypeError, ValueError):
+                continue
+            priced.append((cents, opt))
+        if not priced:
+            raise RateError("printful offered no shipping service to this address")
+        cents, opt = min(priced, key=lambda pair: pair[0])
+        return ShippingRate(
+            cents=cents,
+            name=str(opt.get("name") or opt.get("id") or "Standard"),
+            min_days=_int_or_none(opt.get("minDeliveryDays")),
+            max_days=_int_or_none(opt.get("maxDeliveryDays")),
+        )
+
     def _create_task(
         self,
         *,
@@ -283,3 +326,10 @@ class PrintfulAdapter(FulfillmentAdapter):
         return MockupResult(
             image_bytes=image_bytes, content_type=content_type, source_url=url
         )
+
+
+def _int_or_none(value) -> int | None:
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None

@@ -691,6 +691,43 @@ function Recipient({ label, hint, checked, disabled = false, onChange, open, chi
 }
 
 
+// One parcel's postage, asked for once its address is whole and again when
+// the address changes — a moment after the last keystroke, not on each one.
+// Never a wall: if the quote fails the button still works, and the checkout
+// prices the parcel itself.
+function useShippingQuote(birthId, renderingId, recipientKind, ready, address) {
+  const [state, setState] = useState({ loading: false, quote: null });
+  const addressKey = address ? JSON.stringify(address) : '';
+  useEffect(() => {
+    if (!ready) {
+      setState({ loading: false, quote: null });
+      return undefined;
+    }
+    const controller = new AbortController();
+    setState((s) => ({ ...s, loading: true }));
+    const timer = setTimeout(async () => {
+      try {
+        const quote = await api.quoteShipping(
+          birthId,
+          renderingId,
+          { recipientKind, address: address || null },
+          { signal: controller.signal },
+        );
+        setState({ loading: false, quote });
+      } catch (err) {
+        if (err?.name !== 'AbortError') setState({ loading: false, quote: null });
+      }
+    }, 400);
+    return () => {
+      clearTimeout(timer);
+      controller.abort();
+    };
+    // addressKey stands in for the address object, which is rebuilt on every edit
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [birthId, renderingId, recipientKind, ready, addressKey]);
+  return state;
+}
+
 // Recipient, note, pay. Its own sheet from the tile's fast lane, or the last
 // pane of the customise wizard — `embedded` drops the overlay and panel so it
 // can sit inside one that already exists.
@@ -720,6 +757,31 @@ function GiftCheckoutSheet({
   const missingAddress =
     (needFamilyAddress && !addressComplete(familyAddress)) ||
     (toSelf && !addressComplete(selfAddress));
+
+  // Postage is quoted per parcel as soon as its address is whole — the same
+  // quote the checkout takes, so the total here is the total Stripe shows.
+  // Two quotes because two parcels to two places can cost differently.
+  const familyQuote = useShippingQuote(
+    birthId,
+    rendering.id,
+    'family',
+    toFamily && (familyHasAddress || addressComplete(familyAddress)),
+    familyHasAddress ? null : familyAddress,
+  );
+  const selfQuote = useShippingQuote(
+    birthId,
+    rendering.id,
+    'self',
+    toSelf && addressComplete(selfAddress),
+    selfAddress,
+  );
+  const quotes = [toFamily ? familyQuote : null, toSelf ? selfQuote : null].filter(Boolean);
+  const quoting = quotes.some((q) => q.loading);
+  const priced = copies > 0 && !missingAddress && quotes.every((q) => q.quote);
+  const itemCents = quotes.find((q) => q.quote)?.quote.item_cents ?? item.base_price_cents;
+  const shippingCents = quotes.reduce((sum, q) => sum + (q.quote?.shipping_cents || 0), 0);
+  const totalCents = itemCents * copies + shippingCents;
+  const estimated = quotes.some((q) => q.quote?.estimated);
 
   async function startCheckout() {
     setStarting(true);
@@ -754,7 +816,7 @@ function GiftCheckoutSheet({
         <h2 className="text-base font-semibold text-gray-800 dark:text-white">
           {item.display_name}
         </h2>
-        <p className="text-xs t-muted mt-1">Shipping included · US addresses only.</p>
+        <p className="text-xs t-muted mt-1">Ships within the US.</p>
       </div>
 
       {error && (
@@ -811,6 +873,38 @@ function GiftCheckoutSheet({
         </label>
       )}
 
+      {copies > 0 && (
+        <dl className="text-xs t-muted space-y-1 px-1">
+          <div className="flex justify-between">
+            <dt>
+              {item.display_name}
+              {copies > 1 ? ` × ${copies}` : ''}
+            </dt>
+            <dd className="t-ink">{formatPrice(itemCents * copies)}</dd>
+          </div>
+          <div className="flex justify-between">
+            <dt>
+              Shipping{copies > 1 ? ' (2 parcels)' : ''}
+              {estimated ? ' · estimated' : ''}
+            </dt>
+            <dd className="t-ink">
+              {priced
+                ? formatPrice(shippingCents)
+                : quoting
+                  ? 'Checking…'
+                  : 'Add the address to see'}
+            </dd>
+          </div>
+          <div
+            className="flex justify-between pt-1 border-t font-medium t-ink"
+            style={{ borderColor: 'var(--t-soft-ring)' }}
+          >
+            <dt>Total</dt>
+            <dd>{priced ? formatPrice(totalCents) : '—'}</dd>
+          </div>
+        </dl>
+      )}
+
       <button
         type="button"
         onClick={startCheckout}
@@ -824,7 +918,9 @@ function GiftCheckoutSheet({
             ? 'Pick who this is for'
             : missingAddress
               ? 'Add the address above to continue'
-              : 'Continue to checkout'}
+              : priced
+                ? `Continue to checkout · ${formatPrice(totalCents)}`
+                : 'Continue to checkout'}
       </button>
       <button
         type="button"

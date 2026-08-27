@@ -37,13 +37,14 @@ async def fulfill_gift_from_session(
     order_ids = [uuid.UUID(metadata["order_id"])]
     if metadata.get("order_id_2"):  # a "both" purchase — two copies, one session
         order_ids.append(uuid.UUID(metadata["order_id_2"]))
-    # each order records its own share of the charge, not the session total
-    share = (session_obj.get("amount_total") or 0) // len(order_ids) or None
-
     statuses = []
     for order_id in order_ids:
+        # each order records its own share of the charge, not the session total
         outcome, order = gift_orders_repo.mark_paid(
-            db, order_id=order_id, session_obj=session_obj, charged_cents=share
+            db,
+            order_id=order_id,
+            session_obj=session_obj,
+            orders_in_session=len(order_ids),
         )
         if outcome == "paid":
             birth = db.get(Birth, order.birth_id)
@@ -107,3 +108,4 @@ async def fulfill_gift_from_session(
         if status in statuses:
             return status
     return "already_processed"
+
