@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink"
+     width="{{ w }}" height="{{ h }}" viewBox="0 0 {{ w }} {{ h }}">
+{# A ceramic circle, 3.2 in across at 300 DPI, die-cut from this square with
+   a hanging hole at the top. Her picture fills it — the photo nearest the
+   moment she arrived, unless the parents choose another — with her name and
+   the day at the foot on a soft scrim. Nothing sits in the top fifth, where
+   the hole and its notch are. #}
+  <defs>
+    <linearGradient id="foot" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0.55" stop-color="#0c0a10" stop-opacity="0"/>
+      <stop offset="1" stop-color="#0c0a10" stop-opacity="0.62"/>
+    </linearGradient>
+  </defs>
+  <rect x="0" y="0" width="{{ w }}" height="{{ h }}" fill="#ffffff"/>
+  {% if photo_data_uri %}
+  <image x="0" y="0" width="{{ w }}" height="{{ h }}" preserveAspectRatio="xMidYMid slice"
+         xlink:href="{{ photo_data_uri }}"/>
+  <rect x="0" y="0" width="{{ w }}" height="{{ h }}" fill="url(#foot)"/>
+  {% endif %}
+  <text x="{{ w // 2 }}" y="{{ h - 190 }}" text-anchor="middle" font-family="{{ p.display_font }}"
+        font-size="{{ [child_name_size, 92]|min }}" font-weight="300" font-style="italic"
+        fill="#ffffff">{{ child_name }}</text>
+  <text x="{{ w // 2 }}" y="{{ h - 140 }}" text-anchor="middle" font-family="{{ p.body_font }}"
+        font-size="22" letter-spacing="3" fill="#ffffff" opacity="0.9">born {{ birth_date }}</text>
+</svg>

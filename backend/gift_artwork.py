@@ -169,10 +169,10 @@ def build_context(
         "photo_data_uri": photo_data_uri,
     }
 
-    if layout.scene in ("hours", "hours_photo", "orbit", "ornament"):
+    if layout.scene in ("hours", "hours_photo", "orbit"):
         context["clock_cx"] = layout.clock_cx or layout.width / 2
         context["clock_cy"] = layout.clock_cy or layout.height / 2
-    if layout.scene in ("hours", "hours_photo", "ornament"):
+    if layout.scene in ("hours", "hours_photo"):
         context.update(
             build_hours_clock(
                 durations=stats.durations,
@@ -480,7 +480,23 @@ def _photo_for(
             # A photo deleted since it was chosen shouldn't break the render.
             if chosen is not None and chosen.archived_at is None:
                 return chosen
+    if template.photo_pick == "nearest":
+        return _select_nearest_photo(db, birth) or _select_hero_photo(db, birth)
     return _select_hero_photo(db, birth)
+
+
+def _select_nearest_photo(db: Session, birth: Birth) -> MediaAsset | None:
+    """The timeline photo taken closest to the moment of birth, before or
+    after — by when it happened, not when it was uploaded."""
+    born = birth.child_dob or birth.birth_completed_at
+    if born is None:
+        return None
+    refs = _reel_refs(db, birth)
+    if not refs:
+        return None
+    born_l = _localize(born)
+    best = min(refs, key=lambda r: abs((r["occurred_at"] - born_l).total_seconds()) if r["occurred_at"] else float("inf"))
+    return best["asset"]
 
 
 def _select_hero_photo(db: Session, birth: Birth) -> MediaAsset | None:
@@ -1159,8 +1175,6 @@ CLOCK_PRESETS: dict[str, dict] = {
     # rings are built inward from r_in.
     "hours_photo": {"r_ring": 460.0, "r_in": 205.0, "len_lo": 80.0, "len_hi": 225.0},
     "orbit": {"r_ring": 420.0, "r_in": 190.0, "len_lo": 70.0, "len_hi": 190.0},
-    # the ornament: the whole dial in a 3.9 in wide oval, at 150 DPI
-    "ornament": {"r_ring": 150.0, "r_in": 68.0, "len_lo": 26.0, "len_hi": 74.0},
 }
 # Hero-photo radius inside the hours_photo face (hairline ring sits just out).
 CLOCK_PHOTO_R = 195.0

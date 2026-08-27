@@ -61,10 +61,10 @@ def _context(template):
         "labor_start_time": "7:04 pm",
         "photo_data_uri": _PIXEL if template.photo else None,
     }
-    if template.scene in ("hours", "hours_photo", "orbit", "ornament"):
+    if template.scene in ("hours", "hours_photo", "orbit"):
         ctx["clock_cx"] = template.clock_cx or template.width / 2
         ctx["clock_cy"] = template.clock_cy or template.height / 2
-    if template.scene in ("hours", "hours_photo", "ornament"):
+    if template.scene in ("hours", "hours_photo"):
         ctx.update(
             gift_artwork.build_hours_clock(
                 durations=durations,

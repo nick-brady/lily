@@ -598,6 +598,20 @@ rays: they show what was logged without asserting anything about what wasn't.
 > "not every contraction will be recorded.. the first and last may be
 > missed.. afraid that it's going to be wrong"
 
+### The ornament is a ceramic photo circle, not a wooden dial
+*2026-08-26*
+
+The first ornament was a wooden oval carrying the labor clock. At three
+inches a photo of the baby is the better ornament, and ceramic (Printful 881,
+circle) takes a photo where wood took ink badly. Her picture fills the disc,
+her name and the day at the foot on a soft scrim. The photo starts as the one
+taken **nearest the moment of birth** — before or after — rather than the
+first one after, and can be changed but not removed (without it the ornament
+is a blank white disc). Still $24.
+
+> "that's a much better ornament for the baby.. and it should be a photo on
+> it.. probably the one right before or after birth (closest one)"
+
 ### The photo book: twenty-four pages, a photo a page while pages last
 *2026-08-25*
 

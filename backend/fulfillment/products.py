@@ -132,19 +132,19 @@ for _key, _name, _variant in (
     )
 
 # ── ornaments ─────────────────────────────────────────────────────────────
-# Wooden, die-cut, printed on the front. One shape for now — the oval is the
-# only one our design is fitted to; the others share the print file but not
-# the silhouette. $8.21 + about $5 to ship.
-SHORTLIST["ornament_oval"] = ShortlistProduct(
-    key="ornament_oval",
-    display_name="Oval wooden ornament",
-    caption="Oval",
+# A ceramic circle, printed edge to edge on the front. $6.22 + about $5.30
+# to ship. (A wooden oval with the dial on it came first; a photo of the
+# baby beats a dial at three inches, and ceramic takes a photo.)
+SHORTLIST["ornament_circle"] = ShortlistProduct(
+    key="ornament_circle",
+    display_name="Ceramic ornament (circle)",
+    caption="Circle",
     product_kind="ornament",
-    product_id=634,
-    variant_id=16091,
+    product_id=881,
+    variant_id=22782,
     placement="front",
-    blank_image_url="https://files.cdn.printful.com/products/634/16091_1661492451.jpg",
-    cost_cents=821,
+    blank_image_url="https://files.cdn.printful.com/products/881/22782_1747141509.jpg",
+    cost_cents=622,
     mockup_option_groups=("Flat", "Lifestyle"),
     mockup_options=("Front",),
 )
@@ -175,7 +175,7 @@ for _key, _name, _variant, _image in (
 DEFAULT_PRODUCT_BY_KIND: dict[str, str] = {
     "mug": "white_glossy_11oz",
     "framed_print": "frame_black_12x16",
-    "ornament": "ornament_oval",
+    "ornament": "ornament_circle",
     "photo_book": "book_8x8_matte",
 }
 

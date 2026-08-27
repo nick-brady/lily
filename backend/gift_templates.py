@@ -32,6 +32,11 @@ class GiftTemplate:
     # framed box. Designs where the photo is an accent render fine without it,
     # and only those offer "remove" in the picker.
     photo_required: bool = False
+    # Which photo the design starts with before anyone chooses: "hero" is the
+    # first visible photo at or after the birth; "nearest" is the one taken
+    # closest to the moment of birth, before or after — right for a single
+    # portrait, where the newest newborn picture is the one wanted.
+    photo_pick: str = "hero"
     # Where the photo sits in the artwork, as a fraction of the canvas
     # (cx, cy, r). The editor lays a "change photo" hotspot over exactly this
     # spot, so you click her face on the design instead of a link in a list.
@@ -299,24 +304,23 @@ for _fid, _inner, _box in (
     TEMPLATES[_fid] = _framed(_fid, _inner, _box)
 
 
-# ── ornaments — wooden, die-cut; the oval is 3.9 × 6.3 in at 150 DPI ──────
-# Printed straight onto the wood, so the template draws no page colour. Only
-# the oval for now: each other shape (heart, star, tree, bell, stocking) needs
-# a layout fitted to its own silhouette, and the die-cut forgives nothing.
-TEMPLATES["ornament_oval"] = GiftTemplate(
-    template_id="ornament_oval",
+# ── ornaments — a ceramic circle, 3.2 in across at 300 DPI ────────────────
+# Her picture, full bleed, with her name at the foot. The photo starts as the
+# one taken nearest the moment she arrived and can't be removed: without it
+# the ornament is a blank white disc.
+TEMPLATES["ornament_circle"] = GiftTemplate(
+    template_id="ornament_circle",
     product_kind="ornament",
-    svg="ornament_oval.svg.j2",
-    width=585,
-    height=945,
-    dpi=150,
-    photo=False,
-    editable_text=("child_name", "custom_line"),
-    # the safe ellipse is ~480 px wide at the name's height, less at the line's
-    text_widths={"child_name": (420, 420), "custom_line": (340, 340)},
-    scene="ornament",
-    clock_cx=292,
-    clock_cy=400,
+    svg="ornament_circle.svg.j2",
+    width=954,
+    height=954,
+    dpi=300,
+    photo=True,
+    photo_required=True,
+    photo_pick="nearest",
+    photo_spot=(0.5, 0.5, 0.5),
+    editable_text=("child_name",),
+    text_widths={"child_name": (720, 720)},
 )
 
 

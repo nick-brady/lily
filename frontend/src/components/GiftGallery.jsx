@@ -188,7 +188,7 @@ const DESIGN_ORDER = [
   'frame_story',
   'frame_pool',
   'book_8x8',
-  'ornament_oval',
+  'ornament_circle',
 ];
 
 
@@ -498,11 +498,11 @@ function RenderingTile({
   // Anything that isn't a wide mug strip lays out sideways — artwork left,
   // the product shots stacked right — so tiles that share a row share a
   // height. The frame's art is cropped to its mat opening; the book's cover
-  // face is square; the ornament is its own tall oval.
+  // face and the ornament are square.
   const kind = item?.product_kind;
   const portrait = kind === 'framed_print' || kind === 'ornament' || kind === 'photo_book';
   const cropToOpening = kind === 'framed_print';
-  const artAspect = cropToOpening ? 'aspect-[15/23]' : kind === 'photo_book' ? 'aspect-square' : 'aspect-[585/945]';
+  const artAspect = cropToOpening ? 'aspect-[15/23]' : 'aspect-square';   // the book's face and the ornament are both square
 
   return (
     <div
