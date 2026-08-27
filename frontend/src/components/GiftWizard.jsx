@@ -60,11 +60,24 @@ export default function GiftWizard({
     ),
     text: { ...(initialRendering.text_overrides || {}) },
     productKey: initialRendering.product_key || null,
+    // the book's middle section as the parent arranged it; null = automatic
+    pages: initialRendering.layout_overrides?.pages ?? null,
+    // the part of each placed photo that shows; absent = the centre fills the frame
+    crop: { ...(initialRendering.photo_crop || {}) },
   }));
   const slotCount = initialRendering.photo_slot_count || 0;
   const noun = PRODUCT_NOUN[item.product_kind] || 'product';
   // Which panel the story grid is currently choosing for.
   const [activeSlot, setActiveSlot] = useState(0);
+  // The book is many pages. The editor shows one at a time — the cover, then
+  // page 1..24 — and only that page's photo slots. `pageIdx` 0 is the cover.
+  const isBook = item.product_kind === 'photo_book';
+  const [pageIdx, setPageIdx] = useState(0);
+  const pageKeyRef = useRef('cover_front');
+  // The plan the strip shows. The saved rendering's until the parent adds,
+  // removes or moves a page; then the server's plan for the draft, fetched
+  // without drawing anything.
+  const [planPages, setPlanPages] = useState(null);
   const [products, setProducts] = useState(null);
   const [dirty, setDirty] = useState(false);
   const [previewUrl, setPreviewUrl] = useState(null);
@@ -156,7 +169,7 @@ export default function GiftWizard({
             birthId,
             rendering.id,
             next,
-            { signal: controller.signal },
+            { signal: controller.signal, page: isBook ? pageKeyRef.current : undefined },
           );
           if (urlRef.current) URL.revokeObjectURL(urlRef.current);
           urlRef.current = url;
@@ -200,8 +213,9 @@ export default function GiftWizard({
   // default is the one time re-resolving is the point. Nothing is saved
   // until Next, so this too can be walked away from.
   const resetToDefault = () => {
-    const next = { mediaId: null, removed: false, slots: {}, text: {}, productKey: null };
+    const next = { mediaId: null, removed: false, slots: {}, text: {}, productKey: null, pages: null, crop: {} };
     setDraft(next);
+    setPlanPages(null);
     setActiveSlot(0);
     if (hiResRef.current) {
       URL.revokeObjectURL(hiResRef.current);
@@ -236,7 +250,7 @@ export default function GiftWizard({
     try {
       const added = await api.uploadGiftPhoto(birthId, file);
       setPhotos((rows) => [...(rows || []), added]);
-      if (slotCount > 0) {
+      if (visibleSlots.length > 0) {
         edit({ slots: { ...draft.slots, [activeSlot]: added.media_id } });
       } else {
         edit({ mediaId: added.media_id, removed: false });
@@ -289,7 +303,16 @@ export default function GiftWizard({
     setSaving(true);
     setError('');
     try {
-      const saved = await api.saveGiftDesign(birthId, rendering.id, draft);
+      let saved = await api.saveGiftDesign(birthId, rendering.id, draft);
+      // The book renders its twenty-six files in the background; wait for it
+      // here rather than moving on with a design that isn't drawn yet.
+      for (let i = 0; saved?.status === 'pending' && i < 60; i += 1) {
+        await new Promise((r) => setTimeout(r, 2500));
+        saved = (await refetch()) || saved;
+      }
+      if (saved?.status === 'failed') {
+        throw new Error("The book couldn't be drawn — your changes are kept.");
+      }
       setRendering(saved);
       setDirty(false);
       onChanged?.();
@@ -302,7 +325,84 @@ export default function GiftWizard({
     }
   };
 
-  const shown = previewUrl || rendering.artwork_url;
+  // The book: its pages, and which one is on screen. `pages` is the saved
+  // plan — kind and slots per page — with a URL once each has been drawn.
+  const pages = isBook ? planPages || rendering.pages || [] : [];
+  const pageKeys = isBook ? ['cover_front', ...pages.map((pg) => pg.key)] : [];
+  const currentPage = isBook && pageIdx > 0 ? pages[pageIdx - 1] : null;
+  const savedPageUrl = isBook
+    ? pageIdx === 0
+      ? rendering.artwork_url
+      : currentPage?.url || null
+    : rendering.artwork_url;
+  const goToPage = (idx) => {
+    const next = Math.max(0, Math.min(pageKeys.length - 1, idx));
+    setPageIdx(next);
+    pageKeyRef.current = pageKeys[next];
+    const pg = next > 0 ? pages[next - 1] : null;
+    if (pg?.slots?.length) setActiveSlot(pg.slots[0]);
+    if (hiResRef.current) {
+      URL.revokeObjectURL(hiResRef.current);
+      hiResRef.current = null;
+    }
+    setHiResUrl(null);
+    if (dirty) schedulePreview(draft);   // the draft, on the new page
+    else setPreviewUrl(null);            // the saved page as drawn
+  };
+  // The book's middle section as the parent arranges it. Starting from the
+  // plan on screen (its editable pages), each change is sent for a fresh
+  // plan so the strip and the slots follow — nothing is drawn until Next.
+  const arrangement = () =>
+    draft.pages ?? pages.filter((pg) => pg.editable).map((pg) => ({ kind: pg.kind, count: pg.count }));
+  const rearrange = async (next, focusKeyIdx = null) => {
+    const draftNext = { ...draft, pages: next };
+    setDraft(draftNext);
+    setDirty(true);
+    try {
+      const { pages: fresh } = await api.bookPlan(birthId, rendering.id, draftNext);
+      setPlanPages(fresh.map((pg) => ({ ...pg, url: null })));   // not drawn yet
+      const keys = ['cover_front', ...fresh.map((pg) => pg.key)];
+      const idx = focusKeyIdx == null ? Math.min(pageIdx, keys.length - 1) : Math.max(0, Math.min(keys.length - 1, focusKeyIdx));
+      setPageIdx(idx);
+      pageKeyRef.current = keys[idx];
+      const pg = idx > 0 ? fresh[idx - 1] : null;
+      if (pg?.slots?.length) setActiveSlot(pg.slots[0]);
+      schedulePreview(draftNext);
+    } catch (err) {
+      setError(err.message || "Couldn't rearrange the pages");
+    }
+  };
+  // index of the current page within the editable section, or -1
+  const editableIdx = currentPage?.editable ? pages.filter((pg) => pg.editable).indexOf(currentPage) : -1;
+  const addPage = (spec) => {
+    const day = arrangement();
+    const at = editableIdx >= 0 ? editableIdx + 1 : day.length;
+    day.splice(at, 0, spec);
+    // the first fixed page after the head is page_1 + head; the new page sits after the current one
+    rearrange(day, editableIdx >= 0 ? pageIdx + 1 : pageIdx);
+  };
+  const removePage = () => {
+    if (editableIdx < 0) return;
+    const day = arrangement();
+    day.splice(editableIdx, 1);
+    rearrange(day, pageIdx);
+  };
+  const movePage = (dir) => {
+    if (editableIdx < 0) return;
+    const day = arrangement();
+    const to = editableIdx + dir;
+    if (to < 0 || to >= day.length) return;
+    [day[editableIdx], day[to]] = [day[to], day[editableIdx]];
+    rearrange(day, pageIdx + dir);
+  };
+
+  // Which photo slots the picker offers: the current page's on a book, all
+  // of them on a filmstrip or the wall.
+  const visibleSlots = isBook
+    ? currentPage?.slots || []
+    : Array.from({ length: slotCount }, (_, i) => i);
+
+  const shown = previewUrl || savedPageUrl;
   const slots = rendering.editable_text || [];
 
   return (
@@ -350,7 +450,7 @@ export default function GiftWizard({
         )}
 
         {step === 0 && (
-          <div className="flex-1 min-h-0 overflow-y-auto sm:overflow-visible grid sm:grid-cols-[3fr_1fr]">
+          <div className="flex-1 min-h-0 overflow-y-auto sm:overflow-visible grid sm:grid-cols-[minmax(0,3fr)_minmax(0,1fr)]">
             {/* The artwork leads and updates as you type; the product shots sit
                 beneath it, real but honest about being behind.
 
@@ -360,7 +460,10 @@ export default function GiftWizard({
                 all. So the artwork takes whatever height is left after the
                 product strip, and the options column scrolls on its own. */}
             <div
-              className="flex flex-col items-center gap-4 p-6 sm:min-h-0"
+              // min-w-0: a grid column's default min-width is its content's,
+              // so a 25-thumbnail page strip would widen this column past the
+              // modal rather than scroll inside it
+              className="flex flex-col items-center gap-4 p-6 sm:min-h-0 min-w-0"
               style={{ backgroundColor: 'var(--t-soft-bg)' }}
             >
               <div className="relative w-full sm:flex-1 sm:min-h-0 flex items-center justify-center">
@@ -383,6 +486,67 @@ export default function GiftWizard({
                   </span>
                 )}
               </div>
+
+              {isBook && pageKeys.length > 1 && (
+                <div className="w-full min-w-0 sm:flex-none">
+                  <div className="flex items-center gap-2">
+                    <button type="button" onClick={() => goToPage(pageIdx - 1)} disabled={pageIdx === 0}
+                      className="px-2 py-1 text-sm t-muted disabled:opacity-30" aria-label="Previous page">‹</button>
+                    <div className="flex-1 min-w-0 flex gap-1.5 overflow-x-auto py-1">
+                      {pageKeys.map((key, idx) => {
+                        const pg = idx > 0 ? pages[idx - 1] : null;
+                        const url = idx === 0 ? rendering.artwork_url : pg?.url;
+                        return (
+                          <button
+                            key={key}
+                            type="button"
+                            onClick={() => goToPage(idx)}
+                            title={idx === 0 ? 'Cover' : `Page ${idx} · ${(pg?.kind || '').replace('_', ' ')}`}
+                            className="flex-none w-12 h-12 rounded border-2 overflow-hidden bg-white text-[10px] t-muted"
+                            style={{ borderColor: idx === pageIdx ? 'var(--t-accent)' : 'var(--t-soft-ring)' }}
+                          >
+                            {url ? <img src={url} alt="" className="w-full h-full object-cover" /> : idx === 0 ? 'cover' : idx}
+                          </button>
+                        );
+                      })}
+                    </div>
+                    <button type="button" onClick={() => goToPage(pageIdx + 1)} disabled={pageIdx >= pageKeys.length - 1}
+                      className="px-2 py-1 text-sm t-muted disabled:opacity-30" aria-label="Next page">›</button>
+                  </div>
+                  <p className="text-[11px] t-muted text-center mt-1">
+                    {pageIdx === 0 ? 'The cover' : `Page ${pageIdx} of ${pages.length}`}
+                    {currentPage?.kind === 'gallery' ? ` — ${currentPage.count} photo${currentPage.count === 1 ? '' : 's'}, pick below to fill` : ''}
+                    {currentPage?.kind === 'write_in' ? ' — ruled, for a pen' : ''}
+                    {currentPage?.kind === 'notes' ? " — the family's notes" : ''}
+                  </p>
+                  {/* Arranging the middle of the book. The title, clock, pool,
+                      milestones, the two pages for a pen and the closing stay
+                      where they are; everything between is the parent's. The
+                      book is always 24 pages: a page added takes the place of
+                      a ruled one, a page removed becomes one. */}
+                  {(currentPage?.editable || pageIdx === 0) && (
+                    <div className="flex flex-wrap items-center justify-center gap-2 mt-2 text-[11px]">
+                      {currentPage?.editable && (
+                        <>
+                          <button type="button" onClick={() => movePage(-1)} className="px-2 py-1 rounded border t-muted" style={{ borderColor: 'var(--t-soft-ring)' }}>← Move</button>
+                          <button type="button" onClick={() => movePage(1)} className="px-2 py-1 rounded border t-muted" style={{ borderColor: 'var(--t-soft-ring)' }}>Move →</button>
+                          <button type="button" onClick={removePage} className="px-2 py-1 rounded border t-muted" style={{ borderColor: 'var(--t-soft-ring)' }}>Remove page</button>
+                          <span className="t-faint">·</span>
+                        </>
+                      )}
+                      <span className="t-faint">Add after this:</span>
+                      {[1, 2, 3, 4].map((n) => (
+                        <button key={n} type="button" onClick={() => addPage({ kind: 'gallery', count: n })}
+                          className="px-2 py-1 rounded border t-ink" style={{ borderColor: 'var(--t-soft-ring)' }}>
+                          {n} photo{n === 1 ? '' : 's'}
+                        </button>
+                      ))}
+                      <button type="button" onClick={() => addPage({ kind: 'notes' })} className="px-2 py-1 rounded border t-ink" style={{ borderColor: 'var(--t-soft-ring)' }}>Notes</button>
+                      <button type="button" onClick={() => addPage({ kind: 'write_in' })} className="px-2 py-1 rounded border t-ink" style={{ borderColor: 'var(--t-soft-ring)' }}>Ruled</button>
+                    </div>
+                  )}
+                </div>
+              )}
 
               {angles.length > 0 && (
                 <div className="w-full sm:flex-none">
@@ -492,7 +656,7 @@ export default function GiftWizard({
 
               {(products || []).length > 1 && (
                 <div>
-                  <span className="text-xs font-medium t-muted">{({ framed_print: 'Frame', ornament: 'Shape' })[item.product_kind] || 'Mug'}</span>
+                  <span className="text-xs font-medium t-muted">{({ framed_print: 'Frame', ornament: 'Shape', photo_book: 'Paper' })[item.product_kind] || 'Mug'}</span>
                   <div className="mt-1 grid grid-cols-3 gap-1.5">
                     {products.map((product, i) => {
                       const chosen = (draft.productKey || products[0].product_key)
@@ -511,9 +675,14 @@ export default function GiftWizard({
                             alt={product.display_name}
                             className="w-full aspect-square object-contain block bg-white"
                           />
-                          {product.surcharge_cents > 0 && (
-                            <span className="block text-[10px] text-center py-0.5 t-faint">
-                              +{formatPrice(product.surcharge_cents)}
+                          {/* two white books look the same at this size — say which is which */}
+                          {(product.caption || product.surcharge_cents > 0) && (
+                            <span className="block text-[11px] text-center py-0.5">
+                              {product.caption && <span className="t-muted">{product.caption}</span>}
+                              {product.caption && product.surcharge_cents > 0 && <span className="t-faint"> · </span>}
+                              {product.surcharge_cents > 0 && (
+                                <span className="t-faint">+{formatPrice(product.surcharge_cents)}</span>
+                              )}
                             </span>
                           )}
                         </button>
@@ -523,24 +692,25 @@ export default function GiftWizard({
                 </div>
               )}
 
-              {(rendering.has_photo || slotCount > 0) && (
+              {(rendering.has_photo || visibleSlots.length > 0) && (
                 <div>
                   <span className="text-xs font-medium t-muted">
-                    {slotCount > 0 ? 'Photos' : 'Photo'}
+                    {visibleSlots.length > 0 ? 'Photos' : 'Photo'}
                   </span>
-                  {slotCount > 0 && (
+                  {visibleSlots.length > 0 && (
                     <>
                       <p className="text-[11px] t-faint mt-0.5">
-                        The strip plays the day in order — pick a panel, then
-                        choose its photo below.
+                        {isBook
+                          ? `This page holds ${visibleSlots.length} photo${visibleSlots.length === 1 ? '' : 's'} — pick a spot, then choose below. Upload more and more pages fill.`
+                          : 'The strip plays the day in order — pick a panel, then choose its photo below.'}
                       </p>
                       <div className="mt-1.5 grid grid-cols-4 gap-1.5">
-                        {Array.from({ length: slotCount }, (_, i) => (
+                        {visibleSlots.map((i, n) => (
                           <button
                             key={i}
                             type="button"
                             onClick={() => setActiveSlot(i)}
-                            aria-label={`Photo ${i + 1}`}
+                            aria-label={`Photo ${n + 1}`}
                             className="relative rounded overflow-hidden border-2 aspect-square"
                             style={{
                               borderColor:
@@ -561,7 +731,7 @@ export default function GiftWizard({
                               </span>
                             )}
                             <span className="absolute bottom-0.5 right-1 text-[10px] px-1 rounded bg-black/50 text-white">
-                              {i + 1}
+                              {n + 1}
                             </span>
                           </button>
                         ))}
@@ -587,12 +757,15 @@ export default function GiftWizard({
                         key={photo.media_id}
                         type="button"
                         onClick={() => {
-                          if (slotCount > 0) {
+                          if (visibleSlots.length > 0) {
                             edit({
                               slots: { ...draft.slots, [activeSlot]: photo.media_id },
                             });
-                            // filling the strip in order is the common case
-                            setActiveSlot((i) => Math.min(i + 1, slotCount - 1));
+                            // filling in order is the common case
+                            setActiveSlot((cur) => {
+                              const k = visibleSlots.indexOf(cur);
+                              return visibleSlots[Math.min(k + 1, visibleSlots.length - 1)] ?? cur;
+                            });
                           } else {
                             edit({ mediaId: photo.media_id, removed: false });
                           }
@@ -600,7 +773,7 @@ export default function GiftWizard({
                         className="block rounded overflow-hidden border-2"
                         style={{
                           borderColor: (
-                            slotCount > 0
+                            visibleSlots.length > 0
                               ? draft.slots?.[activeSlot] === photo.media_id
                               : draft.mediaId === photo.media_id && !draft.removed
                           )
@@ -616,6 +789,27 @@ export default function GiftWizard({
                       </button>
                     ))}
                   </div>
+                  {/* The crop. The whole photo shows; the rectangle on it is
+                      the part that prints, in the shape of the frame it's
+                      going into. Drag it to move; zoom in to shrink it, out
+                      until it's as large as the photo allows. */}
+                  {(() => {
+                    const key = visibleSlots.length > 0 ? String(activeSlot) : 'hero';
+                    const mediaId = visibleSlots.length > 0 ? draft.slots?.[activeSlot] : (draft.mediaId && !draft.removed ? draft.mediaId : null);
+                    if (!mediaId) return null;
+                    const aspect = visibleSlots.length > 0
+                      ? (rendering.slot_frame_aspects || [])[activeSlot] || 1
+                      : rendering.hero_frame_aspect || 1;
+                    return (
+                      <CropBox
+                        key={`${key}-${mediaId}`}
+                        src={api.mediaUrl(mediaId)}
+                        frameAspect={aspect}
+                        value={draft.crop?.[key] || null}
+                        onChange={(rect) => edit({ crop: { ...(draft.crop || {}), [key]: rect } })}
+                      />
+                    );
+                  })()}
                   <input type="file" ref={fileRef} accept="image/*" onChange={uploadPhoto} className="hidden" />
                   <div className="flex gap-2 mt-2">
                     <button
@@ -729,6 +923,122 @@ export default function GiftWizard({
           />
         )}
       </div>
+    </div>
+  );
+}
+
+
+// The crop control: the whole photo, with a draggable rectangle over it in
+// the shape of its frame. Coordinates are fractions of the photo — [x, y,
+// width] of the rectangle's top-left and width; its height follows the frame.
+// The same numbers the renderer reads, so what's dragged here is what prints.
+function CropBox({ src, frameAspect, value, onChange }) {
+  const [nat, setNat] = useState(null);            // the photo's own width/height
+  const boxRef = useRef(null);
+  const dragRef = useRef(null);
+  const BOX = 240;
+  // the widest rectangle of the frame's shape that fits the photo
+  const maxW = nat ? Math.min(1, frameAspect * nat.h / nat.w) : 1;
+  const heightFor = (w) => (nat ? (w * nat.w) / (nat.h * frameAspect) : w);
+  const clamp = (r) => {
+    const w = Math.min(maxW, Math.max(0.1, r[2]));
+    const h = heightFor(w);
+    return [Math.min(1 - w, Math.max(0, r[0])), Math.min(1 - h, Math.max(0, r[1])), w];
+  };
+  const rect = nat ? clamp(value || [(1 - maxW) / 2, (1 - heightFor(maxW)) / 2, maxW]) : null;
+  // the photo drawn to fit the box
+  const scale = nat ? Math.min(BOX / nat.w, BOX / nat.h) : 1;
+  const dw = nat ? nat.w * scale : BOX;
+  const dh = nat ? nat.h * scale : BOX;
+  // Zoom is "how much closer than the whole photo": 1 shows as much as fits,
+  // 5 shows a fifth of that width. Set from the slider, the wheel, or ±.
+  const MAX_ZOOM = 5;
+  const level = rect ? maxW / rect[2] : 1;
+  const setLevel = (z) => {
+    if (!rect) return;
+    const zoomTo = Math.min(MAX_ZOOM, Math.max(1, z));
+    const w = maxW / zoomTo;
+    const h = heightFor(w);
+    const cx = rect[0] + rect[2] / 2;
+    const cy = rect[1] + heightFor(rect[2]) / 2;
+    onChange(clamp([cx - w / 2, cy - h / 2, w]));
+  };
+  const onWheel = (e) => {
+    e.preventDefault();
+    setLevel(level * (e.deltaY < 0 ? 1.1 : 1 / 1.1));
+  };
+  const onPointerDown = (e) => {
+    if (!rect) return;
+    e.currentTarget.setPointerCapture(e.pointerId);
+    dragRef.current = { x: e.clientX, y: e.clientY, rect };
+  };
+  const onPointerMove = (e) => {
+    const d = dragRef.current;
+    if (!d) return;
+    const dx = (e.clientX - d.x) / dw;
+    const dy = (e.clientY - d.y) / dh;
+    onChange(clamp([d.rect[0] + dx, d.rect[1] + dy, d.rect[2]]));
+  };
+  const onPointerUp = () => { dragRef.current = null; };
+  return (
+    <div className="mt-2">
+      <p className="text-[11px] t-faint mb-1">Drag the picture to choose what shows · scroll to zoom</p>
+      <div
+        ref={boxRef}
+        className="relative mx-auto select-none touch-none"
+        style={{ width: dw, height: dh, cursor: rect ? 'grab' : 'default' }}
+        onPointerDown={onPointerDown}
+        onPointerMove={onPointerMove}
+        onPointerUp={onPointerUp}
+        onPointerCancel={onPointerUp}
+        onWheel={onWheel}
+      >
+        <img
+          src={src}
+          alt=""
+          draggable={false}
+          className="block w-full h-full"
+          onLoad={(e) => setNat({ w: e.currentTarget.naturalWidth, h: e.currentTarget.naturalHeight })}
+        />
+        {rect && (
+          <>
+            {/* dim what won't print; leave the rectangle clear */}
+            <div className="absolute inset-0 pointer-events-none" style={{ background: 'rgba(0,0,0,0.45)', clipPath: `polygon(0 0, 100% 0, 100% 100%, 0 100%, 0 0, ${rect[0] * 100}% ${rect[1] * 100}%, ${rect[0] * 100}% ${(rect[1] + heightFor(rect[2])) * 100}%, ${(rect[0] + rect[2]) * 100}% ${(rect[1] + heightFor(rect[2])) * 100}%, ${(rect[0] + rect[2]) * 100}% ${rect[1] * 100}%, ${rect[0] * 100}% ${rect[1] * 100}%)` }} />
+            <div
+              className="absolute border-2 pointer-events-none"
+              style={{
+                left: `${rect[0] * 100}%`, top: `${rect[1] * 100}%`,
+                width: `${rect[2] * 100}%`, height: `${heightFor(rect[2]) * 100}%`,
+                borderColor: 'var(--t-accent)', boxShadow: '0 0 0 1px rgba(255,255,255,0.6) inset',
+              }}
+            />
+          </>
+        )}
+      </div>
+      {rect && (
+        <div className="mt-2 flex items-center gap-2 mx-auto" style={{ width: dw }}>
+          <button type="button" onClick={() => setLevel(level / 1.25)} disabled={level <= 1.001}
+            className="w-7 h-7 flex-none rounded-full border text-sm t-ink disabled:opacity-30" style={{ borderColor: 'var(--t-soft-ring)' }} aria-label="Show more of the photo">−</button>
+          <input
+            type="range"
+            min={1}
+            max={MAX_ZOOM}
+            step={0.01}
+            value={level}
+            onChange={(e) => setLevel(Number(e.target.value))}
+            className="flex-1 accent-[var(--t-accent)]"
+            aria-label="Zoom"
+          />
+          <button type="button" onClick={() => setLevel(level * 1.25)} disabled={level >= MAX_ZOOM - 0.001}
+            className="w-7 h-7 flex-none rounded-full border text-sm t-ink disabled:opacity-30" style={{ borderColor: 'var(--t-soft-ring)' }} aria-label="Zoom in closer">+</button>
+        </div>
+      )}
+      {rect && (
+        <div className="flex justify-between text-[10px] t-faint mx-auto" style={{ width: dw }}>
+          <span>whole photo</span>
+          <span>closer</span>
+        </div>
+      )}
     </div>
   );
 }

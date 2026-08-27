@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink"
+     width="{{ w }}" height="{{ h }}" viewBox="0 0 {{ w }} {{ h }}">
+  <rect x="0" y="0" width="{{ w }}" height="{{ h }}" fill="{{ p.bg }}"/>
+  <path d="{{ book_big_heart }}" fill="none" stroke="{{ p.accent }}" stroke-width="6" stroke-linejoin="round" opacity="0.9"/>
+  <text x="{{ w // 2 }}" y="1260" text-anchor="middle" font-family="{{ p.display_font }}"
+        font-size="110" font-weight="300" font-style="italic" fill="{{ p.ink }}">welcome home, {{ book_first_name }}</text>
+  <text x="{{ w // 2 }}" y="1360" text-anchor="middle" font-family="{{ p.body_font }}"
+        font-size="34" letter-spacing="3" fill="{{ p.ink }}" opacity="0.62">born {{ birth_date }} at {{ birth_time }}</text>
+</svg>

@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink"
+     width="{{ w }}" height="{{ h }}" viewBox="0 0 {{ w }} {{ h }}">
+{% from "_pool.svg.j2" import pool_list, pool_ruler_strip with context %}
+{% from "_book.svg.j2" import eyebrow, folio with context %}
+{# The whole leaderboard with its medal, then the ruler with every guesser's
+   name. The pool scene is drawn for the 1500-wide card; centred here. #}
+  <rect x="0" y="0" width="{{ w }}" height="{{ h }}" fill="{{ p.bg }}"/>
+  {{ eyebrow("THE FAMILY POOL", 330) }}
+  <text x="{{ w // 2 }}" y="440" text-anchor="middle" font-family="{{ p.display_font }}"
+        font-size="60" font-style="italic" fill="{{ p.ink }}" opacity="0.8">everyone guessed before they met {{ book_first_name }}</text>
+  <g transform="translate({{ (w - 1500) // 2 }}, -120)">
+    {{ pool_list(font_size=36) }}
+    {{ pool_ruler_strip(heading=False) }}
+  </g>
+  {{ folio() }}
+</svg>

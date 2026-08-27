@@ -43,6 +43,7 @@ from repositories import gifts as gifts_repo
 from repositories import media as media_repo
 from routes.deps import BirthAccess, require_birth_access, require_parent_access
 from schemas import (
+    BookPlanOut,
     GiftPhotoOptionOut,
     GiftDesignIn,
     GiftGalleryOut,
@@ -83,6 +84,10 @@ def _serialize_rendering(rendering) -> GiftRenderingOut:
         # how many slot pickers to show: what the last render actually placed
         # when it recorded that (the story fits as many photos as its line
         # holds), else the template's count
+        pages=gifts_repo.book_pages(rendering),
+        layout_overrides=rendering.layout_overrides or {},
+        photo_crop=(rendering.layout_overrides or {}).get("crop") or {},
+        slot_frame_aspects=(rendering.rendering_metadata or {}).get("slot_frame_aspects") or [],
         photo_slot_count=(
             len((rendering.rendering_metadata or {}).get("selected_slot_media_ids") or [])
             or (template.photo_slots if template else 0)
@@ -169,6 +174,25 @@ def gift_artwork_file(
         raise HTTPException(status_code=404, detail="Unknown artwork")
     body = get_object_bytes(rendering.artwork_s3_key)
     return Response(content=body, media_type="image/png")
+
+
+@router.get("/gift-artwork/{rendering_id}/{page}.png")
+def gift_artwork_page_file(
+    rendering_id: uuid.UUID,
+    page: str,
+    exp: int,
+    sig: str,
+    db: Session = Depends(get_db),
+) -> Response:
+    """One file of a many-file design — the book's cover wrap or a page —
+    for the partner. Same credential as the single-file route."""
+    if not artwork_links.verify_artwork_sig(rendering_id, exp, sig, page):
+        raise HTTPException(status_code=403, detail="Invalid or expired link")
+    rendering = db.get(GiftRendering, rendering_id)
+    key = ((rendering.rendering_metadata or {}).get("pages") or {}).get(page) if rendering else None
+    if rendering is None or rendering.deleted_at is not None or not key:
+        raise HTTPException(status_code=404, detail="Unknown artwork")
+    return Response(content=get_object_bytes(key), media_type="image/png")
 
 
 @router.get("/gifts/catalog", response_model=list[GiftItemOut])
@@ -391,9 +415,26 @@ class _Draft:
         self.photo_media_id = None if payload.removed else payload.media_id
         self.photo_removed = payload.removed
         self.photo_slots = {k: str(v) for k, v in (payload.photo_slots or {}).items()}
+        self.layout_overrides = _layout_overrides(payload)
         self.text_overrides = dict(payload.text or {})
         self.template_id = rendering.template_id
         self.product_key = payload.product_key
+
+
+def _layout_overrides(payload: GiftDesignIn) -> dict:
+    """The parent's arrangement, as stored: the book's pages when given, and
+    the crop of any placed photo they've moved or zoomed."""
+    out: dict = {}
+    if payload.pages is not None:
+        out["pages"] = payload.pages
+    crop = {
+        str(k): [float(v[0]), float(v[1]), float(v[2])]
+        for k, v in (payload.crop or {}).items()
+        if isinstance(v, (list, tuple)) and len(v) == 3
+    }
+    if crop:
+        out["crop"] = crop
+    return out
 
 
 def _apply_draft(rendering, payload: GiftDesignIn) -> None:
@@ -404,6 +445,7 @@ def _apply_draft(rendering, payload: GiftDesignIn) -> None:
     rendering.photo_slots = {
         k: str(v) for k, v in (payload.photo_slots or {}).items()
     }
+    rendering.layout_overrides = _layout_overrides(payload)
     rendering.text_overrides = dict(payload.text or {})
     # Unknown keys are ignored rather than rejected: the shortlist is a code
     # registry, and a design pointing at a product we've since retired should
@@ -457,6 +499,7 @@ def preview_gift_design(
     rendering_id: uuid.UUID,
     payload: GiftDesignIn,
     full: bool = False,
+    page: str | None = None,
     access: BirthAccess = Depends(require_parent_access),
     db: Session = Depends(get_db),
 ) -> Response:
@@ -475,14 +518,29 @@ def preview_gift_design(
     rendering, template = _load_editable(db, access, rendering_id)
     _check_photo(db, access, payload, template)
     try:
-        png, _meta = gift_artwork.render(
-            access.birth,
-            template,
-            db,
-            _Draft(rendering, payload),
-            photo_max_px=None if full else _PREVIEW_PHOTO_PX,
-            output_width=None if full else _PREVIEW_W,
-        )
+        if template.scene == "book":
+            # one page at a time: the editor is looking at one
+            files, _meta = gift_artwork.render_book(
+                access.birth,
+                template,
+                db,
+                _Draft(rendering, payload),
+                only=page or "cover_front",
+                photo_max_px=None if full else _PREVIEW_PHOTO_PX,
+                output_width=None if full else _PREVIEW_W,
+            )
+            if not files:
+                raise HTTPException(status_code=404, detail="No such page")
+            png = next(iter(files.values()))
+        else:
+            png, _meta = gift_artwork.render(
+                access.birth,
+                template,
+                db,
+                _Draft(rendering, payload),
+                photo_max_px=None if full else _PREVIEW_PHOTO_PX,
+                output_width=None if full else _PREVIEW_W,
+            )
     except gift_artwork.ArtworkError as exc:
         raise HTTPException(status_code=422, detail=str(exc))
     return Response(
@@ -503,12 +561,31 @@ def preview_gift_design(
     )
 
 
+@router.post(
+    "/birth/{birth_id}/gifts/{rendering_id}/book-plan", response_model=BookPlanOut
+)
+def book_plan_preview(
+    rendering_id: uuid.UUID,
+    payload: GiftDesignIn,
+    access: BirthAccess = Depends(require_parent_access),
+    db: Session = Depends(get_db),
+) -> BookPlanOut:
+    """The book's page plan for a draft — nothing drawn, nothing saved. The
+    editor asks after a page is added, removed or moved, to learn which pages
+    now exist and which photo slots each holds."""
+    rendering, template = _load_editable(db, access, rendering_id)
+    if template.scene != "book":
+        raise HTTPException(status_code=400, detail="Not a book")
+    return BookPlanOut(pages=gift_artwork.book_plan_for(db, access.birth, rendering, payload.pages))
+
+
 @router.patch(
     "/birth/{birth_id}/gifts/{rendering_id}/design", response_model=GiftRenderingOut
 )
 def save_gift_design(
     rendering_id: uuid.UUID,
     payload: GiftDesignIn,
+    background_tasks: BackgroundTasks,
     access: BirthAccess = Depends(require_parent_access),
     db: Session = Depends(get_db),
 ) -> GiftRenderingOut:
@@ -524,7 +601,13 @@ def save_gift_design(
     _apply_draft(rendering, payload)
     db.commit()
 
-    gifts_repo.render_rendering(rendering.id)
+    if template.scene == "book":
+        # twenty-six files, not one — too long to hold the request open.
+        # The editor sees `pending` and waits for `ready`.
+        gifts_repo.reset_to_pending(db, birth_id=access.birth.id, rendering_id=rendering.id)
+        background_tasks.add_task(gifts_repo.render_rendering, rendering.id)
+    else:
+        gifts_repo.render_rendering(rendering.id)
     db.expire_all()
     rendering = gifts_repo.get_rendering(
         db, birth_id=access.birth.id, rendering_id=rendering_id
@@ -586,6 +669,7 @@ def _serialize_product_mockup(product, mockup) -> ProductMockupOut:
         ),
         blank_image_url=product.blank_image_url,
         surcharge_cents=product.surcharge_cents,
+        caption=product.caption,
     )
 
 

@@ -37,6 +37,10 @@ class ShortlistProduct:
     # for the flat and the in-room ones too, to give the tile the same
     # three-image rhythm the mug has.
     mockup_option_groups: tuple[str, ...] = ()
+    # The one or two words that tell this product apart from its neighbours
+    # in the picker, under its picture: "15 oz", "Oak", "Matte". The blank
+    # photos alone can't — two white books look the same at a hundred pixels.
+    caption: str = ""
     # Which sides to photograph. The ornament has a front and a back placement
     # and we print the front; left unsaid, the partner also sends a picture of
     # the blank back, which the tile then shows as if it were ours.
@@ -57,6 +61,7 @@ class ShortlistProduct:
 SHORTLIST: dict[str, ShortlistProduct] = {
     "white_glossy_11oz": ShortlistProduct(
         key="white_glossy_11oz",
+        caption="11 oz",
         display_name="White Glossy Mug (11 oz)",
         product_kind="mug",
         product_id=19,
@@ -66,6 +71,7 @@ SHORTLIST: dict[str, ShortlistProduct] = {
     ),
     "white_glossy_15oz": ShortlistProduct(
         key="white_glossy_15oz",
+        caption="15 oz",
         display_name="White Glossy Mug (15 oz)",
         product_kind="mug",
         product_id=19,
@@ -76,6 +82,7 @@ SHORTLIST: dict[str, ShortlistProduct] = {
     ),
     "white_glossy_20oz": ShortlistProduct(
         key="white_glossy_20oz",
+        caption="20 oz",
         display_name="White Glossy Mug (20 oz)",
         product_kind="mug",
         product_id=19,
@@ -86,6 +93,7 @@ SHORTLIST: dict[str, ShortlistProduct] = {
     ),
     "latte_mug": ShortlistProduct(
         key="latte_mug",
+        caption="Latte",
         display_name="Latte Mug (12 oz)",
         product_kind="mug",
         product_id=837,
@@ -114,6 +122,7 @@ for _key, _name, _variant in (
     SHORTLIST[_key] = ShortlistProduct(
         key=_key,
         display_name=_name,
+        caption=_name.split()[0],
         product_kind="framed_print",
         product_id=795,
         variant_id=_variant,
@@ -123,28 +132,51 @@ for _key, _name, _variant in (
     )
 
 # ── ornaments ─────────────────────────────────────────────────────────────
-# Wooden, die-cut, printed on the front. One shape for now — the oval is the
-# only one our design is fitted to; the others share the print file but not
-# the silhouette. $8.21 + about $5 to ship.
-SHORTLIST["ornament_oval"] = ShortlistProduct(
-    key="ornament_oval",
-    display_name="Oval wooden ornament",
+# A ceramic circle, printed edge to edge on the front. $6.22 + about $5.30
+# to ship. (A wooden oval with the dial on it came first; a photo of the
+# baby beats a dial at three inches, and ceramic takes a photo.)
+SHORTLIST["ornament_circle"] = ShortlistProduct(
+    key="ornament_circle",
+    display_name="Ceramic ornament (circle)",
+    caption="Circle",
     product_kind="ornament",
-    product_id=634,
-    variant_id=16091,
+    product_id=881,
+    variant_id=22782,
     placement="front",
-    blank_image_url="https://files.cdn.printful.com/products/634/16091_1661492451.jpg",
-    cost_cents=821,
+    blank_image_url="https://files.cdn.printful.com/products/881/22782_1747141509.jpg",
+    cost_cents=622,
     mockup_option_groups=("Flat", "Lifestyle"),
     mockup_options=("Front",),
 )
+
+# ── the photo book ────────────────────────────────────────────────────────
+# Hardcover 8×8, twenty-four pages, $11.23 + about $7.50 to ship. Matte is
+# the default because two of its pages are for a pen, and glossy paper takes
+# ink badly. Same price either way.
+for _key, _name, _variant, _image in (
+    ("book_8x8_matte", "Matte pages (8×8 in hardcover)", 49376, "https://files.cdn.printful.com/products/1564/49376_1781805692.jpg"),
+    ("book_8x8_glossy", "Glossy pages (8×8 in hardcover)", 49375, "https://files.cdn.printful.com/products/1564/49375_1781805691.jpg"),
+):
+    SHORTLIST[_key] = ShortlistProduct(
+        key=_key,
+        display_name=_name,
+        caption=_name.split()[0],
+        product_kind="photo_book",
+        product_id=1564,
+        variant_id=_variant,
+        placement="cover",
+        blank_image_url=_image,
+        cost_cents=1123,
+        mockup_options=("Front", "Back"),   # the closed book, both sides
+    )
 
 # The product used for the default hero mockup on the gift gallery, per
 # artwork product_kind. The picker offers the rest as alternatives.
 DEFAULT_PRODUCT_BY_KIND: dict[str, str] = {
     "mug": "white_glossy_11oz",
     "framed_print": "frame_black_12x16",
-    "ornament": "ornament_oval",
+    "ornament": "ornament_circle",
+    "photo_book": "book_8x8_matte",
 }
 
 

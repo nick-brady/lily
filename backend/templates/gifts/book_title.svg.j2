@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink"
+     width="{{ w }}" height="{{ h }}" viewBox="0 0 {{ w }} {{ h }}">
+{% from "_book.svg.j2" import eyebrow, folio with context %}
+  <rect x="0" y="0" width="{{ w }}" height="{{ h }}" fill="{{ p.bg }}"/>
+  {{ eyebrow("THE DAY", 900) }}
+  <text x="{{ w // 2 }}" y="1180" text-anchor="middle" font-family="{{ p.display_font }}"
+        font-size="{{ [child_name_size, 240]|min }}" font-weight="300" font-style="italic"
+        fill="{{ p.ink }}">{{ child_name }}</text>
+  <text x="{{ w // 2 }}" y="1290" text-anchor="middle" font-family="{{ p.body_font }}"
+        font-size="44" letter-spacing="3" fill="{{ p.ink }}" opacity="0.62">born {{ birth_date }} at {{ birth_time }}</text>
+  <line x1="{{ w // 2 - 80 }}" y1="1420" x2="{{ w // 2 + 80 }}" y2="1420" stroke="{{ p.ink }}" stroke-width="2" opacity="0.25"/>
+  <text x="{{ w // 2 }}" y="1520" text-anchor="middle" font-family="{{ p.display_font }}"
+        font-size="{{ [custom_line_size, 52]|min }}" font-style="italic" fill="{{ p.ink }}"
+        opacity="0.7">{{ custom_line or "the hours before, and the first ones after" }}</text>
+</svg>

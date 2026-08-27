@@ -717,6 +717,13 @@ class GiftRendering(Base):
     photo_slots: Mapped[dict] = mapped_column(
         JSONB, nullable=False, server_default=sa.text("'{}'::jsonb")
     )
+    # The parent's own arrangement of a many-page design: for the book,
+    # {"pages": [{"kind": "gallery", "count": 3}, {"kind": "notes"}, …]} —
+    # the middle section, added to, cut and reordered in the editor. Empty
+    # means the automatic plan.
+    layout_overrides: Mapped[dict] = mapped_column(
+        JSONB, nullable=False, server_default=sa.text("'{}'::jsonb")
+    )
     # Per-design text edits, keyed by slot ("child_name", "custom_line").
     # Only what a template lists as editable is honoured; everything else on a
     # keepsake is derived from the birth and stays that way.

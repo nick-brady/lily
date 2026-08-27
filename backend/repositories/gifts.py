@@ -279,6 +279,23 @@ def reset_to_pending(
     return [r.id for r in rows]
 
 
+def print_pages(rendering: GiftRendering) -> dict[str, str]:
+    """The print files of a many-file design, key → s3 key — the book's cover
+    wrap and its pages. Empty for a one-file design."""
+    return dict((rendering.rendering_metadata or {}).get("pages") or {})
+
+
+def book_pages(rendering: GiftRendering) -> list[dict]:
+    """The book's pages for the editor: in order, with kind, photo slots and a
+    presigned URL once rendered. Empty for anything that isn't a book."""
+    plan = (rendering.rendering_metadata or {}).get("book_plan") or []
+    keys = print_pages(rendering)
+    return [
+        {**p, "url": presigned_get_url(keys[p["key"]]) if p["key"] in keys else None}
+        for p in plan
+    ]
+
+
 def artwork_url(rendering: GiftRendering) -> str | None:
     if rendering.status != GiftRenderingStatus.ready or not rendering.artwork_s3_key:
         return None
@@ -397,7 +414,12 @@ def render_rendering(rendering_id: uuid.UUID) -> None:
             _fail(db, rendering, "missing-birth-or-template")
             return
         try:
-            png, metadata = gift_artwork.render(birth, template, db, rendering)
+            if template.scene == "book":
+                files, metadata = gift_artwork.render_book(birth, template, db, rendering)
+                png = files.pop("cover_front")
+            else:
+                png, metadata = gift_artwork.render(birth, template, db, rendering)
+                files = {}
         except gift_artwork.ArtworkError as exc:
             _fail(db, rendering, str(exc))
             return
@@ -408,6 +430,18 @@ def render_rendering(rendering_id: uuid.UUID) -> None:
             filename=f"gifts/{rendering.id}.png",
         )
         put_object(key=key, body=png, content_type="image/png")
+        # a many-file design keeps its print files beside the one it shows
+        if files:
+            pages = {}
+            for page_key, body in files.items():
+                pk = object_key(
+                    family_id=birth.family_id,
+                    birth_id=birth.id,
+                    filename=f"gifts/{rendering.id}-{page_key}.png",
+                )
+                put_object(key=pk, body=body, content_type="image/png")
+                pages[page_key] = pk
+            metadata["pages"] = pages
         rendering.artwork_s3_key = key
         rendering.rendering_metadata = metadata
         rendering.status = GiftRenderingStatus.ready
@@ -485,7 +519,12 @@ def _try_generate_mockup(db: Session, rendering: GiftRendering) -> None:
         # reachable (the prod domain — a localhost dev URL won't work). The
         # app serves it via a short signed link: presigned S3 URLs from the
         # instance role exceed Printful's 1000-char URL cap.
-        artwork = signed_artwork_url(rendering_id, expires_in=3600)
+        # a many-file design is photographed by its cover alone — the pages
+        # are the parent's to look at in the editor, and sending all of them
+        # made the partner slow for a picture nobody asked for
+        artwork = signed_artwork_url(
+            rendering_id, expires_in=3600, page="cover" if print_pages(rendering) else None
+        )
         result = adapter.generate_mockup(
             artwork_url=artwork,
             product_id=product.product_id,

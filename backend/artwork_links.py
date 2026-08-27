@@ -28,24 +28,32 @@ from auth import FRONTEND_URL, JWT_SECRET_KEY
 ARTWORK_PUBLIC_URL = os.environ.get("ARTWORK_PUBLIC_URL") or FRONTEND_URL
 
 
-def _sig(rendering_id: str, exp: int) -> str:
+def _sig(rendering_id: str, exp: int, page: str | None = None) -> str:
+    subject = f"{rendering_id}/{page}" if page else rendering_id
     mac = hmac.new(
         JWT_SECRET_KEY.encode(),
-        f"gift-artwork:{rendering_id}:{exp}".encode(),
+        f"gift-artwork:{subject}:{exp}".encode(),
         hashlib.sha256,
     )
     return mac.hexdigest()[:32]
 
 
-def signed_artwork_url(rendering_id: uuid.UUID | str, *, expires_in: int) -> str:
+def signed_artwork_url(
+    rendering_id: uuid.UUID | str, *, expires_in: int, page: str | None = None
+) -> str:
     """Public URL for a rendering's artwork, fetchable by Printful.
-    Routed via the site's /api prefix (nginx strips it)."""
+    Routed via the site's /api prefix (nginx strips it). `page` addresses one
+    file of a many-file design (the book's cover or a page)."""
     rid = str(rendering_id)
     exp = int(time.time()) + expires_in
+    if page:
+        return f"{ARTWORK_PUBLIC_URL}/api/gift-artwork/{rid}/{page}.png?exp={exp}&sig={_sig(rid, exp, page)}"
     return f"{ARTWORK_PUBLIC_URL}/api/gift-artwork/{rid}.png?exp={exp}&sig={_sig(rid, exp)}"
 
 
-def verify_artwork_sig(rendering_id: uuid.UUID | str, exp: int, sig: str) -> bool:
+def verify_artwork_sig(
+    rendering_id: uuid.UUID | str, exp: int, sig: str, page: str | None = None
+) -> bool:
     if exp < time.time():
         return False
-    return hmac.compare_digest(_sig(str(rendering_id), exp), sig)
+    return hmac.compare_digest(_sig(str(rendering_id), exp, page), sig)

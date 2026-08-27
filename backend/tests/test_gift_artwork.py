@@ -61,10 +61,10 @@ def _context(template):
         "labor_start_time": "7:04 pm",
         "photo_data_uri": _PIXEL if template.photo else None,
     }
-    if template.scene in ("hours", "hours_photo", "orbit", "ornament"):
+    if template.scene in ("hours", "hours_photo", "orbit"):
         ctx["clock_cx"] = template.clock_cx or template.width / 2
         ctx["clock_cy"] = template.clock_cy or template.height / 2
-    if template.scene in ("hours", "hours_photo", "ornament"):
+    if template.scene in ("hours", "hours_photo"):
         ctx.update(
             gift_artwork.build_hours_clock(
                 durations=durations,
@@ -131,6 +131,21 @@ def _context(template):
                 layout="mug" if template.product_kind == "mug" else "card",
             )
         )
+    elif template.scene == "book":
+        fcx = gift_artwork.BOOK_SPINE_X1 + (gift_artwork.BOOK_COVER_W - gift_artwork.BOOK_SPINE_X1) / 2
+        ctx.update(
+            gift_artwork.build_hours_clock(
+                durations=_DURATIONS, offsets_seconds=_OFFSETS, first_contraction_at=_FIRST_AT,
+                born_at=_BORN_AT, cx=fcx, cy=1050, r_ring=560, r_in=250, canvas_w=template.width,
+            )
+        )
+        ctx.update({
+            "clock_cx": fcx, "clock_cy": 1050, "book_front_cx": fcx,
+            "book_spine_cx": (gift_artwork.BOOK_SPINE_X0 + gift_artwork.BOOK_SPINE_X1) / 2,
+            "book_spine_size": 60, "book_year": 2026,
+            "book_back_cx": gift_artwork.BOOK_PANEL / 2,
+            "book_back_heart": gift_artwork._heart_path(1275, 1365, 90),
+        })
     elif template.scene == "frame_story":
         moments = [
             {"kind": "photo", "uri": _PIXEL, "when": _FIRST_AT - timedelta(days=70), "media_id": "m0"},
@@ -605,7 +620,7 @@ def test_every_shortlist_product_is_profitable():
     from fulfillment import products as fp
 
     # list prices, per product kind (the catalog rows in 0009 and 0032)
-    list_price = {"mug": 1800, "framed_print": 7900, "ornament": 2400}
+    list_price = {"mug": 1800, "framed_print": 7900, "ornament": 2400, "photo_book": 4900}
     for product in fp.SHORTLIST.values():
         charged = list_price[product.product_kind] + product.surcharge_cents
         assert product.cost_cents > 0, product.key

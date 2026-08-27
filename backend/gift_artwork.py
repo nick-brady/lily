@@ -72,31 +72,23 @@ _env = Environment(
 # `sparkle(cx, cy, r)` is available in templates — the four-point star that
 # marks the moment of arrival across the collection.
 _env.globals["sparkle"] = lambda cx, cy, r: _sparkle_path(cx, cy, r)
+# `place_photo(x, y, w, h, photo)` fills a frame with a photo dict, showing its crop.
+_env.globals["place_photo"] = lambda fx, fy, fw, fh, ph: place_photo(fx, fy, fw, fh, ph)
 
 
-def render(
+def build_context(
     birth: Birth,
     template: GiftTemplate,
     db: Session,
     rendering=None,
     photo_max_px: int | None = None,
-    output_width: int | None = None,
-) -> tuple[bytes, dict]:
-    """Render `template` for `birth`. Returns (png_bytes, rendering_metadata).
-
-    `rendering` carries this design's own photo and text choices. It's optional
-    so the preview script and the tests can render a template without a row
-    behind it; without one the photo is the auto-pick and no text is
-    overridden.
-
-    `photo_max_px` shrinks the embedded photo. Most of a render's cost is the
-    photo — 131ms to decode and re-encode it, and most of the rest is cairosvg
-    chewing the 399KB data URI that produces. At 500px that drops to 52ms and
-    61KB, which is what makes a live preview feel live.
+) -> tuple[dict, dict]:
+    """Everything a design's SVG needs, before rasterizing: the palette, the
+    names and dates, the scene geometry, the photo. Split out of `render` so
+    the photo book — many pages, one story — can build the base once and
+    lay each page on top. Returns (context, parts), where parts carries what
+    the metadata needs (`photo`, `when`, `stats`, `layout`).
     """
-    # A framed print draws a card design onto a bigger sheet. Every layout
-    # decision below belongs to the design being drawn (`layout`); only the
-    # metadata and the final rasterization know about the sheet (`template`).
     layout = _layout_of(template)
     events = list(
         db.scalars(
@@ -110,7 +102,12 @@ def render(
     palette = gift_themes.for_theme(birth.theme)
 
     photo = _photo_for(db, birth, layout, rendering) if layout.photo else None
-    photo_data_uri = _photo_data_uri(photo, max_px=photo_max_px) if photo else None
+    photo_data = _photo_data(photo, max_px=photo_max_px) if photo else None
+    photo_data_uri = photo_data[0] if photo_data else None
+    photo_placed = (
+        {"uri": photo_data[0], "w": photo_data[1], "h": photo_data[2], "crop": photo_crop(rendering, "hero"), "frame_aspect": 1.0}
+        if photo_data else None
+    )
     # Only designs that can't stand without a photo refuse to render. The rest
     # lay out around its absence, which is what makes "remove" possible.
     if layout.photo_required and photo_data_uri is None:
@@ -177,12 +174,15 @@ def render(
         "spark_callouts": _spark_callouts(stats.durations),
         "labor_start_time": _fmt_time(first_at_local),
         "photo_data_uri": photo_data_uri,
+        # the same photo as a dict for `place_photo`, so a template can keep
+        # the parent's focal point in frame instead of centre-cropping
+        "photo": photo_placed,
     }
 
-    if layout.scene in ("hours", "hours_photo", "orbit", "ornament"):
+    if layout.scene in ("hours", "hours_photo", "orbit"):
         context["clock_cx"] = layout.clock_cx or layout.width / 2
         context["clock_cy"] = layout.clock_cy or layout.height / 2
-    if layout.scene in ("hours", "hours_photo", "ornament"):
+    if layout.scene in ("hours", "hours_photo"):
         context.update(
             build_hours_clock(
                 durations=stats.durations,
@@ -238,8 +238,42 @@ def render(
             )
         )
 
+    return context, {"photo": photo, "when": when, "stats": stats, "layout": layout}
+
+
+def render(
+    birth: Birth,
+    template: GiftTemplate,
+    db: Session,
+    rendering=None,
+    photo_max_px: int | None = None,
+    output_width: int | None = None,
+) -> tuple[bytes, dict]:
+    """Render `template` for `birth`. Returns (png_bytes, rendering_metadata).
+
+    `rendering` carries this design's own photo and text choices. It's optional
+    so the preview script and the tests can render a template without a row
+    behind it; without one the photo is the auto-pick and no text is
+    overridden.
+
+    `photo_max_px` shrinks the embedded photo. Most of a render's cost is the
+    photo — 131ms to decode and re-encode it, and most of the rest is cairosvg
+    chewing the 399KB data URI that produces. At 500px that drops to 52ms and
+    61KB, which is what makes a live preview feel live.
+    """
+    # A framed print draws a card design onto a bigger sheet. Every layout
+    # decision below belongs to the design being drawn (`layout`); only the
+    # metadata and the final rasterization know about the sheet (`template`).
+    context, parts = build_context(birth, template, db, rendering, photo_max_px)
+    photo, when, stats, layout = parts["photo"], parts["when"], parts["stats"], parts["layout"]
     # Panel provenance rides to the metadata, not to Jinja.
     slot_media_ids = context.pop("slot_media_ids", None)
+    # and the shape of each photo's frame, for the editor's crop rectangle
+    for key in ("reel_panels", "wall_tiles", "story_photos"):
+        tiles = context.get(key)
+        if tiles:
+            context["slot_frame_aspects"] = [((t.get("photo") or {}).get("frame_aspect") or 1.0) for t in tiles]
+            break
 
     png = render_context(template, context, output_width=output_width)
 
@@ -256,6 +290,7 @@ def render(
         "theme": birth.theme,
         "selected_media_id": str(photo.id) if photo else None,
         "selected_slot_media_ids": slot_media_ids,
+        "slot_frame_aspects": context.pop("slot_frame_aspects", None),
         "stats": stats.as_metadata(),
         "child": {
             "name": birth.child_name,
@@ -462,7 +497,23 @@ def _photo_for(
             # A photo deleted since it was chosen shouldn't break the render.
             if chosen is not None and chosen.archived_at is None:
                 return chosen
+    if template.photo_pick == "nearest":
+        return _select_nearest_photo(db, birth) or _select_hero_photo(db, birth)
     return _select_hero_photo(db, birth)
+
+
+def _select_nearest_photo(db: Session, birth: Birth) -> MediaAsset | None:
+    """The timeline photo taken closest to the moment of birth, before or
+    after — by when it happened, not when it was uploaded."""
+    born = birth.child_dob or birth.birth_completed_at
+    if born is None:
+        return None
+    refs = _reel_refs(db, birth)
+    if not refs:
+        return None
+    born_l = _localize(born)
+    best = min(refs, key=lambda r: abs((r["occurred_at"] - born_l).total_seconds()) if r["occurred_at"] else float("inf"))
+    return best["asset"]
 
 
 def _select_hero_photo(db: Session, birth: Birth) -> MediaAsset | None:
@@ -489,12 +540,15 @@ def _select_hero_photo(db: Session, birth: Birth) -> MediaAsset | None:
     return rows[0]
 
 
-def _photo_data_uri(asset: MediaAsset, *, max_px: int | None = None) -> str | None:
+def _photo_data(asset: MediaAsset, *, max_px: int | None = None) -> tuple[str, int, int] | None:
+    """The photo as a data URI, with its pixel size — the size is what lets a
+    placement keep a chosen point of the picture in frame."""
     try:
         raw = get_object_bytes(asset.original_s3_key)
     except Exception:
         return None
     mime = asset.mime_type or "image/jpeg"
+    w = h = 0
     # Re-encode every photo: apply the EXIF orientation (phone photos are
     # usually stored rotated + a tag, and cairosvg ignores the tag — without
     # this, portraits render sideways) and downscale so the SVG stays light.
@@ -505,13 +559,90 @@ def _photo_data_uri(asset: MediaAsset, *, max_px: int | None = None) -> str | No
         im = Image.open(io.BytesIO(raw))
         im = ImageOps.exif_transpose(im)
         im.thumbnail((max_px or 1600, max_px or 1600))
+        w, h = im.size
         buf = io.BytesIO()
         im.convert("RGB").save(buf, format="JPEG", quality=88)
         raw = buf.getvalue()
         mime = "image/jpeg"
     except Exception:
         pass  # fall back to the original bytes
-    return f"data:{mime};base64,{base64.b64encode(raw).decode('ascii')}"
+    return f"data:{mime};base64,{base64.b64encode(raw).decode('ascii')}", w, h
+
+
+def _photo_data_uri(asset: MediaAsset, *, max_px: int | None = None) -> str | None:
+    data = _photo_data(asset, max_px=max_px)
+    return data[0] if data else None
+
+
+def place_photo(fx: float, fy: float, fw: float, fh: float, ph: dict | None) -> dict:
+    """Where a photo goes to fill a frame, showing the part the parent chose.
+
+    `ph` carries the picture's size (w, h) and, optionally, a crop — (cx, cy,
+    cw): the top-left corner and width of the region to show, as fractions of
+    the picture. The region's height follows from the frame's shape, so a
+    square ornament and a tall filmstrip panel crop the same photo
+    differently. Zooming in is a smaller region; zooming out stops where the
+    region would leave the picture. Without a crop, the centre of the picture
+    fills the frame — what every design did before, so nothing already made
+    changes.
+
+    Without a size we can't do better than a centre crop, so the frame itself
+    comes back with `slice` set for the template to fall back on."""
+    if not ph or not ph.get("w") or not ph.get("h"):
+        return {"x": round(fx, 1), "y": round(fy, 1), "width": round(fw, 1), "height": round(fh, 1), "slice": True}
+    w, h = ph["w"], ph["h"]
+    cx, cy, cw, ch = crop_region(w, h, fw / fh, ph.get("crop"))
+    scale = fw / (cw * w)
+    return {
+        "x": round(fx - cx * w * scale, 1),
+        "y": round(fy - cy * h * scale, 1),
+        "width": round(w * scale, 1),
+        "height": round(h * scale, 1),
+        "slice": False,
+    }
+
+
+def _framed_photo(ph: dict, frame_w: float, frame_h: float) -> dict:
+    """The photo dict with the shape of the frame it's going into, recorded so
+    the editor can draw a crop rectangle of the right proportions. Mutates in
+    place on purpose: the same dict is what the metadata reads back."""
+    ph["frame_aspect"] = round(frame_w / frame_h, 4) if frame_h else 1.0
+    return ph
+
+
+def crop_region(w: float, h: float, frame_aspect: float, crop) -> tuple[float, float, float, float]:
+    """The region of a w×h picture a frame of `frame_aspect` (width/height)
+    shows: (cx, cy, cw, ch) as fractions. `crop` is the parent's (cx, cy, cw)
+    or None for the largest centred region. The region always has the frame's
+    shape and always lies within the picture."""
+    # the widest region with the frame's shape that fits the picture
+    max_cw = min(1.0, frame_aspect * h / w)
+    if crop:
+        try:
+            cx, cy, cw = float(crop[0]), float(crop[1]), float(crop[2])
+        except (TypeError, ValueError, IndexError):
+            cx, cy, cw = 0.0, 0.0, max_cw
+        cw = min(max_cw, max(0.1, cw))
+    else:
+        cw = max_cw
+        cx = cy = None
+    ch = cw * w / (h * frame_aspect)
+    if cx is None:
+        cx, cy = (1 - cw) / 2, (1 - ch) / 2
+    cx = min(1 - cw, max(0.0, cx))
+    cy = min(1 - ch, max(0.0, cy))
+    return cx, cy, cw, ch
+
+
+def photo_crop(rendering, key) -> tuple[float, float, float] | None:
+    """The parent's crop for one photo placement — "hero" for a design's
+    single photo, the slot index for the rest — or None for the centre."""
+    raw = ((getattr(rendering, "layout_overrides", None) or {}).get("crop") or {}) if rendering is not None else {}
+    v = raw.get(str(key))
+    try:
+        return float(v[0]), float(v[1]), float(v[2])
+    except (TypeError, ValueError, IndexError):
+        return None
 
 
 # ── timeline "moments" for the rising template ────────────────────────────
@@ -1141,8 +1272,6 @@ CLOCK_PRESETS: dict[str, dict] = {
     # rings are built inward from r_in.
     "hours_photo": {"r_ring": 460.0, "r_in": 205.0, "len_lo": 80.0, "len_hi": 225.0},
     "orbit": {"r_ring": 420.0, "r_in": 190.0, "len_lo": 70.0, "len_hi": 190.0},
-    # the ornament: the whole dial in a 3.9 in wide oval, at 150 DPI
-    "ornament": {"r_ring": 150.0, "r_in": 68.0, "len_lo": 26.0, "len_hi": 74.0},
 }
 # Hero-photo radius inside the hours_photo face (hairline ring sits just out).
 CLOCK_PHOTO_R = 195.0
@@ -1480,6 +1609,7 @@ def build_reel_scene(photos: list[dict], *, width: float, height: float, layout:
                     "w": round(panel_w, 1),
                     "h": round(band_y - _REEL_GUTTER, 1),
                     "href": ph["uri"],
+                    "photo": _framed_photo(ph, panel_w, band_y - _REEL_GUTTER),
                     "caption": ph.get("caption") or "",
                     "time": _fmt_time(ph.get("occurred_at")),
                 }
@@ -1497,6 +1627,7 @@ def build_reel_scene(photos: list[dict], *, width: float, height: float, layout:
                     "w": width,
                     "h": round(row_h, 1),
                     "href": ph["uri"],
+                    "photo": _framed_photo(ph, width, row_h),
                     "caption": ph.get("caption") or "",
                     "time": _fmt_time(ph.get("occurred_at")),
                 }
@@ -1543,6 +1674,9 @@ def _reel_refs(db: Session, birth: Birth) -> list[dict]:
                 "asset": asset,
                 "media_id": str(media_id),
                 "caption": _truncate(_clean_text((e.payload or {}).get("caption")), 18),
+                # the whole line, for designs with room for it (the book)
+                "caption_full": _truncate(_clean_text((e.payload or {}).get("caption")), 90),
+                "event_id": e.id,
                 "occurred_at": _localize(e.occurred_at),
             }
         )
@@ -1564,7 +1698,7 @@ def _keepsake_ref(db: Session, birth: Birth, media_id: str) -> dict | None:
         or asset.archived_at is not None
     ):
         return None
-    return {"asset": asset, "media_id": media_id, "caption": "", "occurred_at": None}
+    return {"asset": asset, "media_id": media_id, "caption": "", "caption_full": "", "event_id": None, "occurred_at": None}
 
 
 def slot_overrides(rendering, slot_count: int) -> dict[int, str]:
@@ -1605,14 +1739,18 @@ def _slot_photos(
             # a story shorter than the design, extended by hand
             chosen.append(ref)
     photos = []
-    for ref in chosen:
-        uri = _photo_data_uri(ref["asset"], max_px=photo_max_px)
-        if uri is None:
+    for i, ref in enumerate(chosen):
+        data = _photo_data(ref["asset"], max_px=photo_max_px)
+        if data is None:
             continue
+        uri, w, h = data
         photos.append(
             {
                 "uri": uri,
+                "w": w, "h": h, "crop": photo_crop(rendering, i),
                 "caption": ref["caption"],
+                "caption_full": ref.get("caption_full", ""),
+                "event_id": ref.get("event_id"),
                 "occurred_at": ref["occurred_at"],
                 "media_id": ref["media_id"],
             }
@@ -1836,6 +1974,7 @@ def build_wall_scene(
                 "px": round(x + WALL_MAT, 1), "py": round(y + WALL_MAT, 1),
                 "pw": round(tw - 2 * WALL_MAT, 1), "ph": round(th - 2 * WALL_MAT, 1),
                 "href": ph["uri"],
+                "photo": _framed_photo(ph, tw - 2 * WALL_MAT, th - 2 * WALL_MAT),
                 "stamp": _fmt_time(ph.get("occurred_at")).upper() if th > 240 else "",
             }
         )
@@ -2011,6 +2150,7 @@ def build_frame_story_scene(
                     "px": round(tx + STORY_MAT, 1), "py": round(ty + STORY_MAT, 1),
                     "psize": STORY_THUMB - 2 * STORY_MAT,
                     "href": m["uri"],
+                    "photo": _framed_photo(m, 1, 1),
                     "lx": round(lx, 1), "ly": round(ly, 1), "ang": round(ang, 1),
                     "label": _fmt_time(when).upper(),
                 }
@@ -2107,6 +2247,29 @@ def build_frame_story_scene(
     }
 
 
+def book_plan_for(db: Session, birth: Birth, rendering, day: list[dict] | None) -> list[dict]:
+    """The book's page plan for a draft, without drawing anything — what the
+    editor needs after a page is added, removed or moved: which pages exist,
+    what kind each is, and which photo slots each holds."""
+    refs = _reel_refs(db, birth)
+    n_notes = sum(
+        1 for e in db.scalars(
+            select(TimelineEvent).where(TimelineEvent.birth_id == birth.id, TimelineEvent.event_type == TimelineEventType.text_note, TimelineEvent.deleted_at.is_(None))
+        ).all()
+        if _clean_text((e.payload or {}).get("body") or (e.payload or {}).get("text"))
+    )
+    from repositories import guesses as guesses_repo
+    has_pool = bool(birth.child_weight_lbs) and any(g.weight_lbs for g in guesses_repo.list_guesses(db, birth_id=birth.id))
+    all_events = list(db.scalars(select(TimelineEvent).where(TimelineEvent.birth_id == birth.id, TimelineEvent.deleted_at.is_(None))).all())
+    stats = gift_stats.compute(birth, all_events)
+    has_marks = bool(stats.first_contraction_at) and any(has_mark(m["kind"]) for m in _gather_milestones(db, birth, stats))
+    plan = plan_book(n_photos=len(refs), n_notes=n_notes, has_pool=has_pool, has_milestones=has_marks, day=day)
+    return [
+        {"key": p["key"], "kind": p["kind"], "slots": p.get("slots", []), "count": p.get("count"), "editable": bool(p.get("editable"))}
+        for p in plan
+    ]
+
+
 def _story_moments(db: Session, birth: Birth, rendering, straight: float, *, photo_max_px: int) -> list[dict]:
     """The timeline as moments, thinned to what fits, with the parent's
     per-slot photo choices laid over the photos that made the cut."""
@@ -2153,12 +2316,15 @@ def _story_moments(db: Session, birth: Birth, rendering, straight: float, *, pho
         photo_slots[i]["asset"] = asset
         photo_slots[i]["media_id"] = media_id
     out = []
+    slot = 0
     for m in moments:
         if m["kind"] == "photo":
-            uri = _photo_data_uri(m["asset"], max_px=photo_max_px)
-            if uri is None:
+            data = _photo_data(m["asset"], max_px=photo_max_px)
+            if data is None:
                 continue
-            out.append({**m, "uri": uri})
+            uri, w, h = data
+            out.append({**m, "uri": uri, "w": w, "h": h, "crop": photo_crop(rendering, slot)})
+            slot += 1
         else:
             out.append(m)
     return out
@@ -2213,6 +2379,377 @@ def _build_frame_story_scene(
         )
     )
     return scene
+
+# ── the book: the whole story, twenty-four pages and a cover ─────────────
+# A hardcover 8×8 (Printful 1564): a 5370 × 2850 wrap for the cover and
+# twenty-four 2325 × 2325 pages, every one its own print file. Title, the
+# clock, the pool, then the day — photos hung two to four to a page with the
+# family's notes between — then the milestones, pages left blank for a pen,
+# and a closing. A story with few photos gets more ruled pages, not empty
+# ones; a busy one thins to what twenty-four pages hold.
+
+BOOK_PAGE = 2325
+BOOK_COVER_W, BOOK_COVER_H = 5370, 2850
+# From Printful's cover template: the spine is the strip between 48.8% and
+# 51.1% of the wrap's width, and each cover is what's left on its side. The
+# safe area sits ~5% in from each edge, and the partner prints a QR code in
+# the bottom-right corner of the *back* cover — nothing of ours goes there.
+BOOK_SPINE_X0 = round(BOOK_COVER_W * 0.4884)
+BOOK_SPINE_X1 = round(BOOK_COVER_W * 0.5111)
+BOOK_SPINE = BOOK_SPINE_X1 - BOOK_SPINE_X0
+BOOK_PANEL = BOOK_SPINE_X0               # a cover's width, either side
+BOOK_BLEED = 0                           # the panels already include it
+# The visible face of each cover is the template's safe area, not the print
+# panel: the outer edge wraps around the board. Centre on what's seen.
+BOOK_FRONT_CX = round(BOOK_COVER_W * (0.5253 + 0.9474) / 2)
+BOOK_BACK_CX = round(BOOK_COVER_W * (0.0505 + 0.4726) / 2)
+BOOK_PAGES = 24
+BOOK_NOTES_PER_PAGE = 5
+BOOK_MAX_PER_GALLERY = 4
+BOOK_GALLERY_LAYOUTS = {  # (x, y, w, h) as fractions of the photo box
+    1: [(0.0, 0.0, 1.0, 1.0)],
+    2: [(0.0, 0.0, 1.0, 0.49), (0.0, 0.51, 1.0, 0.49)],
+    3: [(0.0, 0.0, 1.0, 0.56), (0.0, 0.58, 0.49, 0.42), (0.51, 0.58, 0.49, 0.42)],
+    4: [(0.0, 0.0, 0.49, 0.49), (0.51, 0.0, 0.49, 0.49), (0.0, 0.51, 0.49, 0.49), (0.51, 0.51, 0.49, 0.49)],
+}
+BOOK_WRITE_IN = (  # headings for the ruled pages, in the order they're needed
+    ("A LETTER TO {NAME}", "from the ones who were there"),
+    ("IN YOUR OWN WORDS", "what you want {name} to know about this day"),
+    ("THE FIRST WEEK", "how it went, in a few lines"),
+    ("FOR LATER", "whatever you'd like {name} to find here one day"),
+    ("FROM THE FAMILY", "a line each, from whoever comes to visit"),
+    ("THE FIRST MONTH", "what changed, what didn't"),
+)
+
+
+BOOK_PAGE_KINDS = ("gallery", "notes", "write_in")   # what a parent may add
+
+
+def plan_book(
+    *,
+    n_photos: int,
+    n_notes: int,
+    has_pool: bool,
+    has_milestones: bool,
+    day: list[dict] | None = None,
+) -> list[dict]:
+    """Which page is which, for a story of this size. Pure, so the shape of
+    the book is testable without a database.
+
+    Fixed pages first (title, clock, pool) and last (milestones, two ruled
+    pages, closing); the middle is the day — gallery pages of one to four
+    photos with the notes pages spread evenly between them. One photo to a
+    page while pages last, more per page as the story grows. Room left over
+    becomes more ruled pages, since a page to write in beats a page with
+    nothing on it.
+
+    `day` is the parent's own middle section — [{"kind": "gallery", "count":
+    3}, {"kind": "notes"}, {"kind": "write_in"}, …] — added, removed and
+    reordered in the editor. It replaces the automatic one, trimmed to the
+    room the book has and padded with ruled pages. The fixed pages stay.
+
+    Each page: {"key", "kind", ...}. Gallery pages carry "count" and a
+    contiguous "slots" range into the book's photo list; the day's pages
+    carry "editable": True."""
+    head = [{"kind": "title"}, {"kind": "clock"}] + ([{"kind": "pool"}] if has_pool else [])
+    tail = ([{"kind": "milestones"}] if has_milestones else [])
+    tail += [{"kind": "write_in", "heading": 0}, {"kind": "write_in", "heading": 1}, {"kind": "closing"}]
+    room_all = BOOK_PAGES - len(head) - len(tail)
+    if day is not None:
+        # the parent's section: only kinds we can draw, gallery counts 1–4,
+        # cut to the room, ruled pages to fill what's left
+        mid: list[dict] = []
+        notes_seen = 0
+        for pg in day[:room_all]:
+            kind = pg.get("kind")
+            if kind == "gallery":
+                mid.append({"kind": "gallery", "count": max(1, min(BOOK_MAX_PER_GALLERY, int(pg.get("count") or 1)))})
+            elif kind == "notes":
+                mid.append({"kind": "notes", "index": notes_seen}); notes_seen += 1
+            elif kind == "write_in":
+                mid.append({"kind": "write_in", "heading": 2 + sum(1 for m in mid if m["kind"] == "write_in")})
+        spare = room_all - len(mid)
+        n_ruled = sum(1 for m in mid if m["kind"] == "write_in")
+        extra_write = [{"kind": "write_in", "heading": 2 + n_ruled + i} for i in range(spare)]
+    else:
+        note_pages = min(2, math.ceil(n_notes / BOOK_NOTES_PER_PAGE)) if n_notes else 0
+        room = room_all - note_pages
+        # a photo per page until the pages run out — a full-page photo is the
+        # richest thing a book does — then two, three, four to a page as the
+        # story grows, thinning past four to a page
+        galleries = min(room, n_photos)
+        photos_used = min(n_photos, galleries * BOOK_MAX_PER_GALLERY)
+        sizes = []
+        if galleries:
+            base, extra = divmod(photos_used, galleries)
+            sizes = [base + (1 if i < extra else 0) for i in range(galleries)]
+        mid = [{"kind": "gallery", "count": k} for k in sizes]
+        # notes pages spread through the day, never first or last in it
+        for j in range(note_pages):
+            at = round((j + 1) * (len(mid) + 1) / (note_pages + 1))
+            mid.insert(min(at, len(mid)), {"kind": "notes", "index": j})
+        spare = room - galleries
+        extra_write = [{"kind": "write_in", "heading": 2 + i} for i in range(spare)]
+    for pg in mid + extra_write:
+        pg["editable"] = True
+
+    pages = head + mid + tail[:-3] + extra_write + tail[-3:]
+    slot = 0
+    for i, page in enumerate(pages):
+        page["key"] = f"page_{i + 1}"
+        if page["kind"] == "gallery":
+            page["slots"] = list(range(slot, slot + page["count"]))
+            slot += page["count"]
+    assert len(pages) == BOOK_PAGES, len(pages)
+    return pages
+
+
+def _wrap(text: str, width: int, max_lines: int) -> list[str]:
+    lines, cur = [], ""
+    for word in text.split():
+        if len(cur) + len(word) + 1 > width and cur:
+            lines.append(cur); cur = word
+        else:
+            cur = (cur + " " + word).strip()
+    if cur:
+        lines.append(cur)
+    return lines[:max_lines]
+
+
+def _book_tiles(count: int, photos: list[dict | None], *, foot: int) -> list[dict]:
+    """The mats on a gallery page, above a foot `foot` px tall that holds the
+    words (a caption, the comments, a note)."""
+    m, mat = 190, 18
+    box_w = BOOK_PAGE - 2 * m
+    box_h = BOOK_PAGE - 2 * m - foot
+    tiles = []
+    for (fx, fy, fw, fh), ph in zip(BOOK_GALLERY_LAYOUTS[count], photos):
+        x, y, w, h = m + fx * box_w, m + fy * box_h, fw * box_w, fh * box_h
+        tiles.append(
+            {
+                "x": round(x, 1), "y": round(y, 1), "w": round(w, 1), "h": round(h, 1),
+                "px": round(x + mat, 1), "py": round(y + mat, 1),
+                "pw": round(w - 2 * mat, 1), "ph": round(h - 2 * mat, 1),
+                "href": ph["uri"] if ph else None,
+                "photo": _framed_photo(ph, w - 2 * mat, h - 2 * mat) if ph else None,
+                "stamp": _fmt_time(ph.get("occurred_at")).upper() if ph else "",
+            }
+        )
+    return tiles
+
+
+def _photo_words(db: Session, photos: list[dict | None], *, max_comments: int) -> list[dict]:
+    """What was said with these photos: each one's caption, and the comments
+    people left on it, oldest first — as lines for the foot of the page."""
+    words = []
+    for ph in photos:
+        if not ph or not ph.get("event_id"):
+            continue
+        entry = {"caption": ph.get("caption_full") or "", "when": _fmt_time(ph.get("occurred_at")).upper(), "comments": []}
+        if max_comments:
+            rows = db.execute(
+                select(TimelineEventComment.body, User.display_name)
+                .join(User, User.id == TimelineEventComment.user_id)
+                .where(TimelineEventComment.event_id == ph["event_id"], TimelineEventComment.deleted_at.is_(None))
+                .order_by(TimelineEventComment.created_at.asc())
+            ).all()
+            for body, who in rows[:max_comments]:
+                text = _clean_text(body)
+                if text:
+                    entry["comments"].append({"text": _truncate(text, 80), "who": _clean_text((who or "").split()[0] if who else "")})
+        if entry["caption"] or entry["comments"]:
+            words.append(entry)
+    return words
+
+
+def render_book(
+    birth: Birth,
+    template: GiftTemplate,
+    db: Session,
+    rendering=None,
+    *,
+    only: str | None = None,
+    photo_max_px: int | None = None,
+    output_width: int | None = None,
+) -> tuple[dict[str, bytes], dict]:
+    """Every file of the book — "cover" (the print wrap), "cover_front" (the
+    square face the gallery shows; not printed) and "page_1".."page_24" — as
+    PNGs, plus the rendering metadata. `only` renders a single one, which is
+    what the editor's per-page preview asks for."""
+    base, parts = build_context(birth, template, db, rendering, photo_max_px)
+    stats = parts["stats"]
+    first = _localize(stats.first_contraction_at)
+    when = parts["when"]
+    first_name = (base["child_name"] or "Baby").split()[0]
+
+    # the story's raw materials
+    refs = _reel_refs(db, birth)
+    notes_raw = [
+        (_clean_text((e.payload or {}).get("body") or (e.payload or {}).get("text")), _localize(e.occurred_at))
+        for e in db.scalars(
+            select(TimelineEvent)
+            .where(TimelineEvent.birth_id == birth.id, TimelineEvent.event_type == TimelineEventType.text_note, TimelineEvent.deleted_at.is_(None))
+            .order_by(TimelineEvent.occurred_at.asc())
+        ).all()
+    ]
+    notes = [(t, w) for t, w in notes_raw if t]
+    from repositories import guesses as guesses_repo
+    guessed = [g for g in guesses_repo.list_guesses(db, birth_id=birth.id) if g.weight_lbs]
+    has_pool = bool(guessed) and bool(birth.child_weight_lbs)
+    milestones = [(m["kind"], first + timedelta(seconds=int(m["offset_seconds"]))) for m in _gather_milestones(db, birth, stats)] if first else []
+    marks = [(k, t) for k, t in milestones if has_mark(k)]
+
+    day = ((getattr(rendering, "layout_overrides", None) or {}).get("pages")) if rendering is not None else None
+    plan = plan_book(n_photos=len(refs), n_notes=len(notes), has_pool=has_pool, has_milestones=bool(marks), day=day)
+    total_slots = sum(p.get("count", 0) for p in plan if p["kind"] == "gallery")
+    photos = _slot_photos(db, birth, rendering, total_slots, photo_max_px=photo_max_px or 1000) if total_slots else []
+    photos += [None] * (total_slots - len(photos))
+
+    # notes: which fall in each gallery's stretch of the day, and the pages of them
+    def notes_between(a, b):
+        return [(t, w) for t, w in notes if (a is None or w >= a) and (b is None or w < b)]
+
+    pages_ctx: dict[str, tuple[str, dict]] = {}
+    gallery_windows = []
+    gi = [p for p in plan if p["kind"] == "gallery"]
+    for i, page in enumerate(gi):
+        ph = [photos[k] for k in page["slots"]]
+        times = [x["occurred_at"] for x in ph if x and x.get("occurred_at")]
+        gallery_windows.append((min(times) if times else None, max(times) if times else None))
+    used_notes: set[int] = set()
+    for i, page in enumerate(gi):
+        lo = gallery_windows[i][0]
+        hi = gallery_windows[i + 1][0] if i + 1 < len(gi) else None
+        note = None
+        for j, (t, w) in enumerate(notes):
+            if j in used_notes or w is None:
+                continue
+            if (lo is None or w >= lo) and (hi is None or w < hi):
+                note, used_notes.add(j)
+                note = {"text": _truncate(t, 60), "when": _fmt_time(w).upper()}
+                break
+        ph = [photos[k] for k in page["slots"]]
+        # a single photo has room for its caption and what people said about
+        # it; a gallery shows the first photo's caption line only
+        words = _photo_words(db, ph, max_comments=2 if page["count"] == 1 else 0)
+        foot_lines = sum(1 + len(w["comments"]) for w in words[: 1 if page["count"] > 1 else 2]) + (1 if note else 0)
+        foot = 110 + 70 * foot_lines
+        pages_ctx[page["key"]] = ("book_gallery.svg.j2", {
+            "book_tiles": _book_tiles(page["count"], ph, foot=foot),
+            "book_note": note,
+            "book_words": words[: 1 if page["count"] > 1 else 2],
+            "book_foot_y": BOOK_PAGE - 190 - foot + 90,
+        })
+
+    note_pages = [p for p in plan if p["kind"] == "notes"]
+    per = BOOK_NOTES_PER_PAGE
+    for page in note_pages:
+        chunk = notes[page["index"] * per:(page["index"] + 1) * per]
+        y, quotes = 620, []
+        for t, w in chunk:
+            lines = _wrap(t, 40, 3)
+            quotes.append({"lines": lines, "y": y, "when": _fmt_time(w).upper()})
+            y += len(lines) * 74 + 150
+        pages_ctx[page["key"]] = ("book_notes.svg.j2", {"book_quotes": quotes})
+
+    for page in plan:
+        k = page["kind"]
+        if k == "title":
+            pages_ctx[page["key"]] = ("book_title.svg.j2", {})
+        elif k == "clock":
+            c = build_hours_clock(
+                durations=stats.durations, offsets_seconds=stats.offsets_seconds,
+                first_contraction_at=first, born_at=when, cx=BOOK_PAGE / 2, cy=1060,
+                r_ring=700, r_in=310, milestones=_gather_milestones(db, birth, stats), canvas_w=BOOK_PAGE,
+            )
+            c.update({"clock_cx": BOOK_PAGE / 2, "clock_cy": 1060})
+            pages_ctx[page["key"]] = ("book_clock.svg.j2", c)
+        elif k == "pool":
+            scene = build_pool_scene(
+                [{"name": g.display_name, "weight_lbs": g.weight_lbs, "length_in": g.length_in} for g in guessed],
+                actual_weight_lbs=birth.child_weight_lbs, actual_length_in=birth.child_length_in,
+                child_name=base["child_name"], layout="card",
+            )
+            r = scene.get("pool_ruler")
+            if r:
+                names = [_clean_text((g.display_name or "").split()[0] if g.display_name else "") for g in guessed]
+                scene["pool_ruler"] = weight_ruler([g.weight_lbs for g in guessed], birth.child_weight_lbs, x1=r["x1"], x2=r["x2"], y=r["y"], names=names)
+            pages_ctx[page["key"]] = ("book_pool.svg.j2", scene)
+        elif k == "milestones":
+            rows, y = [], 640
+            for kind, t in marks:
+                rows.append({"mark": _mark_at(kind, 560, y - 14), "label": _humanize_kind(kind), "when": _fmt_time(t).upper(), "y": y, "born": False})
+                y += 150
+            rows.append({"mark": {"d": _heart_path(560, y - 14, 20), "transform": None, "stroke": 3.0}, "label": f"{base['child_name']} arrives", "when": _fmt_time(when).upper() if when else "", "y": y, "born": True})
+            pages_ctx[page["key"]] = ("book_milestones.svg.j2", {"book_milestones": rows})
+        elif k == "write_in":
+            heading, sub = BOOK_WRITE_IN[page["heading"] % len(BOOK_WRITE_IN)]
+            rules = list(range(620, BOOK_PAGE - 260, 118))
+            pages_ctx[page["key"]] = ("book_write_in.svg.j2", {
+                "book_heading": heading.format(NAME=first_name.upper()), "book_subheading": sub.format(name=first_name),
+                "book_rules": rules, "book_small_heart": _heart_path(BOOK_PAGE / 2, BOOK_PAGE - 260 + 90, 16),
+            })
+        elif k == "closing":
+            pages_ctx[page["key"]] = ("book_closing.svg.j2", {"book_big_heart": _heart_path(BOOK_PAGE / 2, 960, 110)})
+
+    # the cover, and its front face alone
+    fcx = BOOK_FRONT_CX
+    cover_clock = build_hours_clock(
+        durations=stats.durations, offsets_seconds=stats.offsets_seconds, first_contraction_at=first, born_at=when,
+        cx=fcx, cy=1050, r_ring=560, r_in=250, milestones=_gather_milestones(db, birth, stats), canvas_w=BOOK_COVER_W,
+    )
+    cover_clock.update({
+        "clock_cx": fcx, "clock_cy": 1050, "book_front_cx": round(fcx, 1),
+        "book_spine_cx": round((BOOK_SPINE_X0 + BOOK_SPINE_X1) / 2, 1),
+        # the type has to sit inside a 122px spine with room to spare
+        "book_spine_size": int(BOOK_SPINE * 0.5), "book_year": when.year if when else "",
+        "book_back_cx": BOOK_BACK_CX,
+        "book_back_heart": _heart_path(BOOK_BACK_CX, BOOK_COVER_H / 2 - 60, 90),
+    })
+    front_clock = build_hours_clock(
+        durations=stats.durations, offsets_seconds=stats.offsets_seconds, first_contraction_at=first, born_at=when,
+        cx=BOOK_PANEL / 2, cy=1050, r_ring=560, r_in=250, milestones=_gather_milestones(db, birth, stats), canvas_w=BOOK_PANEL,
+    )
+    front_clock.update({"clock_cx": BOOK_PANEL / 2, "clock_cy": 1050})
+    files_spec: dict[str, tuple[str, dict, int, int]] = {
+        "cover": ("book_cover.svg.j2", cover_clock, BOOK_COVER_W, BOOK_COVER_H),
+        "cover_front": ("book_cover_front.svg.j2", front_clock, BOOK_PANEL, BOOK_PANEL),
+    }
+    for i, page in enumerate(plan):
+        svg, extra = pages_ctx[page["key"]]
+        extra = {**extra, "book_page_number": i + 1}
+        files_spec[page["key"]] = (svg, extra, BOOK_PAGE, BOOK_PAGE)
+
+    out: dict[str, bytes] = {}
+    for key, (svg_name, extra, w, h) in files_spec.items():
+        if only and key != only:
+            continue
+        ctx = {**base, **extra, "w": w, "h": h, "book_first_name": first_name}
+        svg = _env.get_template(svg_name).render(**ctx)
+        width = output_width or w
+        height = max(1, round(h * (width / w)))
+        try:
+            out[key] = cairosvg.svg2png(bytestring=svg.encode("utf-8"), output_width=width, output_height=height)
+        except Exception as exc:  # cairosvg raises a grab-bag of errors
+            raise ArtworkError(f"rasterize {key}: {exc}") from exc
+
+    metadata = {
+        "template_id": template.template_id,
+        "text_sizes": {"child_name": base["child_name_size"], "custom_line": base["custom_line_size"]},
+        "text_print_floor": print_floor_px(template.dpi),
+        "theme": birth.theme,
+        "selected_media_id": None,
+        "selected_slot_media_ids": [ph["media_id"] if ph else None for ph in photos],
+        "slot_frame_aspects": [(ph or {}).get("frame_aspect") or 1.0 for ph in photos],
+        "book_plan": [
+            {"key": p["key"], "kind": p["kind"], "slots": p.get("slots", []), "count": p.get("count"), "editable": bool(p.get("editable"))}
+            for p in plan
+        ],
+        "stats": stats.as_metadata(),
+        "child": {"name": birth.child_name, "when": when.isoformat() if when else None},
+        "dimensions": {"w": template.width, "h": template.height, "dpi": template.dpi},
+    }
+    return out, metadata
 
 def _family_pulse(db: Session, birth: Birth) -> list[tuple[datetime, str]]:
     """When the family spoke up: every comment and reaction on this birth's

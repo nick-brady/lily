@@ -35,8 +35,10 @@
 
   <!-- the frames: rotate the mug, the day plays -->
   {% for f in reel_panels %}
-  <image x="{{ f.x }}" y="{{ f.y }}" width="{{ f.w }}" height="{{ f.h }}"
-         preserveAspectRatio="xMidYMid slice" xlink:href="{{ f.href }}"/>
+  <clipPath id="reelpanel{{ loop.index }}"><rect x="{{ f.x }}" y="{{ f.y }}" width="{{ f.w }}" height="{{ f.h }}"/></clipPath>
+  {% set g = place_photo(f.x, f.y, f.w, f.h, f.photo) %}
+  <image x="{{ g.x }}" y="{{ g.y }}" width="{{ g.width }}" height="{{ g.height }}"
+         preserveAspectRatio="{{ 'xMidYMid slice' if g.slice else 'none' }}" xlink:href="{{ f.href }}" clip-path="url(#reelpanel{{ loop.index }})"/>
   <rect x="{{ f.x }}" y="{{ f.y }}" width="{{ f.w }}" height="{{ f.h }}" fill="url(#scrim)"/>
   {% if f.time %}
   <text x="{{ f.x + 30 }}" y="{{ f.y + f.h - 92 }}" font-family="{{ p.body_font }}"

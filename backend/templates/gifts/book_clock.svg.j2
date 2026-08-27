@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink"
+     width="{{ w }}" height="{{ h }}" viewBox="0 0 {{ w }} {{ h }}">
+{% from "_clock.svg.j2" import clock, legend with context %}
+{% from "_book.svg.j2" import folio with context %}
+  <rect x="0" y="0" width="{{ w }}" height="{{ h }}" fill="{{ p.bg }}"/>
+  {{ clock(label_size=32) }}
+  <text x="{{ w // 2 }}" y="2080" text-anchor="middle" font-family="{{ p.body_font }}"
+        font-size="32" letter-spacing="6" fill="{{ p.ink }}"
+        opacity="0.5">{{ count }} CONTRACTIONS TIMED{% if labor_start_time %} · FIRST AT {{ labor_start_time|upper }}{% endif %}</text>
+  {{ legend(w // 2 - 100, 2160) }}
+  {{ folio() }}
+</svg>

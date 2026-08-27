@@ -133,7 +133,7 @@ export default function GiftGallery({ birthId, isParent = true }) {
       ) : (
         <div className="space-y-6">
           {items
-            .filter((item) => item.kind === 'physical')
+            .filter((item) => item.kind === 'physical' && !PAIRED_KINDS.includes(item.product_kind))
             .map((item) => (
               <GiftItemCard
                 key={item.id}
@@ -143,6 +143,12 @@ export default function GiftGallery({ birthId, isParent = true }) {
                 onPhotoChanged={load}
               />
             ))}
+          <PairedRow
+            items={items.filter((item) => item.kind === 'physical' && PAIRED_KINDS.includes(item.product_kind))}
+            birthId={birthId}
+            familyHasAddress={familyHasAddress}
+            onPhotoChanged={load}
+          />
           <ComingNextSection />
           {items
             // once storage is forever there's nothing left to sell there
@@ -162,6 +168,11 @@ export default function GiftGallery({ birthId, isParent = true }) {
   );
 }
 
+// The book and the ornament each have one design, so they share a row rather
+// than each taking a section of their own — two small things side by side
+// under the two big ones. Order here is display order.
+const PAIRED_KINDS = ['photo_book', 'ornament'];
+
 // Two designs lead each product; "see more" opens the third and the door to
 // something custom. Two reads "curated keepsakes"; a wall of them reads
 // "catalog", and this page is the former.
@@ -176,7 +187,8 @@ const DESIGN_ORDER = [
   'frame_wall',
   'frame_story',
   'frame_pool',
-  'ornament_oval',
+  'book_8x8',
+  'ornament_circle',
 ];
 
 
@@ -262,16 +274,10 @@ function CustomDesignTile({ noun }) {
 
 // What's next on the shelf, shown honestly as next: real products we've
 // priced from the catalogue but haven't drawn the artwork for yet.
-const COMING_NEXT = [
-  {
-    key: 'book',
-    icon: '📖',
-    name: 'The Day, as a Book',
-    blurb: 'A hardcover of the whole story — the clock, the photos, the words.',
-  },
-];
+const COMING_NEXT = [];
 
 function ComingNextSection() {
+  if (COMING_NEXT.length === 0) return null;
   return (
     <div>
       <div className="flex items-baseline justify-between mb-2">
@@ -292,6 +298,44 @@ function ComingNextSection() {
           </div>
         ))}
       </div>
+    </div>
+  );
+}
+
+function PairedRow({ items, birthId, familyHasAddress, onPhotoChanged }) {
+  const ordered = PAIRED_KINDS.map((k) => items.find((it) => it.product_kind === k)).filter(Boolean);
+  if (ordered.length === 0) return null;
+  return (
+    <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+      {ordered.map((item) => {
+        const usable = (item.renderings || []).filter((r) => r.status !== 'failed');
+        return (
+          <div key={item.id}>
+            <div className="flex items-baseline justify-between mb-2">
+              <span className="text-sm font-medium t-ink">{item.display_name}</span>
+              <span className="text-sm t-muted">
+                {formatPrice(item.base_price_cents)}
+                {item.is_claimed_for_family && (
+                  <span className="ml-2 text-xs" title="A family-bound copy has been gifted">
+                    Already gifted 🤍
+                  </span>
+                )}
+              </span>
+            </div>
+            {usable.length === 0 ? (
+              <p className="text-sm t-muted">No designs yet.</p>
+            ) : (
+              <RenderingTile
+                rendering={usable[0]}
+                birthId={birthId}
+                item={item}
+                familyHasAddress={familyHasAddress}
+                onPhotoChanged={onPhotoChanged}
+              />
+            )}
+          </div>
+        );
+      })}
     </div>
   );
 }
@@ -451,8 +495,14 @@ function RenderingTile({
   // comes out about the mug's shape. The print file is a 12×16 sheet with
   // the mat's share of it blank, so the tile shows just the opening
   // (7.5×11.5 of it, centred): the mockup beside it shows the mat.
-  const portrait = item?.product_kind === 'framed_print' || item?.product_kind === 'ornament';
-  const cropToOpening = item?.product_kind === 'framed_print';
+  // Anything that isn't a wide mug strip lays out sideways — artwork left,
+  // the product shots stacked right — so tiles that share a row share a
+  // height. The frame's art is cropped to its mat opening; the book's cover
+  // face and the ornament are square.
+  const kind = item?.product_kind;
+  const portrait = kind === 'framed_print' || kind === 'ornament' || kind === 'photo_book';
+  const cropToOpening = kind === 'framed_print';
+  const artAspect = cropToOpening ? 'aspect-[15/23]' : 'aspect-square';   // the book's face and the ornament are both square
 
   return (
     <div
@@ -476,7 +526,7 @@ function RenderingTile({
             <span
               className={
                 portrait
-                  ? `block ${cropToOpening ? 'aspect-[15/23]' : 'aspect-[585/945]'} overflow-hidden rounded flex items-center justify-center`
+                  ? `block ${artAspect} overflow-hidden rounded flex items-center justify-center`
                   : 'block'
               }
               style={{ backgroundColor: 'var(--t-soft-bg)' }}

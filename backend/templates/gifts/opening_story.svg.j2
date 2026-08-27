@@ -29,8 +29,9 @@
   {% for ph in story_photos %}
   <rect x="{{ ph.x }}" y="{{ ph.y }}" width="{{ ph.size }}" height="{{ ph.size }}" fill="#ffffff"
         stroke="{{ p.ink }}" stroke-width="1.3" stroke-opacity="0.3"/>
-  <image x="{{ ph.px }}" y="{{ ph.py }}" width="{{ ph.psize }}" height="{{ ph.psize }}"
-         preserveAspectRatio="xMidYMid slice" clip-path="url(#story{{ loop.index }})"
+  {% set g = place_photo(ph.px, ph.py, ph.psize, ph.psize, ph.photo) %}
+  <image x="{{ g.x }}" y="{{ g.y }}" width="{{ g.width }}" height="{{ g.height }}"
+         preserveAspectRatio="{{ 'xMidYMid slice' if g.slice else 'none' }}" clip-path="url(#story{{ loop.index }})"
          xlink:href="{{ ph.href }}"/>
   <text x="{{ ph.lx }}" y="{{ ph.ly }}" text-anchor="middle" dominant-baseline="middle"
         transform="rotate({{ ph.ang }} {{ ph.lx }} {{ ph.ly }})"

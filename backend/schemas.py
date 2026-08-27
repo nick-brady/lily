@@ -702,6 +702,15 @@ class GiftRenderingOut(BaseModel):
     photo_slot_count: int = 0
     photo_slots: dict[str, uuid.UUID] = {}
     photo_slots_effective: list[Optional[uuid.UUID]] = []
+    # The book: its pages in order — key, kind, which photo slots each holds,
+    # and a URL for the rendered page once there is one.
+    pages: list[dict] = []
+    layout_overrides: dict = {}
+    photo_crop: dict[str, list[float]] = {}
+    # the shape (width / height) of each photo slot's frame and of the hero's,
+    # so the editor draws a crop rectangle of the right proportions
+    slot_frame_aspects: list[float] = []
+    hero_frame_aspect: float = 1.0
     # Slots this design lets a parent edit, and what they currently say.
     editable_text: list[str] = []
     text_overrides: dict[str, str] = {}
@@ -726,8 +735,21 @@ class GiftDesignIn(BaseModel):
     # For the filmstrip designs: slot index ("0".."3") → the chosen photo.
     # A missing slot stays on the auto sample; unknown slots are dropped.
     photo_slots: dict[str, uuid.UUID] = Field(default_factory=dict)
+    # The book's middle section, as the parent arranged it — None keeps the
+    # automatic plan. Each entry: {"kind": "gallery"|"notes"|"write_in",
+    # "count": 1–4 for a gallery}.
+    pages: Optional[list[dict]] = None
+    # The part of each placed photo that shows, as fractions of the picture:
+    # [x, y, width] of the region's top-left and width (its height follows the
+    # frame's shape). "hero" for a design's single photo, the slot index for
+    # the rest. Absent means the centre of the picture fills the frame.
+    crop: dict[str, list[float]] = Field(default_factory=dict)
     text: dict[str, str] = Field(default_factory=dict)
     product_key: Optional[str] = None
+
+
+class BookPlanOut(BaseModel):
+    pages: list[dict]
 
 
 class GiftPhotoOptionOut(BaseModel):
@@ -787,6 +809,8 @@ class ProductMockupOut(BaseModel):
     # The blank product photo, so the chooser costs no mockups at all.
     blank_image_url: str = ""
     surcharge_cents: int = 0
+    # what tells this one from its neighbours: "15 oz", "Oak", "Matte"
+    caption: str = ""
 
 
 class RenderingProductsOut(BaseModel):

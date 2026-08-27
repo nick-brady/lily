@@ -1,0 +1,54 @@
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink"
+     width="{{ w }}" height="{{ h }}" viewBox="0 0 {{ w }} {{ h }}">
+{% from "_book.svg.j2" import folio with context %}
+{# One to four photos in slim mats, each with its time; a note beneath when
+   one fell in this stretch of the day. The page a parent fills slot by slot. #}
+  <defs>
+    {% for t in book_tiles %}
+    <clipPath id="tile{{ loop.index }}"><rect x="{{ t.px }}" y="{{ t.py }}" width="{{ t.pw }}" height="{{ t.ph }}"/></clipPath>
+    {% endfor %}
+  </defs>
+  <rect x="0" y="0" width="{{ w }}" height="{{ h }}" fill="{{ p.bg }}"/>
+  {% for t in book_tiles %}
+  <rect x="{{ t.x }}" y="{{ t.y }}" width="{{ t.w }}" height="{{ t.h }}" fill="#ffffff"
+        stroke="{{ p.ink }}" stroke-width="1.6" stroke-opacity="0.28"/>
+  {% if t.href %}
+  {% set g = place_photo(t.px, t.py, t.pw, t.ph, t.photo) %}
+  <image x="{{ g.x }}" y="{{ g.y }}" width="{{ g.width }}" height="{{ g.height }}"
+         preserveAspectRatio="{{ 'xMidYMid slice' if g.slice else 'none' }}" clip-path="url(#tile{{ loop.index }})" xlink:href="{{ t.href }}"/>
+  {% if t.stamp %}
+  <text x="{{ t.px + 22 }}" y="{{ t.py + t.ph - 20 }}" font-family="{{ p.body_font }}"
+        font-size="24" letter-spacing="4" fill="#ffffff" opacity="0.9">{{ t.stamp }}</text>
+  {% endif %}
+  {% else %}
+  {# an empty mat: in the editor this is where "add a photo" lives; in print
+     it's left as a blank mat, which is a thing a real album has #}
+  <rect x="{{ t.px }}" y="{{ t.py }}" width="{{ t.pw }}" height="{{ t.ph }}" fill="{{ p.bg }}" opacity="0.6"/>
+  {% endif %}
+  {% endfor %}
+  {# the foot: what was said with the photos — each caption in italics with
+     its time, the comments beneath with who left them — then a note from
+     that stretch of the day, if one fell there #}
+  {% set ns = namespace(y=book_foot_y) %}
+  {% for wd in book_words %}
+  {% if wd.caption %}
+  <text x="{{ w // 2 }}" y="{{ ns.y }}" text-anchor="middle" font-family="{{ p.display_font }}"
+        font-size="50" font-style="italic" fill="{{ p.ink }}" opacity="0.85">{{ wd.caption }}</text>
+  <text x="{{ w // 2 }}" y="{{ ns.y + 40 }}" text-anchor="middle" font-family="{{ p.body_font }}"
+        font-size="22" letter-spacing="5" fill="{{ p.ink }}" opacity="0.45">{{ wd.when }}</text>
+  {% set ns.y = ns.y + 88 %}
+  {% endif %}
+  {% for c in wd.comments %}
+  <text x="{{ w // 2 }}" y="{{ ns.y }}" text-anchor="middle" font-family="{{ p.display_font }}"
+        font-size="40" font-style="italic" fill="{{ p.ink }}" opacity="0.7">“{{ c.text }}”{% if c.who %}  — {{ c.who }}{% endif %}</text>
+  {% set ns.y = ns.y + 64 %}
+  {% endfor %}
+  {% endfor %}
+  {% if book_note %}
+  <text x="{{ w // 2 }}" y="{{ ns.y + 10 }}" text-anchor="middle" font-family="{{ p.display_font }}"
+        font-size="46" font-style="italic" fill="{{ p.ink }}" opacity="0.7">{{ book_note.text }}</text>
+  <text x="{{ w // 2 }}" y="{{ ns.y + 50 }}" text-anchor="middle" font-family="{{ p.body_font }}"
+        font-size="22" letter-spacing="5" fill="{{ p.ink }}" opacity="0.45">{{ book_note.when }}</text>
+  {% endif %}
+  {{ folio() }}
+</svg>
