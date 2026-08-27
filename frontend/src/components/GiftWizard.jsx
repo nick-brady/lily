@@ -394,7 +394,7 @@ export default function GiftWizard({
         )}
 
         {step === 0 && (
-          <div className="flex-1 min-h-0 overflow-y-auto sm:overflow-visible grid sm:grid-cols-[3fr_1fr]">
+          <div className="flex-1 min-h-0 overflow-y-auto sm:overflow-visible grid sm:grid-cols-[minmax(0,3fr)_minmax(0,1fr)]">
             {/* The artwork leads and updates as you type; the product shots sit
                 beneath it, real but honest about being behind.
 
@@ -404,7 +404,10 @@ export default function GiftWizard({
                 all. So the artwork takes whatever height is left after the
                 product strip, and the options column scrolls on its own. */}
             <div
-              className="flex flex-col items-center gap-4 p-6 sm:min-h-0"
+              // min-w-0: a grid column's default min-width is its content's,
+              // so a 25-thumbnail page strip would widen this column past the
+              // modal rather than scroll inside it
+              className="flex flex-col items-center gap-4 p-6 sm:min-h-0 min-w-0"
               style={{ backgroundColor: 'var(--t-soft-bg)' }}
             >
               <div className="relative w-full sm:flex-1 sm:min-h-0 flex items-center justify-center">
@@ -429,11 +432,11 @@ export default function GiftWizard({
               </div>
 
               {isBook && pageKeys.length > 1 && (
-                <div className="w-full sm:flex-none">
+                <div className="w-full min-w-0 sm:flex-none">
                   <div className="flex items-center gap-2">
                     <button type="button" onClick={() => goToPage(pageIdx - 1)} disabled={pageIdx === 0}
                       className="px-2 py-1 text-sm t-muted disabled:opacity-30" aria-label="Previous page">‹</button>
-                    <div className="flex-1 flex gap-1.5 overflow-x-auto py-1">
+                    <div className="flex-1 min-w-0 flex gap-1.5 overflow-x-auto py-1">
                       {pageKeys.map((key, idx) => {
                         const pg = idx > 0 ? pages[idx - 1] : null;
                         const url = idx === 0 ? rendering.artwork_url : pg?.url;
