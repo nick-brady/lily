@@ -1575,6 +1575,9 @@ def _reel_refs(db: Session, birth: Birth) -> list[dict]:
                 "asset": asset,
                 "media_id": str(media_id),
                 "caption": _truncate(_clean_text((e.payload or {}).get("caption")), 18),
+                # the whole line, for designs with room for it (the book)
+                "caption_full": _truncate(_clean_text((e.payload or {}).get("caption")), 90),
+                "event_id": e.id,
                 "occurred_at": _localize(e.occurred_at),
             }
         )
@@ -1596,7 +1599,7 @@ def _keepsake_ref(db: Session, birth: Birth, media_id: str) -> dict | None:
         or asset.archived_at is not None
     ):
         return None
-    return {"asset": asset, "media_id": media_id, "caption": "", "occurred_at": None}
+    return {"asset": asset, "media_id": media_id, "caption": "", "caption_full": "", "event_id": None, "occurred_at": None}
 
 
 def slot_overrides(rendering, slot_count: int) -> dict[int, str]:
@@ -1645,6 +1648,8 @@ def _slot_photos(
             {
                 "uri": uri,
                 "caption": ref["caption"],
+                "caption_full": ref.get("caption_full", ""),
+                "event_id": ref.get("event_id"),
                 "occurred_at": ref["occurred_at"],
                 "media_id": ref["media_id"],
             }
@@ -2265,6 +2270,10 @@ BOOK_SPINE_X1 = round(BOOK_COVER_W * 0.5111)
 BOOK_SPINE = BOOK_SPINE_X1 - BOOK_SPINE_X0
 BOOK_PANEL = BOOK_SPINE_X0               # a cover's width, either side
 BOOK_BLEED = 0                           # the panels already include it
+# The visible face of each cover is the template's safe area, not the print
+# panel: the outer edge wraps around the board. Centre on what's seen.
+BOOK_FRONT_CX = round(BOOK_COVER_W * (0.5253 + 0.9474) / 2)
+BOOK_BACK_CX = round(BOOK_COVER_W * (0.0505 + 0.4726) / 2)
 BOOK_PAGES = 24
 BOOK_NOTES_PER_PAGE = 5
 BOOK_MAX_PER_GALLERY = 4
@@ -2343,10 +2352,12 @@ def _wrap(text: str, width: int, max_lines: int) -> list[str]:
     return lines[:max_lines]
 
 
-def _book_tiles(count: int, photos: list[dict | None], *, with_note: bool) -> list[dict]:
+def _book_tiles(count: int, photos: list[dict | None], *, foot: int) -> list[dict]:
+    """The mats on a gallery page, above a foot `foot` px tall that holds the
+    words (a caption, the comments, a note)."""
     m, mat = 190, 18
     box_w = BOOK_PAGE - 2 * m
-    box_h = BOOK_PAGE - 2 * m - (230 if with_note else 110)
+    box_h = BOOK_PAGE - 2 * m - foot
     tiles = []
     for (fx, fy, fw, fh), ph in zip(BOOK_GALLERY_LAYOUTS[count], photos):
         x, y, w, h = m + fx * box_w, m + fy * box_h, fw * box_w, fh * box_h
@@ -2360,6 +2371,30 @@ def _book_tiles(count: int, photos: list[dict | None], *, with_note: bool) -> li
             }
         )
     return tiles
+
+
+def _photo_words(db: Session, photos: list[dict | None], *, max_comments: int) -> list[dict]:
+    """What was said with these photos: each one's caption, and the comments
+    people left on it, oldest first — as lines for the foot of the page."""
+    words = []
+    for ph in photos:
+        if not ph or not ph.get("event_id"):
+            continue
+        entry = {"caption": ph.get("caption_full") or "", "when": _fmt_time(ph.get("occurred_at")).upper(), "comments": []}
+        if max_comments:
+            rows = db.execute(
+                select(TimelineEventComment.body, User.display_name)
+                .join(User, User.id == TimelineEventComment.user_id)
+                .where(TimelineEventComment.event_id == ph["event_id"], TimelineEventComment.deleted_at.is_(None))
+                .order_by(TimelineEventComment.created_at.asc())
+            ).all()
+            for body, who in rows[:max_comments]:
+                text = _clean_text(body)
+                if text:
+                    entry["comments"].append({"text": _truncate(text, 80), "who": _clean_text((who or "").split()[0] if who else "")})
+        if entry["caption"] or entry["comments"]:
+            words.append(entry)
+    return words
 
 
 def render_book(
@@ -2428,7 +2463,17 @@ def render_book(
                 note = {"text": _truncate(t, 60), "when": _fmt_time(w).upper()}
                 break
         ph = [photos[k] for k in page["slots"]]
-        pages_ctx[page["key"]] = ("book_gallery.svg.j2", {"book_tiles": _book_tiles(page["count"], ph, with_note=bool(note)), "book_note": note})
+        # a single photo has room for its caption and what people said about
+        # it; a gallery shows the first photo's caption line only
+        words = _photo_words(db, ph, max_comments=2 if page["count"] == 1 else 0)
+        foot_lines = sum(1 + len(w["comments"]) for w in words[: 1 if page["count"] > 1 else 2]) + (1 if note else 0)
+        foot = 110 + 70 * foot_lines
+        pages_ctx[page["key"]] = ("book_gallery.svg.j2", {
+            "book_tiles": _book_tiles(page["count"], ph, foot=foot),
+            "book_note": note,
+            "book_words": words[: 1 if page["count"] > 1 else 2],
+            "book_foot_y": BOOK_PAGE - 190 - foot + 90,
+        })
 
     note_pages = [p for p in plan if p["kind"] == "notes"]
     per = BOOK_NOTES_PER_PAGE
@@ -2482,7 +2527,7 @@ def render_book(
             pages_ctx[page["key"]] = ("book_closing.svg.j2", {"book_big_heart": _heart_path(BOOK_PAGE / 2, 960, 110)})
 
     # the cover, and its front face alone
-    fcx = BOOK_SPINE_X1 + (BOOK_COVER_W - BOOK_SPINE_X1) / 2
+    fcx = BOOK_FRONT_CX
     cover_clock = build_hours_clock(
         durations=stats.durations, offsets_seconds=stats.offsets_seconds, first_contraction_at=first, born_at=when,
         cx=fcx, cy=1050, r_ring=560, r_in=250, milestones=_gather_milestones(db, birth, stats), canvas_w=BOOK_COVER_W,
@@ -2492,8 +2537,8 @@ def render_book(
         "book_spine_cx": round((BOOK_SPINE_X0 + BOOK_SPINE_X1) / 2, 1),
         # the type has to sit inside a 122px spine with room to spare
         "book_spine_size": int(BOOK_SPINE * 0.5), "book_year": when.year if when else "",
-        "book_back_cx": round(BOOK_PANEL / 2, 1),
-        "book_back_heart": _heart_path(BOOK_PANEL / 2, BOOK_COVER_H / 2 - 60, 90),
+        "book_back_cx": BOOK_BACK_CX,
+        "book_back_heart": _heart_path(BOOK_BACK_CX, BOOK_COVER_H / 2 - 60, 90),
     })
     front_clock = build_hours_clock(
         durations=stats.durations, offsets_seconds=stats.offsets_seconds, first_contraction_at=first, born_at=when,
