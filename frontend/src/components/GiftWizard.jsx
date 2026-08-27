@@ -950,13 +950,22 @@ function CropBox({ src, frameAspect, value, onChange }) {
   const scale = nat ? Math.min(BOX / nat.w, BOX / nat.h) : 1;
   const dw = nat ? nat.w * scale : BOX;
   const dh = nat ? nat.h * scale : BOX;
-  const zoom = (factor) => {
+  // Zoom is "how much closer than the whole photo": 1 shows as much as fits,
+  // 5 shows a fifth of that width. Set from the slider, the wheel, or ±.
+  const MAX_ZOOM = 5;
+  const level = rect ? maxW / rect[2] : 1;
+  const setLevel = (z) => {
     if (!rect) return;
-    const w = Math.min(maxW, Math.max(0.1, rect[2] * factor));
+    const zoomTo = Math.min(MAX_ZOOM, Math.max(1, z));
+    const w = maxW / zoomTo;
     const h = heightFor(w);
     const cx = rect[0] + rect[2] / 2;
     const cy = rect[1] + heightFor(rect[2]) / 2;
     onChange(clamp([cx - w / 2, cy - h / 2, w]));
+  };
+  const onWheel = (e) => {
+    e.preventDefault();
+    setLevel(level * (e.deltaY < 0 ? 1.1 : 1 / 1.1));
   };
   const onPointerDown = (e) => {
     if (!rect) return;
@@ -973,13 +982,7 @@ function CropBox({ src, frameAspect, value, onChange }) {
   const onPointerUp = () => { dragRef.current = null; };
   return (
     <div className="mt-2">
-      <div className="flex items-center justify-between mb-1">
-        <span className="text-[11px] t-faint">Drag to choose what shows</span>
-        <span className="flex gap-1">
-          <button type="button" onClick={() => zoom(0.8)} className="w-6 h-6 rounded border text-sm t-ink" style={{ borderColor: 'var(--t-soft-ring)' }} aria-label="Zoom in">+</button>
-          <button type="button" onClick={() => zoom(1.25)} className="w-6 h-6 rounded border text-sm t-ink" style={{ borderColor: 'var(--t-soft-ring)' }} aria-label="Zoom out">−</button>
-        </span>
-      </div>
+      <p className="text-[11px] t-faint mb-1">Drag the picture to choose what shows · scroll to zoom</p>
       <div
         ref={boxRef}
         className="relative mx-auto select-none touch-none"
@@ -988,6 +991,7 @@ function CropBox({ src, frameAspect, value, onChange }) {
         onPointerMove={onPointerMove}
         onPointerUp={onPointerUp}
         onPointerCancel={onPointerUp}
+        onWheel={onWheel}
       >
         <img
           src={src}
@@ -1011,6 +1015,30 @@ function CropBox({ src, frameAspect, value, onChange }) {
           </>
         )}
       </div>
+      {rect && (
+        <div className="mt-2 flex items-center gap-2 mx-auto" style={{ width: dw }}>
+          <button type="button" onClick={() => setLevel(level / 1.25)} disabled={level <= 1.001}
+            className="w-7 h-7 flex-none rounded-full border text-sm t-ink disabled:opacity-30" style={{ borderColor: 'var(--t-soft-ring)' }} aria-label="Show more of the photo">−</button>
+          <input
+            type="range"
+            min={1}
+            max={MAX_ZOOM}
+            step={0.01}
+            value={level}
+            onChange={(e) => setLevel(Number(e.target.value))}
+            className="flex-1 accent-[var(--t-accent)]"
+            aria-label="Zoom"
+          />
+          <button type="button" onClick={() => setLevel(level * 1.25)} disabled={level >= MAX_ZOOM - 0.001}
+            className="w-7 h-7 flex-none rounded-full border text-sm t-ink disabled:opacity-30" style={{ borderColor: 'var(--t-soft-ring)' }} aria-label="Zoom in closer">+</button>
+        </div>
+      )}
+      {rect && (
+        <div className="flex justify-between text-[10px] t-faint mx-auto" style={{ width: dw }}>
+          <span>whole photo</span>
+          <span>closer</span>
+        </div>
+      )}
     </div>
   );
 }
