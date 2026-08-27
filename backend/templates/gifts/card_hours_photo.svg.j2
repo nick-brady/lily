@@ -22,9 +22,9 @@
   <!-- her, beside her name -->
   {% if photo_data_uri %}
   <g clip-path="url(#namePhoto)">
-    <image x="{{ photo_cx - photo_r }}" y="{{ photo_cy - photo_r }}"
-           width="{{ photo_r * 2 }}" height="{{ photo_r * 2 }}"
-           preserveAspectRatio="xMidYMid slice"
+    {% set g = place_photo(photo_cx - photo_r, photo_cy - photo_r, photo_r * 2, photo_r * 2, photo) %}
+    <image x="{{ g.x }}" y="{{ g.y }}" width="{{ g.width }}" height="{{ g.height }}"
+           preserveAspectRatio="{{ 'xMidYMid slice' if g.slice else 'none' }}"
            xlink:href="{{ photo_data_uri }}"/>
   </g>
   <circle cx="{{ photo_cx }}" cy="{{ photo_cy }}" r="{{ photo_r + 12 }}"

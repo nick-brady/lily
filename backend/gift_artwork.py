@@ -72,6 +72,8 @@ _env = Environment(
 # `sparkle(cx, cy, r)` is available in templates — the four-point star that
 # marks the moment of arrival across the collection.
 _env.globals["sparkle"] = lambda cx, cy, r: _sparkle_path(cx, cy, r)
+# `place_photo(x, y, w, h, photo)` fills a frame with a photo dict, keeping its focus.
+_env.globals["place_photo"] = lambda fx, fy, fw, fh, ph: place_photo(fx, fy, fw, fh, ph)
 
 
 def build_context(
@@ -100,7 +102,13 @@ def build_context(
     palette = gift_themes.for_theme(birth.theme)
 
     photo = _photo_for(db, birth, layout, rendering) if layout.photo else None
-    photo_data_uri = _photo_data_uri(photo, max_px=photo_max_px) if photo else None
+    photo_data = _photo_data(photo, max_px=photo_max_px) if photo else None
+    photo_data_uri = photo_data[0] if photo_data else None
+    hero_fx, hero_fy = photo_focus(rendering, "hero")
+    photo_placed = (
+        {"uri": photo_data[0], "w": photo_data[1], "h": photo_data[2], "fx": hero_fx, "fy": hero_fy}
+        if photo_data else None
+    )
     # Only designs that can't stand without a photo refuse to render. The rest
     # lay out around its absence, which is what makes "remove" possible.
     if layout.photo_required and photo_data_uri is None:
@@ -167,6 +175,9 @@ def build_context(
         "spark_callouts": _spark_callouts(stats.durations),
         "labor_start_time": _fmt_time(first_at_local),
         "photo_data_uri": photo_data_uri,
+        # the same photo as a dict for `place_photo`, so a template can keep
+        # the parent's focal point in frame instead of centre-cropping
+        "photo": photo_placed,
     }
 
     if layout.scene in ("hours", "hours_photo", "orbit"):
@@ -523,12 +534,15 @@ def _select_hero_photo(db: Session, birth: Birth) -> MediaAsset | None:
     return rows[0]
 
 
-def _photo_data_uri(asset: MediaAsset, *, max_px: int | None = None) -> str | None:
+def _photo_data(asset: MediaAsset, *, max_px: int | None = None) -> tuple[str, int, int] | None:
+    """The photo as a data URI, with its pixel size — the size is what lets a
+    placement keep a chosen point of the picture in frame."""
     try:
         raw = get_object_bytes(asset.original_s3_key)
     except Exception:
         return None
     mime = asset.mime_type or "image/jpeg"
+    w = h = 0
     # Re-encode every photo: apply the EXIF orientation (phone photos are
     # usually stored rotated + a tag, and cairosvg ignores the tag — without
     # this, portraits render sideways) and downscale so the SVG stays light.
@@ -539,13 +553,56 @@ def _photo_data_uri(asset: MediaAsset, *, max_px: int | None = None) -> str | No
         im = Image.open(io.BytesIO(raw))
         im = ImageOps.exif_transpose(im)
         im.thumbnail((max_px or 1600, max_px or 1600))
+        w, h = im.size
         buf = io.BytesIO()
         im.convert("RGB").save(buf, format="JPEG", quality=88)
         raw = buf.getvalue()
         mime = "image/jpeg"
     except Exception:
         pass  # fall back to the original bytes
-    return f"data:{mime};base64,{base64.b64encode(raw).decode('ascii')}"
+    return f"data:{mime};base64,{base64.b64encode(raw).decode('ascii')}", w, h
+
+
+def _photo_data_uri(asset: MediaAsset, *, max_px: int | None = None) -> str | None:
+    data = _photo_data(asset, max_px=max_px)
+    return data[0] if data else None
+
+
+def place_photo(fx: float, fy: float, fw: float, fh: float, ph: dict | None) -> dict:
+    """Where a photo goes to fill a frame while keeping its focal point.
+
+    `ph` carries the picture's size (w, h) and focus (fx, fy: fractions of the
+    picture that should sit at the frame's centre; 0.5, 0.5 is a plain centre
+    crop). The picture is scaled to cover the frame, then shifted so the focal
+    point lands in the middle — clamped so the frame stays covered. A baby's
+    face under an ornament's hanging hole is the bug this exists to fix: the
+    parent nudges the focus up and the crop follows.
+
+    Without a size we can't do better than a centre crop, so the frame itself
+    comes back with `slice` set for the template to fall back on."""
+    if not ph or not ph.get("w") or not ph.get("h"):
+        return {"x": round(fx, 1), "y": round(fy, 1), "width": round(fw, 1), "height": round(fh, 1), "slice": True}
+    w, h = ph["w"], ph["h"]
+    px, py = ph.get("fx", 0.5), ph.get("fy", 0.5)
+    scale = max(fw / w, fh / h)
+    iw, ih = w * scale, h * scale
+    x = fx + fw / 2 - px * iw
+    y = fy + fh / 2 - py * ih
+    x = min(fx, max(fx + fw - iw, x))
+    y = min(fy, max(fy + fh - ih, y))
+    return {"x": round(x, 1), "y": round(y, 1), "width": round(iw, 1), "height": round(ih, 1), "slice": False}
+
+
+def photo_focus(rendering, key) -> tuple[float, float]:
+    """The parent's chosen focal point for one photo placement — "hero" for a
+    design's single photo, the slot index for the rest — or the centre."""
+    raw = ((getattr(rendering, "layout_overrides", None) or {}).get("focus") or {}) if rendering is not None else {}
+    v = raw.get(str(key))
+    try:
+        fx, fy = float(v[0]), float(v[1])
+        return min(1.0, max(0.0, fx)), min(1.0, max(0.0, fy))
+    except (TypeError, ValueError, IndexError):
+        return 0.5, 0.5
 
 
 # ── timeline "moments" for the rising template ────────────────────────────
@@ -1512,6 +1569,7 @@ def build_reel_scene(photos: list[dict], *, width: float, height: float, layout:
                     "w": round(panel_w, 1),
                     "h": round(band_y - _REEL_GUTTER, 1),
                     "href": ph["uri"],
+                    "photo": ph,
                     "caption": ph.get("caption") or "",
                     "time": _fmt_time(ph.get("occurred_at")),
                 }
@@ -1529,6 +1587,7 @@ def build_reel_scene(photos: list[dict], *, width: float, height: float, layout:
                     "w": width,
                     "h": round(row_h, 1),
                     "href": ph["uri"],
+                    "photo": ph,
                     "caption": ph.get("caption") or "",
                     "time": _fmt_time(ph.get("occurred_at")),
                 }
@@ -1640,13 +1699,16 @@ def _slot_photos(
             # a story shorter than the design, extended by hand
             chosen.append(ref)
     photos = []
-    for ref in chosen:
-        uri = _photo_data_uri(ref["asset"], max_px=photo_max_px)
-        if uri is None:
+    for i, ref in enumerate(chosen):
+        data = _photo_data(ref["asset"], max_px=photo_max_px)
+        if data is None:
             continue
+        uri, w, h = data
+        fx, fy = photo_focus(rendering, i)
         photos.append(
             {
                 "uri": uri,
+                "w": w, "h": h, "fx": fx, "fy": fy,
                 "caption": ref["caption"],
                 "caption_full": ref.get("caption_full", ""),
                 "event_id": ref.get("event_id"),
@@ -1873,6 +1935,7 @@ def build_wall_scene(
                 "px": round(x + WALL_MAT, 1), "py": round(y + WALL_MAT, 1),
                 "pw": round(tw - 2 * WALL_MAT, 1), "ph": round(th - 2 * WALL_MAT, 1),
                 "href": ph["uri"],
+                "photo": ph,
                 "stamp": _fmt_time(ph.get("occurred_at")).upper() if th > 240 else "",
             }
         )
@@ -2048,6 +2111,7 @@ def build_frame_story_scene(
                     "px": round(tx + STORY_MAT, 1), "py": round(ty + STORY_MAT, 1),
                     "psize": STORY_THUMB - 2 * STORY_MAT,
                     "href": m["uri"],
+                    "photo": m,
                     "lx": round(lx, 1), "ly": round(ly, 1), "ang": round(ang, 1),
                     "label": _fmt_time(when).upper(),
                 }
@@ -2213,12 +2277,16 @@ def _story_moments(db: Session, birth: Birth, rendering, straight: float, *, pho
         photo_slots[i]["asset"] = asset
         photo_slots[i]["media_id"] = media_id
     out = []
+    slot = 0
     for m in moments:
         if m["kind"] == "photo":
-            uri = _photo_data_uri(m["asset"], max_px=photo_max_px)
-            if uri is None:
+            data = _photo_data(m["asset"], max_px=photo_max_px)
+            if data is None:
                 continue
-            out.append({**m, "uri": uri})
+            uri, w, h = data
+            fx, fy = photo_focus(rendering, slot)
+            slot += 1
+            out.append({**m, "uri": uri, "w": w, "h": h, "fx": fx, "fy": fy})
         else:
             out.append(m)
     return out
@@ -2425,6 +2493,7 @@ def _book_tiles(count: int, photos: list[dict | None], *, foot: int) -> list[dic
                 "px": round(x + mat, 1), "py": round(y + mat, 1),
                 "pw": round(w - 2 * mat, 1), "ph": round(h - 2 * mat, 1),
                 "href": ph["uri"] if ph else None,
+                "photo": ph,
                 "stamp": _fmt_time(ph.get("occurred_at")).upper() if ph else "",
             }
         )

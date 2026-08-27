@@ -62,6 +62,8 @@ export default function GiftWizard({
     productKey: initialRendering.product_key || null,
     // the book's middle section as the parent arranged it; null = automatic
     pages: initialRendering.layout_overrides?.pages ?? null,
+    // where each placed photo's focal point is; absent = centre
+    focus: { ...(initialRendering.photo_focus || {}) },
   }));
   const slotCount = initialRendering.photo_slot_count || 0;
   const noun = PRODUCT_NOUN[item.product_kind] || 'product';
@@ -211,7 +213,7 @@ export default function GiftWizard({
   // default is the one time re-resolving is the point. Nothing is saved
   // until Next, so this too can be walked away from.
   const resetToDefault = () => {
-    const next = { mediaId: null, removed: false, slots: {}, text: {}, productKey: null, pages: null };
+    const next = { mediaId: null, removed: false, slots: {}, text: {}, productKey: null, pages: null, focus: {} };
     setDraft(next);
     setPlanPages(null);
     setActiveSlot(0);
@@ -787,6 +789,39 @@ export default function GiftWizard({
                       </button>
                     ))}
                   </div>
+                  {/* Where the photo's focal point is. A centre crop knows nothing
+                      about where the face is — under a hanging hole, say — so
+                      the parent points at it and the crop keeps it in frame.
+                      Nine positions is enough: this is a nudge, not a mask. */}
+                  {(() => {
+                    const key = visibleSlots.length > 0 ? String(activeSlot) : 'hero';
+                    const hasPhoto = visibleSlots.length > 0 ? Boolean(draft.slots?.[activeSlot]) : Boolean(draft.mediaId && !draft.removed);
+                    if (!hasPhoto) return null;
+                    const cur = draft.focus?.[key] || [0.5, 0.5];
+                    const stops = [0.18, 0.5, 0.82];
+                    return (
+                      <div className="mt-2 flex items-center gap-3">
+                        <div className="grid grid-cols-3 gap-0.5 p-0.5 rounded border" style={{ borderColor: 'var(--t-soft-ring)' }} aria-label="Where the photo is centred">
+                          {stops.flatMap((fy) =>
+                            stops.map((fx) => {
+                              const on = Math.abs(cur[0] - fx) < 0.05 && Math.abs(cur[1] - fy) < 0.05;
+                              return (
+                                <button
+                                  key={`${fx}-${fy}`}
+                                  type="button"
+                                  onClick={() => edit({ focus: { ...(draft.focus || {}), [key]: [fx, fy] } })}
+                                  className="w-4 h-4 rounded-sm"
+                                  style={{ backgroundColor: on ? 'var(--t-accent)' : 'var(--t-soft-bg)' }}
+                                  aria-label={`Centre the photo ${fy < 0.5 ? 'top' : fy > 0.5 ? 'bottom' : 'middle'} ${fx < 0.5 ? 'left' : fx > 0.5 ? 'right' : 'centre'}`}
+                                />
+                              );
+                            }),
+                          )}
+                        </div>
+                        <span className="text-[11px] t-faint">Where to keep in frame — pick the spot the face is.</span>
+                      </div>
+                    );
+                  })()}
                   <input type="file" ref={fileRef} accept="image/*" onChange={uploadPhoto} className="hidden" />
                   <div className="flex gap-2 mt-2">
                     <button

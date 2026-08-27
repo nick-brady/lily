@@ -12,9 +12,12 @@
     </linearGradient>
   </defs>
   <rect x="0" y="0" width="{{ w }}" height="{{ h }}" fill="#ffffff"/>
-  {% if photo_data_uri %}
-  <image x="0" y="0" width="{{ w }}" height="{{ h }}" preserveAspectRatio="xMidYMid slice"
-         xlink:href="{{ photo_data_uri }}"/>
+  {% if photo %}
+  {% set g = place_photo(0, 0, w, h, photo) %}
+  <clipPath id="disc"><rect x="0" y="0" width="{{ w }}" height="{{ h }}"/></clipPath>
+  <image x="{{ g.x }}" y="{{ g.y }}" width="{{ g.width }}" height="{{ g.height }}"
+         preserveAspectRatio="{{ 'xMidYMid slice' if g.slice else 'none' }}" clip-path="url(#disc)"
+         xlink:href="{{ photo.uri }}"/>
   <rect x="0" y="0" width="{{ w }}" height="{{ h }}" fill="url(#foot)"/>
   {% endif %}
   <text x="{{ w // 2 }}" y="{{ h - 190 }}" text-anchor="middle" font-family="{{ p.display_font }}"

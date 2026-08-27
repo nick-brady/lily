@@ -706,6 +706,7 @@ class GiftRenderingOut(BaseModel):
     # and a URL for the rendered page once there is one.
     pages: list[dict] = []
     layout_overrides: dict = {}
+    photo_focus: dict[str, list[float]] = {}
     # Slots this design lets a parent edit, and what they currently say.
     editable_text: list[str] = []
     text_overrides: dict[str, str] = {}
@@ -734,6 +735,10 @@ class GiftDesignIn(BaseModel):
     # automatic plan. Each entry: {"kind": "gallery"|"notes"|"write_in",
     # "count": 1–4 for a gallery}.
     pages: Optional[list[dict]] = None
+    # Where each placed photo's focal point is, as fractions of the picture:
+    # "hero" for a design's single photo, the slot index for the rest. The
+    # crop keeps that point in frame instead of the geometric centre.
+    focus: dict[str, list[float]] = Field(default_factory=dict)
     text: dict[str, str] = Field(default_factory=dict)
     product_key: Optional[str] = None
 

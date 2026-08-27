@@ -13,8 +13,9 @@
   <rect x="{{ t.x }}" y="{{ t.y }}" width="{{ t.w }}" height="{{ t.h }}" fill="#ffffff"
         stroke="{{ p.ink }}" stroke-width="1.6" stroke-opacity="0.28"/>
   {% if t.href %}
-  <image x="{{ t.px }}" y="{{ t.py }}" width="{{ t.pw }}" height="{{ t.ph }}"
-         preserveAspectRatio="xMidYMid slice" clip-path="url(#tile{{ loop.index }})" xlink:href="{{ t.href }}"/>
+  {% set g = place_photo(t.px, t.py, t.pw, t.ph, t.photo) %}
+  <image x="{{ g.x }}" y="{{ g.y }}" width="{{ g.width }}" height="{{ g.height }}"
+         preserveAspectRatio="{{ 'xMidYMid slice' if g.slice else 'none' }}" clip-path="url(#tile{{ loop.index }})" xlink:href="{{ t.href }}"/>
   {% if t.stamp %}
   <text x="{{ t.px + 22 }}" y="{{ t.py + t.ph - 20 }}" font-family="{{ p.body_font }}"
         font-size="24" letter-spacing="4" fill="#ffffff" opacity="0.9">{{ t.stamp }}</text>

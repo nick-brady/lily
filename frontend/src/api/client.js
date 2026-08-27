@@ -634,6 +634,8 @@ export const api = {
       photo_slots: draft.slots || {},
       // the book's middle section as arranged; null keeps the automatic plan
       pages: draft.pages ?? null,
+      // focal points of placed photos: {"hero": [x, y], "3": [x, y]}
+      focus: draft.focus || {},
       text: draft.text || {},
       product_key: draft.productKey ?? null,
     });
