@@ -132,7 +132,7 @@ def _context(template):
             )
         )
     elif template.scene == "book":
-        fcx = gift_artwork.BOOK_BLEED + gift_artwork.BOOK_PANEL + gift_artwork.BOOK_SPINE + gift_artwork.BOOK_PANEL / 2
+        fcx = gift_artwork.BOOK_SPINE_X1 + (gift_artwork.BOOK_COVER_W - gift_artwork.BOOK_SPINE_X1) / 2
         ctx.update(
             gift_artwork.build_hours_clock(
                 durations=_DURATIONS, offsets_seconds=_OFFSETS, first_contraction_at=_FIRST_AT,
@@ -141,9 +141,9 @@ def _context(template):
         )
         ctx.update({
             "clock_cx": fcx, "clock_cy": 1050, "book_front_cx": fcx,
-            "book_spine_cx": gift_artwork.BOOK_BLEED + gift_artwork.BOOK_PANEL + gift_artwork.BOOK_SPINE / 2,
-            "book_spine_size": 110, "book_year": 2026,
-            "book_back_cx": gift_artwork.BOOK_BLEED + gift_artwork.BOOK_PANEL / 2,
+            "book_spine_cx": (gift_artwork.BOOK_SPINE_X0 + gift_artwork.BOOK_SPINE_X1) / 2,
+            "book_spine_size": 60, "book_year": 2026,
+            "book_back_cx": gift_artwork.BOOK_PANEL / 2,
             "book_back_heart": gift_artwork._heart_path(1275, 1365, 90),
         })
     elif template.scene == "frame_story":

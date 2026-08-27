@@ -519,6 +519,9 @@ def _try_generate_mockup(db: Session, rendering: GiftRendering) -> None:
         # reachable (the prod domain — a localhost dev URL won't work). The
         # app serves it via a short signed link: presigned S3 URLs from the
         # instance role exceed Printful's 1000-char URL cap.
+        # a many-file design is photographed by its cover alone — the pages
+        # are the parent's to look at in the editor, and sending all of them
+        # made the partner slow for a picture nobody asked for
         artwork = signed_artwork_url(
             rendering_id, expires_in=3600, page="cover" if print_pages(rendering) else None
         )

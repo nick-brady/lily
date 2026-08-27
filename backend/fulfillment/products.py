@@ -167,6 +167,7 @@ for _key, _name, _variant, _image in (
         placement="cover",
         blank_image_url=_image,
         cost_cents=1123,
+        mockup_options=("Front", "Back"),   # the closed book, both sides
     )
 
 # The product used for the default hero mockup on the gift gallery, per

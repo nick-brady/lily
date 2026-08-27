@@ -2242,9 +2242,15 @@ def _build_frame_story_scene(
 
 BOOK_PAGE = 2325
 BOOK_COVER_W, BOOK_COVER_H = 5370, 2850
-BOOK_BLEED = 38
-BOOK_PANEL = 2475
-BOOK_SPINE = BOOK_COVER_W - 2 * BOOK_PANEL - 2 * BOOK_BLEED
+# From Printful's cover template: the spine is the strip between 48.8% and
+# 51.1% of the wrap's width, and each cover is what's left on its side. The
+# safe area sits ~5% in from each edge, and the partner prints a QR code in
+# the bottom-right corner of the *back* cover — nothing of ours goes there.
+BOOK_SPINE_X0 = round(BOOK_COVER_W * 0.4884)
+BOOK_SPINE_X1 = round(BOOK_COVER_W * 0.5111)
+BOOK_SPINE = BOOK_SPINE_X1 - BOOK_SPINE_X0
+BOOK_PANEL = BOOK_SPINE_X0               # a cover's width, either side
+BOOK_BLEED = 0                           # the panels already include it
 BOOK_PAGES = 24
 BOOK_NOTES_PER_PAGE = 5
 BOOK_MAX_PER_GALLERY = 4
@@ -2462,17 +2468,18 @@ def render_book(
             pages_ctx[page["key"]] = ("book_closing.svg.j2", {"book_big_heart": _heart_path(BOOK_PAGE / 2, 960, 110)})
 
     # the cover, and its front face alone
-    fcx = BOOK_BLEED + BOOK_PANEL + BOOK_SPINE + BOOK_PANEL / 2
+    fcx = BOOK_SPINE_X1 + (BOOK_COVER_W - BOOK_SPINE_X1) / 2
     cover_clock = build_hours_clock(
         durations=stats.durations, offsets_seconds=stats.offsets_seconds, first_contraction_at=first, born_at=when,
         cx=fcx, cy=1050, r_ring=560, r_in=250, milestones=_gather_milestones(db, birth, stats), canvas_w=BOOK_COVER_W,
     )
     cover_clock.update({
         "clock_cx": fcx, "clock_cy": 1050, "book_front_cx": round(fcx, 1),
-        "book_spine_cx": round(BOOK_BLEED + BOOK_PANEL + BOOK_SPINE / 2, 1),
-        "book_spine_size": int(min(110, BOOK_SPINE * 0.5)), "book_year": when.year if when else "",
-        "book_back_cx": round(BOOK_BLEED + BOOK_PANEL / 2, 1),
-        "book_back_heart": _heart_path(BOOK_BLEED + BOOK_PANEL / 2, BOOK_COVER_H / 2 - 60, 90),
+        "book_spine_cx": round((BOOK_SPINE_X0 + BOOK_SPINE_X1) / 2, 1),
+        # the type has to sit inside a 122px spine with room to spare
+        "book_spine_size": int(BOOK_SPINE * 0.5), "book_year": when.year if when else "",
+        "book_back_cx": round(BOOK_PANEL / 2, 1),
+        "book_back_heart": _heart_path(BOOK_PANEL / 2, BOOK_COVER_H / 2 - 60, 90),
     })
     front_clock = build_hours_clock(
         durations=stats.durations, offsets_seconds=stats.offsets_seconds, first_contraction_at=first, born_at=when,
