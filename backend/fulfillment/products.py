@@ -37,6 +37,10 @@ class ShortlistProduct:
     # for the flat and the in-room ones too, to give the tile the same
     # three-image rhythm the mug has.
     mockup_option_groups: tuple[str, ...] = ()
+    # The one or two words that tell this product apart from its neighbours
+    # in the picker, under its picture: "15 oz", "Oak", "Matte". The blank
+    # photos alone can't — two white books look the same at a hundred pixels.
+    caption: str = ""
     # Which sides to photograph. The ornament has a front and a back placement
     # and we print the front; left unsaid, the partner also sends a picture of
     # the blank back, which the tile then shows as if it were ours.
@@ -57,6 +61,7 @@ class ShortlistProduct:
 SHORTLIST: dict[str, ShortlistProduct] = {
     "white_glossy_11oz": ShortlistProduct(
         key="white_glossy_11oz",
+        caption="11 oz",
         display_name="White Glossy Mug (11 oz)",
         product_kind="mug",
         product_id=19,
@@ -66,6 +71,7 @@ SHORTLIST: dict[str, ShortlistProduct] = {
     ),
     "white_glossy_15oz": ShortlistProduct(
         key="white_glossy_15oz",
+        caption="15 oz",
         display_name="White Glossy Mug (15 oz)",
         product_kind="mug",
         product_id=19,
@@ -76,6 +82,7 @@ SHORTLIST: dict[str, ShortlistProduct] = {
     ),
     "white_glossy_20oz": ShortlistProduct(
         key="white_glossy_20oz",
+        caption="20 oz",
         display_name="White Glossy Mug (20 oz)",
         product_kind="mug",
         product_id=19,
@@ -86,6 +93,7 @@ SHORTLIST: dict[str, ShortlistProduct] = {
     ),
     "latte_mug": ShortlistProduct(
         key="latte_mug",
+        caption="Latte",
         display_name="Latte Mug (12 oz)",
         product_kind="mug",
         product_id=837,
@@ -114,6 +122,7 @@ for _key, _name, _variant in (
     SHORTLIST[_key] = ShortlistProduct(
         key=_key,
         display_name=_name,
+        caption=_name.split()[0],
         product_kind="framed_print",
         product_id=795,
         variant_id=_variant,
@@ -129,6 +138,7 @@ for _key, _name, _variant in (
 SHORTLIST["ornament_oval"] = ShortlistProduct(
     key="ornament_oval",
     display_name="Oval wooden ornament",
+    caption="Oval",
     product_kind="ornament",
     product_id=634,
     variant_id=16091,
@@ -150,6 +160,7 @@ for _key, _name, _variant, _image in (
     SHORTLIST[_key] = ShortlistProduct(
         key=_key,
         display_name=_name,
+        caption=_name.split()[0],
         product_kind="photo_book",
         product_id=1564,
         variant_id=_variant,

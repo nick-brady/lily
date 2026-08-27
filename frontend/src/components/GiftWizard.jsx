@@ -592,9 +592,14 @@ export default function GiftWizard({
                             alt={product.display_name}
                             className="w-full aspect-square object-contain block bg-white"
                           />
-                          {product.surcharge_cents > 0 && (
-                            <span className="block text-[10px] text-center py-0.5 t-faint">
-                              +{formatPrice(product.surcharge_cents)}
+                          {/* two white books look the same at this size — say which is which */}
+                          {(product.caption || product.surcharge_cents > 0) && (
+                            <span className="block text-[11px] text-center py-0.5">
+                              {product.caption && <span className="t-muted">{product.caption}</span>}
+                              {product.caption && product.surcharge_cents > 0 && <span className="t-faint"> · </span>}
+                              {product.surcharge_cents > 0 && (
+                                <span className="t-faint">+{formatPrice(product.surcharge_cents)}</span>
+                              )}
                             </span>
                           )}
                         </button>

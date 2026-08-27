@@ -629,6 +629,7 @@ def _serialize_product_mockup(product, mockup) -> ProductMockupOut:
         ),
         blank_image_url=product.blank_image_url,
         surcharge_cents=product.surcharge_cents,
+        caption=product.caption,
     )
 
 

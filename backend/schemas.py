@@ -790,6 +790,8 @@ class ProductMockupOut(BaseModel):
     # The blank product photo, so the chooser costs no mockups at all.
     blank_image_url: str = ""
     surcharge_cents: int = 0
+    # what tells this one from its neighbours: "15 oz", "Oak", "Matte"
+    caption: str = ""
 
 
 class RenderingProductsOut(BaseModel):
