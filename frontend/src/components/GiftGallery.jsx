@@ -495,8 +495,14 @@ function RenderingTile({
   // comes out about the mug's shape. The print file is a 12×16 sheet with
   // the mat's share of it blank, so the tile shows just the opening
   // (7.5×11.5 of it, centred): the mockup beside it shows the mat.
-  const portrait = item?.product_kind === 'framed_print' || item?.product_kind === 'ornament';
-  const cropToOpening = item?.product_kind === 'framed_print';
+  // Anything that isn't a wide mug strip lays out sideways — artwork left,
+  // the product shots stacked right — so tiles that share a row share a
+  // height. The frame's art is cropped to its mat opening; the book's cover
+  // face is square; the ornament is its own tall oval.
+  const kind = item?.product_kind;
+  const portrait = kind === 'framed_print' || kind === 'ornament' || kind === 'photo_book';
+  const cropToOpening = kind === 'framed_print';
+  const artAspect = cropToOpening ? 'aspect-[15/23]' : kind === 'photo_book' ? 'aspect-square' : 'aspect-[585/945]';
 
   return (
     <div
@@ -520,7 +526,7 @@ function RenderingTile({
             <span
               className={
                 portrait
-                  ? `block ${cropToOpening ? 'aspect-[15/23]' : 'aspect-[585/945]'} overflow-hidden rounded flex items-center justify-center`
+                  ? `block ${artAspect} overflow-hidden rounded flex items-center justify-center`
                   : 'block'
               }
               style={{ backgroundColor: 'var(--t-soft-bg)' }}
