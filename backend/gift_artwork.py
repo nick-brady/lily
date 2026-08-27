@@ -72,7 +72,7 @@ _env = Environment(
 # `sparkle(cx, cy, r)` is available in templates — the four-point star that
 # marks the moment of arrival across the collection.
 _env.globals["sparkle"] = lambda cx, cy, r: _sparkle_path(cx, cy, r)
-# `place_photo(x, y, w, h, photo)` fills a frame with a photo dict, keeping its focus.
+# `place_photo(x, y, w, h, photo)` fills a frame with a photo dict, showing its crop.
 _env.globals["place_photo"] = lambda fx, fy, fw, fh, ph: place_photo(fx, fy, fw, fh, ph)
 
 
@@ -104,9 +104,8 @@ def build_context(
     photo = _photo_for(db, birth, layout, rendering) if layout.photo else None
     photo_data = _photo_data(photo, max_px=photo_max_px) if photo else None
     photo_data_uri = photo_data[0] if photo_data else None
-    hero_fx, hero_fy = photo_focus(rendering, "hero")
     photo_placed = (
-        {"uri": photo_data[0], "w": photo_data[1], "h": photo_data[2], "fx": hero_fx, "fy": hero_fy}
+        {"uri": photo_data[0], "w": photo_data[1], "h": photo_data[2], "crop": photo_crop(rendering, "hero"), "frame_aspect": 1.0}
         if photo_data else None
     )
     # Only designs that can't stand without a photo refuse to render. The rest
@@ -269,6 +268,12 @@ def render(
     photo, when, stats, layout = parts["photo"], parts["when"], parts["stats"], parts["layout"]
     # Panel provenance rides to the metadata, not to Jinja.
     slot_media_ids = context.pop("slot_media_ids", None)
+    # and the shape of each photo's frame, for the editor's crop rectangle
+    for key in ("reel_panels", "wall_tiles", "story_photos"):
+        tiles = context.get(key)
+        if tiles:
+            context["slot_frame_aspects"] = [((t.get("photo") or {}).get("frame_aspect") or 1.0) for t in tiles]
+            break
 
     png = render_context(template, context, output_width=output_width)
 
@@ -285,6 +290,7 @@ def render(
         "theme": birth.theme,
         "selected_media_id": str(photo.id) if photo else None,
         "selected_slot_media_ids": slot_media_ids,
+        "slot_frame_aspects": context.pop("slot_frame_aspects", None),
         "stats": stats.as_metadata(),
         "child": {
             "name": birth.child_name,
@@ -569,40 +575,74 @@ def _photo_data_uri(asset: MediaAsset, *, max_px: int | None = None) -> str | No
 
 
 def place_photo(fx: float, fy: float, fw: float, fh: float, ph: dict | None) -> dict:
-    """Where a photo goes to fill a frame while keeping its focal point.
+    """Where a photo goes to fill a frame, showing the part the parent chose.
 
-    `ph` carries the picture's size (w, h) and focus (fx, fy: fractions of the
-    picture that should sit at the frame's centre; 0.5, 0.5 is a plain centre
-    crop). The picture is scaled to cover the frame, then shifted so the focal
-    point lands in the middle — clamped so the frame stays covered. A baby's
-    face under an ornament's hanging hole is the bug this exists to fix: the
-    parent nudges the focus up and the crop follows.
+    `ph` carries the picture's size (w, h) and, optionally, a crop — (cx, cy,
+    cw): the top-left corner and width of the region to show, as fractions of
+    the picture. The region's height follows from the frame's shape, so a
+    square ornament and a tall filmstrip panel crop the same photo
+    differently. Zooming in is a smaller region; zooming out stops where the
+    region would leave the picture. Without a crop, the centre of the picture
+    fills the frame — what every design did before, so nothing already made
+    changes.
 
     Without a size we can't do better than a centre crop, so the frame itself
     comes back with `slice` set for the template to fall back on."""
     if not ph or not ph.get("w") or not ph.get("h"):
         return {"x": round(fx, 1), "y": round(fy, 1), "width": round(fw, 1), "height": round(fh, 1), "slice": True}
     w, h = ph["w"], ph["h"]
-    px, py = ph.get("fx", 0.5), ph.get("fy", 0.5)
-    scale = max(fw / w, fh / h)
-    iw, ih = w * scale, h * scale
-    x = fx + fw / 2 - px * iw
-    y = fy + fh / 2 - py * ih
-    x = min(fx, max(fx + fw - iw, x))
-    y = min(fy, max(fy + fh - ih, y))
-    return {"x": round(x, 1), "y": round(y, 1), "width": round(iw, 1), "height": round(ih, 1), "slice": False}
+    cx, cy, cw, ch = crop_region(w, h, fw / fh, ph.get("crop"))
+    scale = fw / (cw * w)
+    return {
+        "x": round(fx - cx * w * scale, 1),
+        "y": round(fy - cy * h * scale, 1),
+        "width": round(w * scale, 1),
+        "height": round(h * scale, 1),
+        "slice": False,
+    }
 
 
-def photo_focus(rendering, key) -> tuple[float, float]:
-    """The parent's chosen focal point for one photo placement — "hero" for a
-    design's single photo, the slot index for the rest — or the centre."""
-    raw = ((getattr(rendering, "layout_overrides", None) or {}).get("focus") or {}) if rendering is not None else {}
+def _framed_photo(ph: dict, frame_w: float, frame_h: float) -> dict:
+    """The photo dict with the shape of the frame it's going into, recorded so
+    the editor can draw a crop rectangle of the right proportions. Mutates in
+    place on purpose: the same dict is what the metadata reads back."""
+    ph["frame_aspect"] = round(frame_w / frame_h, 4) if frame_h else 1.0
+    return ph
+
+
+def crop_region(w: float, h: float, frame_aspect: float, crop) -> tuple[float, float, float, float]:
+    """The region of a w×h picture a frame of `frame_aspect` (width/height)
+    shows: (cx, cy, cw, ch) as fractions. `crop` is the parent's (cx, cy, cw)
+    or None for the largest centred region. The region always has the frame's
+    shape and always lies within the picture."""
+    # the widest region with the frame's shape that fits the picture
+    max_cw = min(1.0, frame_aspect * h / w)
+    if crop:
+        try:
+            cx, cy, cw = float(crop[0]), float(crop[1]), float(crop[2])
+        except (TypeError, ValueError, IndexError):
+            cx, cy, cw = 0.0, 0.0, max_cw
+        cw = min(max_cw, max(0.1, cw))
+    else:
+        cw = max_cw
+        cx = cy = None
+    ch = cw * w / (h * frame_aspect)
+    if cx is None:
+        cx, cy = (1 - cw) / 2, (1 - ch) / 2
+    cx = min(1 - cw, max(0.0, cx))
+    cy = min(1 - ch, max(0.0, cy))
+    return cx, cy, cw, ch
+
+
+def photo_crop(rendering, key) -> tuple[float, float, float] | None:
+    """The parent's crop for one photo placement — "hero" for a design's
+    single photo, the slot index for the rest — or None for the centre."""
+    raw = ((getattr(rendering, "layout_overrides", None) or {}).get("crop") or {}) if rendering is not None else {}
     v = raw.get(str(key))
     try:
-        fx, fy = float(v[0]), float(v[1])
-        return min(1.0, max(0.0, fx)), min(1.0, max(0.0, fy))
+        return float(v[0]), float(v[1]), float(v[2])
     except (TypeError, ValueError, IndexError):
-        return 0.5, 0.5
+        return None
 
 
 # ── timeline "moments" for the rising template ────────────────────────────
@@ -1569,7 +1609,7 @@ def build_reel_scene(photos: list[dict], *, width: float, height: float, layout:
                     "w": round(panel_w, 1),
                     "h": round(band_y - _REEL_GUTTER, 1),
                     "href": ph["uri"],
-                    "photo": ph,
+                    "photo": _framed_photo(ph, panel_w, band_y - _REEL_GUTTER),
                     "caption": ph.get("caption") or "",
                     "time": _fmt_time(ph.get("occurred_at")),
                 }
@@ -1587,7 +1627,7 @@ def build_reel_scene(photos: list[dict], *, width: float, height: float, layout:
                     "w": width,
                     "h": round(row_h, 1),
                     "href": ph["uri"],
-                    "photo": ph,
+                    "photo": _framed_photo(ph, width, row_h),
                     "caption": ph.get("caption") or "",
                     "time": _fmt_time(ph.get("occurred_at")),
                 }
@@ -1704,11 +1744,10 @@ def _slot_photos(
         if data is None:
             continue
         uri, w, h = data
-        fx, fy = photo_focus(rendering, i)
         photos.append(
             {
                 "uri": uri,
-                "w": w, "h": h, "fx": fx, "fy": fy,
+                "w": w, "h": h, "crop": photo_crop(rendering, i),
                 "caption": ref["caption"],
                 "caption_full": ref.get("caption_full", ""),
                 "event_id": ref.get("event_id"),
@@ -1935,7 +1974,7 @@ def build_wall_scene(
                 "px": round(x + WALL_MAT, 1), "py": round(y + WALL_MAT, 1),
                 "pw": round(tw - 2 * WALL_MAT, 1), "ph": round(th - 2 * WALL_MAT, 1),
                 "href": ph["uri"],
-                "photo": ph,
+                "photo": _framed_photo(ph, tw - 2 * WALL_MAT, th - 2 * WALL_MAT),
                 "stamp": _fmt_time(ph.get("occurred_at")).upper() if th > 240 else "",
             }
         )
@@ -2111,7 +2150,7 @@ def build_frame_story_scene(
                     "px": round(tx + STORY_MAT, 1), "py": round(ty + STORY_MAT, 1),
                     "psize": STORY_THUMB - 2 * STORY_MAT,
                     "href": m["uri"],
-                    "photo": m,
+                    "photo": _framed_photo(m, 1, 1),
                     "lx": round(lx, 1), "ly": round(ly, 1), "ang": round(ang, 1),
                     "label": _fmt_time(when).upper(),
                 }
@@ -2284,9 +2323,8 @@ def _story_moments(db: Session, birth: Birth, rendering, straight: float, *, pho
             if data is None:
                 continue
             uri, w, h = data
-            fx, fy = photo_focus(rendering, slot)
+            out.append({**m, "uri": uri, "w": w, "h": h, "crop": photo_crop(rendering, slot)})
             slot += 1
-            out.append({**m, "uri": uri, "w": w, "h": h, "fx": fx, "fy": fy})
         else:
             out.append(m)
     return out
@@ -2493,7 +2531,7 @@ def _book_tiles(count: int, photos: list[dict | None], *, foot: int) -> list[dic
                 "px": round(x + mat, 1), "py": round(y + mat, 1),
                 "pw": round(w - 2 * mat, 1), "ph": round(h - 2 * mat, 1),
                 "href": ph["uri"] if ph else None,
-                "photo": ph,
+                "photo": _framed_photo(ph, w - 2 * mat, h - 2 * mat) if ph else None,
                 "stamp": _fmt_time(ph.get("occurred_at")).upper() if ph else "",
             }
         )
@@ -2702,6 +2740,7 @@ def render_book(
         "theme": birth.theme,
         "selected_media_id": None,
         "selected_slot_media_ids": [ph["media_id"] if ph else None for ph in photos],
+        "slot_frame_aspects": [(ph or {}).get("frame_aspect") or 1.0 for ph in photos],
         "book_plan": [
             {"key": p["key"], "kind": p["kind"], "slots": p.get("slots", []), "count": p.get("count"), "editable": bool(p.get("editable"))}
             for p in plan

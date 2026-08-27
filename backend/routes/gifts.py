@@ -86,7 +86,8 @@ def _serialize_rendering(rendering) -> GiftRenderingOut:
         # holds), else the template's count
         pages=gifts_repo.book_pages(rendering),
         layout_overrides=rendering.layout_overrides or {},
-        photo_focus=(rendering.layout_overrides or {}).get("focus") or {},
+        photo_crop=(rendering.layout_overrides or {}).get("crop") or {},
+        slot_frame_aspects=(rendering.rendering_metadata or {}).get("slot_frame_aspects") or [],
         photo_slot_count=(
             len((rendering.rendering_metadata or {}).get("selected_slot_media_ids") or [])
             or (template.photo_slots if template else 0)
@@ -422,17 +423,17 @@ class _Draft:
 
 def _layout_overrides(payload: GiftDesignIn) -> dict:
     """The parent's arrangement, as stored: the book's pages when given, and
-    the focal point of any placed photo they've nudged off centre."""
+    the crop of any placed photo they've moved or zoomed."""
     out: dict = {}
     if payload.pages is not None:
         out["pages"] = payload.pages
-    focus = {
-        str(k): [float(v[0]), float(v[1])]
-        for k, v in (payload.focus or {}).items()
-        if isinstance(v, (list, tuple)) and len(v) == 2
+    crop = {
+        str(k): [float(v[0]), float(v[1]), float(v[2])]
+        for k, v in (payload.crop or {}).items()
+        if isinstance(v, (list, tuple)) and len(v) == 3
     }
-    if focus:
-        out["focus"] = focus
+    if crop:
+        out["crop"] = crop
     return out
 
 

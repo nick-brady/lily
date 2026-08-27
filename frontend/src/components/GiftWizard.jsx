@@ -62,8 +62,8 @@ export default function GiftWizard({
     productKey: initialRendering.product_key || null,
     // the book's middle section as the parent arranged it; null = automatic
     pages: initialRendering.layout_overrides?.pages ?? null,
-    // where each placed photo's focal point is; absent = centre
-    focus: { ...(initialRendering.photo_focus || {}) },
+    // the part of each placed photo that shows; absent = the centre fills the frame
+    crop: { ...(initialRendering.photo_crop || {}) },
   }));
   const slotCount = initialRendering.photo_slot_count || 0;
   const noun = PRODUCT_NOUN[item.product_kind] || 'product';
@@ -213,7 +213,7 @@ export default function GiftWizard({
   // default is the one time re-resolving is the point. Nothing is saved
   // until Next, so this too can be walked away from.
   const resetToDefault = () => {
-    const next = { mediaId: null, removed: false, slots: {}, text: {}, productKey: null, pages: null, focus: {} };
+    const next = { mediaId: null, removed: false, slots: {}, text: {}, productKey: null, pages: null, crop: {} };
     setDraft(next);
     setPlanPages(null);
     setActiveSlot(0);
@@ -789,37 +789,25 @@ export default function GiftWizard({
                       </button>
                     ))}
                   </div>
-                  {/* Where the photo's focal point is. A centre crop knows nothing
-                      about where the face is — under a hanging hole, say — so
-                      the parent points at it and the crop keeps it in frame.
-                      Nine positions is enough: this is a nudge, not a mask. */}
+                  {/* The crop. The whole photo shows; the rectangle on it is
+                      the part that prints, in the shape of the frame it's
+                      going into. Drag it to move; zoom in to shrink it, out
+                      until it's as large as the photo allows. */}
                   {(() => {
                     const key = visibleSlots.length > 0 ? String(activeSlot) : 'hero';
-                    const hasPhoto = visibleSlots.length > 0 ? Boolean(draft.slots?.[activeSlot]) : Boolean(draft.mediaId && !draft.removed);
-                    if (!hasPhoto) return null;
-                    const cur = draft.focus?.[key] || [0.5, 0.5];
-                    const stops = [0.18, 0.5, 0.82];
+                    const mediaId = visibleSlots.length > 0 ? draft.slots?.[activeSlot] : (draft.mediaId && !draft.removed ? draft.mediaId : null);
+                    if (!mediaId) return null;
+                    const aspect = visibleSlots.length > 0
+                      ? (rendering.slot_frame_aspects || [])[activeSlot] || 1
+                      : rendering.hero_frame_aspect || 1;
                     return (
-                      <div className="mt-2 flex items-center gap-3">
-                        <div className="grid grid-cols-3 gap-0.5 p-0.5 rounded border" style={{ borderColor: 'var(--t-soft-ring)' }} aria-label="Where the photo is centred">
-                          {stops.flatMap((fy) =>
-                            stops.map((fx) => {
-                              const on = Math.abs(cur[0] - fx) < 0.05 && Math.abs(cur[1] - fy) < 0.05;
-                              return (
-                                <button
-                                  key={`${fx}-${fy}`}
-                                  type="button"
-                                  onClick={() => edit({ focus: { ...(draft.focus || {}), [key]: [fx, fy] } })}
-                                  className="w-4 h-4 rounded-sm"
-                                  style={{ backgroundColor: on ? 'var(--t-accent)' : 'var(--t-soft-bg)' }}
-                                  aria-label={`Centre the photo ${fy < 0.5 ? 'top' : fy > 0.5 ? 'bottom' : 'middle'} ${fx < 0.5 ? 'left' : fx > 0.5 ? 'right' : 'centre'}`}
-                                />
-                              );
-                            }),
-                          )}
-                        </div>
-                        <span className="text-[11px] t-faint">Where to keep in frame — pick the spot the face is.</span>
-                      </div>
+                      <CropBox
+                        key={`${key}-${mediaId}`}
+                        src={api.mediaUrl(mediaId)}
+                        frameAspect={aspect}
+                        value={draft.crop?.[key] || null}
+                        onChange={(rect) => edit({ crop: { ...(draft.crop || {}), [key]: rect } })}
+                      />
                     );
                   })()}
                   <input type="file" ref={fileRef} accept="image/*" onChange={uploadPhoto} className="hidden" />
@@ -933,6 +921,94 @@ export default function GiftWizard({
             startIndex={galleryAt}
             onClose={() => setGalleryAt(null)}
           />
+        )}
+      </div>
+    </div>
+  );
+}
+
+
+// The crop control: the whole photo, with a draggable rectangle over it in
+// the shape of its frame. Coordinates are fractions of the photo — [x, y,
+// width] of the rectangle's top-left and width; its height follows the frame.
+// The same numbers the renderer reads, so what's dragged here is what prints.
+function CropBox({ src, frameAspect, value, onChange }) {
+  const [nat, setNat] = useState(null);            // the photo's own width/height
+  const boxRef = useRef(null);
+  const dragRef = useRef(null);
+  const BOX = 240;
+  // the widest rectangle of the frame's shape that fits the photo
+  const maxW = nat ? Math.min(1, frameAspect * nat.h / nat.w) : 1;
+  const heightFor = (w) => (nat ? (w * nat.w) / (nat.h * frameAspect) : w);
+  const clamp = (r) => {
+    const w = Math.min(maxW, Math.max(0.1, r[2]));
+    const h = heightFor(w);
+    return [Math.min(1 - w, Math.max(0, r[0])), Math.min(1 - h, Math.max(0, r[1])), w];
+  };
+  const rect = nat ? clamp(value || [(1 - maxW) / 2, (1 - heightFor(maxW)) / 2, maxW]) : null;
+  // the photo drawn to fit the box
+  const scale = nat ? Math.min(BOX / nat.w, BOX / nat.h) : 1;
+  const dw = nat ? nat.w * scale : BOX;
+  const dh = nat ? nat.h * scale : BOX;
+  const zoom = (factor) => {
+    if (!rect) return;
+    const w = Math.min(maxW, Math.max(0.1, rect[2] * factor));
+    const h = heightFor(w);
+    const cx = rect[0] + rect[2] / 2;
+    const cy = rect[1] + heightFor(rect[2]) / 2;
+    onChange(clamp([cx - w / 2, cy - h / 2, w]));
+  };
+  const onPointerDown = (e) => {
+    if (!rect) return;
+    e.currentTarget.setPointerCapture(e.pointerId);
+    dragRef.current = { x: e.clientX, y: e.clientY, rect };
+  };
+  const onPointerMove = (e) => {
+    const d = dragRef.current;
+    if (!d) return;
+    const dx = (e.clientX - d.x) / dw;
+    const dy = (e.clientY - d.y) / dh;
+    onChange(clamp([d.rect[0] + dx, d.rect[1] + dy, d.rect[2]]));
+  };
+  const onPointerUp = () => { dragRef.current = null; };
+  return (
+    <div className="mt-2">
+      <div className="flex items-center justify-between mb-1">
+        <span className="text-[11px] t-faint">Drag to choose what shows</span>
+        <span className="flex gap-1">
+          <button type="button" onClick={() => zoom(0.8)} className="w-6 h-6 rounded border text-sm t-ink" style={{ borderColor: 'var(--t-soft-ring)' }} aria-label="Zoom in">+</button>
+          <button type="button" onClick={() => zoom(1.25)} className="w-6 h-6 rounded border text-sm t-ink" style={{ borderColor: 'var(--t-soft-ring)' }} aria-label="Zoom out">−</button>
+        </span>
+      </div>
+      <div
+        ref={boxRef}
+        className="relative mx-auto select-none touch-none"
+        style={{ width: dw, height: dh, cursor: rect ? 'grab' : 'default' }}
+        onPointerDown={onPointerDown}
+        onPointerMove={onPointerMove}
+        onPointerUp={onPointerUp}
+        onPointerCancel={onPointerUp}
+      >
+        <img
+          src={src}
+          alt=""
+          draggable={false}
+          className="block w-full h-full"
+          onLoad={(e) => setNat({ w: e.currentTarget.naturalWidth, h: e.currentTarget.naturalHeight })}
+        />
+        {rect && (
+          <>
+            {/* dim what won't print; leave the rectangle clear */}
+            <div className="absolute inset-0 pointer-events-none" style={{ background: 'rgba(0,0,0,0.45)', clipPath: `polygon(0 0, 100% 0, 100% 100%, 0 100%, 0 0, ${rect[0] * 100}% ${rect[1] * 100}%, ${rect[0] * 100}% ${(rect[1] + heightFor(rect[2])) * 100}%, ${(rect[0] + rect[2]) * 100}% ${(rect[1] + heightFor(rect[2])) * 100}%, ${(rect[0] + rect[2]) * 100}% ${rect[1] * 100}%, ${rect[0] * 100}% ${rect[1] * 100}%)` }} />
+            <div
+              className="absolute border-2 pointer-events-none"
+              style={{
+                left: `${rect[0] * 100}%`, top: `${rect[1] * 100}%`,
+                width: `${rect[2] * 100}%`, height: `${heightFor(rect[2]) * 100}%`,
+                borderColor: 'var(--t-accent)', boxShadow: '0 0 0 1px rgba(255,255,255,0.6) inset',
+              }}
+            />
+          </>
         )}
       </div>
     </div>
