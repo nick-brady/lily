@@ -2144,6 +2144,29 @@ def build_frame_story_scene(
     }
 
 
+def book_plan_for(db: Session, birth: Birth, rendering, day: list[dict] | None) -> list[dict]:
+    """The book's page plan for a draft, without drawing anything — what the
+    editor needs after a page is added, removed or moved: which pages exist,
+    what kind each is, and which photo slots each holds."""
+    refs = _reel_refs(db, birth)
+    n_notes = sum(
+        1 for e in db.scalars(
+            select(TimelineEvent).where(TimelineEvent.birth_id == birth.id, TimelineEvent.event_type == TimelineEventType.text_note, TimelineEvent.deleted_at.is_(None))
+        ).all()
+        if _clean_text((e.payload or {}).get("body") or (e.payload or {}).get("text"))
+    )
+    from repositories import guesses as guesses_repo
+    has_pool = bool(birth.child_weight_lbs) and any(g.weight_lbs for g in guesses_repo.list_guesses(db, birth_id=birth.id))
+    all_events = list(db.scalars(select(TimelineEvent).where(TimelineEvent.birth_id == birth.id, TimelineEvent.deleted_at.is_(None))).all())
+    stats = gift_stats.compute(birth, all_events)
+    has_marks = bool(stats.first_contraction_at) and any(has_mark(m["kind"]) for m in _gather_milestones(db, birth, stats))
+    plan = plan_book(n_photos=len(refs), n_notes=n_notes, has_pool=has_pool, has_milestones=has_marks, day=day)
+    return [
+        {"key": p["key"], "kind": p["kind"], "slots": p.get("slots", []), "count": p.get("count"), "editable": bool(p.get("editable"))}
+        for p in plan
+    ]
+
+
 def _story_moments(db: Session, birth: Birth, rendering, straight: float, *, photo_max_px: int) -> list[dict]:
     """The timeline as moments, thinned to what fits, with the parent's
     per-slot photo choices laid over the photos that made the cut."""
@@ -2293,7 +2316,17 @@ BOOK_WRITE_IN = (  # headings for the ruled pages, in the order they're needed
 )
 
 
-def plan_book(*, n_photos: int, n_notes: int, has_pool: bool, has_milestones: bool) -> list[dict]:
+BOOK_PAGE_KINDS = ("gallery", "notes", "write_in")   # what a parent may add
+
+
+def plan_book(
+    *,
+    n_photos: int,
+    n_notes: int,
+    has_pool: bool,
+    has_milestones: bool,
+    day: list[dict] | None = None,
+) -> list[dict]:
     """Which page is which, for a story of this size. Pure, so the shape of
     the book is testable without a database.
 
@@ -2304,32 +2337,57 @@ def plan_book(*, n_photos: int, n_notes: int, has_pool: bool, has_milestones: bo
     becomes more ruled pages, since a page to write in beats a page with
     nothing on it.
 
+    `day` is the parent's own middle section — [{"kind": "gallery", "count":
+    3}, {"kind": "notes"}, {"kind": "write_in"}, …] — added, removed and
+    reordered in the editor. It replaces the automatic one, trimmed to the
+    room the book has and padded with ruled pages. The fixed pages stay.
+
     Each page: {"key", "kind", ...}. Gallery pages carry "count" and a
-    contiguous "slots" range into the book's photo list."""
+    contiguous "slots" range into the book's photo list; the day's pages
+    carry "editable": True."""
     head = [{"kind": "title"}, {"kind": "clock"}] + ([{"kind": "pool"}] if has_pool else [])
     tail = ([{"kind": "milestones"}] if has_milestones else [])
     tail += [{"kind": "write_in", "heading": 0}, {"kind": "write_in", "heading": 1}, {"kind": "closing"}]
-    note_pages = min(2, math.ceil(n_notes / BOOK_NOTES_PER_PAGE)) if n_notes else 0
-    room = BOOK_PAGES - len(head) - len(tail) - note_pages
+    room_all = BOOK_PAGES - len(head) - len(tail)
+    if day is not None:
+        # the parent's section: only kinds we can draw, gallery counts 1–4,
+        # cut to the room, ruled pages to fill what's left
+        mid: list[dict] = []
+        notes_seen = 0
+        for pg in day[:room_all]:
+            kind = pg.get("kind")
+            if kind == "gallery":
+                mid.append({"kind": "gallery", "count": max(1, min(BOOK_MAX_PER_GALLERY, int(pg.get("count") or 1)))})
+            elif kind == "notes":
+                mid.append({"kind": "notes", "index": notes_seen}); notes_seen += 1
+            elif kind == "write_in":
+                mid.append({"kind": "write_in", "heading": 2 + sum(1 for m in mid if m["kind"] == "write_in")})
+        spare = room_all - len(mid)
+        n_ruled = sum(1 for m in mid if m["kind"] == "write_in")
+        extra_write = [{"kind": "write_in", "heading": 2 + n_ruled + i} for i in range(spare)]
+    else:
+        note_pages = min(2, math.ceil(n_notes / BOOK_NOTES_PER_PAGE)) if n_notes else 0
+        room = room_all - note_pages
+        # a photo per page until the pages run out — a full-page photo is the
+        # richest thing a book does — then two, three, four to a page as the
+        # story grows, thinning past four to a page
+        galleries = min(room, n_photos)
+        photos_used = min(n_photos, galleries * BOOK_MAX_PER_GALLERY)
+        sizes = []
+        if galleries:
+            base, extra = divmod(photos_used, galleries)
+            sizes = [base + (1 if i < extra else 0) for i in range(galleries)]
+        mid = [{"kind": "gallery", "count": k} for k in sizes]
+        # notes pages spread through the day, never first or last in it
+        for j in range(note_pages):
+            at = round((j + 1) * (len(mid) + 1) / (note_pages + 1))
+            mid.insert(min(at, len(mid)), {"kind": "notes", "index": j})
+        spare = room - galleries
+        extra_write = [{"kind": "write_in", "heading": 2 + i} for i in range(spare)]
+    for pg in mid + extra_write:
+        pg["editable"] = True
 
-    # a photo per page until the pages run out — a full-page photo is the
-    # richest thing a book does — then two, three, four to a page as the
-    # story grows, thinning past four to a page
-    galleries = min(room, n_photos)
-    photos_used = min(n_photos, galleries * BOOK_MAX_PER_GALLERY)
-    sizes = []
-    if galleries:
-        base, extra = divmod(photos_used, galleries)
-        sizes = [base + (1 if i < extra else 0) for i in range(galleries)]
-    day: list[dict] = [{"kind": "gallery", "count": k} for k in sizes]
-    # notes pages spread through the day, never first or last in it
-    for j in range(note_pages):
-        at = round((j + 1) * (len(day) + 1) / (note_pages + 1))
-        day.insert(min(at, len(day)), {"kind": "notes", "index": j})
-    spare = room - galleries
-    extra_write = [{"kind": "write_in", "heading": 2 + i} for i in range(spare)]
-
-    pages = head + day + tail[:-3] + extra_write + tail[-3:]
+    pages = head + mid + tail[:-3] + extra_write + tail[-3:]
     slot = 0
     for i, page in enumerate(pages):
         page["key"] = f"page_{i + 1}"
@@ -2434,7 +2492,8 @@ def render_book(
     milestones = [(m["kind"], first + timedelta(seconds=int(m["offset_seconds"]))) for m in _gather_milestones(db, birth, stats)] if first else []
     marks = [(k, t) for k, t in milestones if has_mark(k)]
 
-    plan = plan_book(n_photos=len(refs), n_notes=len(notes), has_pool=has_pool, has_milestones=bool(marks))
+    day = ((getattr(rendering, "layout_overrides", None) or {}).get("pages")) if rendering is not None else None
+    plan = plan_book(n_photos=len(refs), n_notes=len(notes), has_pool=has_pool, has_milestones=bool(marks), day=day)
     total_slots = sum(p.get("count", 0) for p in plan if p["kind"] == "gallery")
     photos = _slot_photos(db, birth, rendering, total_slots, photo_max_px=photo_max_px or 1000) if total_slots else []
     photos += [None] * (total_slots - len(photos))
@@ -2574,7 +2633,10 @@ def render_book(
         "theme": birth.theme,
         "selected_media_id": None,
         "selected_slot_media_ids": [ph["media_id"] if ph else None for ph in photos],
-        "book_plan": [{"key": p["key"], "kind": p["kind"], "slots": p.get("slots", [])} for p in plan],
+        "book_plan": [
+            {"key": p["key"], "kind": p["kind"], "slots": p.get("slots", []), "count": p.get("count"), "editable": bool(p.get("editable"))}
+            for p in plan
+        ],
         "stats": stats.as_metadata(),
         "child": {"name": birth.child_name, "when": when.isoformat() if when else None},
         "dimensions": {"w": template.width, "h": template.height, "dpi": template.dpi},

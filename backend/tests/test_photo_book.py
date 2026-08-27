@@ -71,3 +71,32 @@ def test_the_book_is_matte_first_and_the_same_price_either_way():
     assert fp.default_for_product_kind("photo_book").key == "book_8x8_matte"
     assert {b.surcharge_cents for b in books} == {0}
     assert gift_templates.get("book_8x8").scene == "book"
+
+
+def test_the_parent_can_arrange_the_middle_of_the_book():
+    day = [{"kind": "gallery", "count": 3}, {"kind": "notes"}, {"kind": "gallery", "count": 4}, {"kind": "write_in"}]
+    plan = ga.plan_book(n_photos=11, n_notes=9, has_pool=True, has_milestones=True, day=day)
+    assert len(plan) == 24
+    kinds = _kinds(plan)
+    assert kinds[:3] == ["title", "clock", "pool"]                 # the fixed head stays
+    assert kinds[3:7] == ["gallery", "notes", "gallery", "write_in"]  # theirs, in their order
+    assert kinds[-3:] == ["write_in", "write_in", "closing"]       # and the fixed tail
+    galleries = [p for p in plan if p["kind"] == "gallery"]
+    assert [p["count"] for p in galleries] == [3, 4]
+    assert galleries[1]["slots"] == [3, 4, 5, 6]                   # slots run on in order
+    # what's theirs to change: their pages and the ruled ones filling the room;
+    # the fixed pages — title, clock, pool, milestones, the two for a pen,
+    # the closing — are not
+    editable = [p for p in plan if p.get("editable")]
+    assert [p["kind"] for p in editable][:4] == ["gallery", "notes", "gallery", "write_in"]
+    assert all(p["kind"] in ("gallery", "notes", "write_in") for p in editable)
+    assert not any(p.get("editable") for p in plan if p["kind"] in ("title", "clock", "pool", "milestones", "closing"))
+    assert not plan[-2].get("editable") and not plan[-3].get("editable")   # the two for a pen
+
+
+def test_an_arrangement_is_cut_to_the_book_and_counts_are_sane():
+    day = [{"kind": "gallery", "count": 9}] * 40 + [{"kind": "mystery"}]
+    plan = ga.plan_book(n_photos=80, n_notes=0, has_pool=False, has_milestones=False, day=day)
+    assert len(plan) == 24
+    assert all(p["count"] <= ga.BOOK_MAX_PER_GALLERY for p in plan if p["kind"] == "gallery")
+    assert "mystery" not in _kinds(plan)

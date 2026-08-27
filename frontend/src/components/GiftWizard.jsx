@@ -60,6 +60,8 @@ export default function GiftWizard({
     ),
     text: { ...(initialRendering.text_overrides || {}) },
     productKey: initialRendering.product_key || null,
+    // the book's middle section as the parent arranged it; null = automatic
+    pages: initialRendering.layout_overrides?.pages ?? null,
   }));
   const slotCount = initialRendering.photo_slot_count || 0;
   const noun = PRODUCT_NOUN[item.product_kind] || 'product';
@@ -70,6 +72,10 @@ export default function GiftWizard({
   const isBook = item.product_kind === 'photo_book';
   const [pageIdx, setPageIdx] = useState(0);
   const pageKeyRef = useRef('cover_front');
+  // The plan the strip shows. The saved rendering's until the parent adds,
+  // removes or moves a page; then the server's plan for the draft, fetched
+  // without drawing anything.
+  const [planPages, setPlanPages] = useState(null);
   const [products, setProducts] = useState(null);
   const [dirty, setDirty] = useState(false);
   const [previewUrl, setPreviewUrl] = useState(null);
@@ -205,8 +211,9 @@ export default function GiftWizard({
   // default is the one time re-resolving is the point. Nothing is saved
   // until Next, so this too can be walked away from.
   const resetToDefault = () => {
-    const next = { mediaId: null, removed: false, slots: {}, text: {}, productKey: null };
+    const next = { mediaId: null, removed: false, slots: {}, text: {}, productKey: null, pages: null };
     setDraft(next);
+    setPlanPages(null);
     setActiveSlot(0);
     if (hiResRef.current) {
       URL.revokeObjectURL(hiResRef.current);
@@ -318,7 +325,7 @@ export default function GiftWizard({
 
   // The book: its pages, and which one is on screen. `pages` is the saved
   // plan — kind and slots per page — with a URL once each has been drawn.
-  const pages = isBook ? rendering.pages || [] : [];
+  const pages = isBook ? planPages || rendering.pages || [] : [];
   const pageKeys = isBook ? ['cover_front', ...pages.map((pg) => pg.key)] : [];
   const currentPage = isBook && pageIdx > 0 ? pages[pageIdx - 1] : null;
   const savedPageUrl = isBook
@@ -340,6 +347,53 @@ export default function GiftWizard({
     if (dirty) schedulePreview(draft);   // the draft, on the new page
     else setPreviewUrl(null);            // the saved page as drawn
   };
+  // The book's middle section as the parent arranges it. Starting from the
+  // plan on screen (its editable pages), each change is sent for a fresh
+  // plan so the strip and the slots follow — nothing is drawn until Next.
+  const arrangement = () =>
+    draft.pages ?? pages.filter((pg) => pg.editable).map((pg) => ({ kind: pg.kind, count: pg.count }));
+  const rearrange = async (next, focusKeyIdx = null) => {
+    const draftNext = { ...draft, pages: next };
+    setDraft(draftNext);
+    setDirty(true);
+    try {
+      const { pages: fresh } = await api.bookPlan(birthId, rendering.id, draftNext);
+      setPlanPages(fresh.map((pg) => ({ ...pg, url: null })));   // not drawn yet
+      const keys = ['cover_front', ...fresh.map((pg) => pg.key)];
+      const idx = focusKeyIdx == null ? Math.min(pageIdx, keys.length - 1) : Math.max(0, Math.min(keys.length - 1, focusKeyIdx));
+      setPageIdx(idx);
+      pageKeyRef.current = keys[idx];
+      const pg = idx > 0 ? fresh[idx - 1] : null;
+      if (pg?.slots?.length) setActiveSlot(pg.slots[0]);
+      schedulePreview(draftNext);
+    } catch (err) {
+      setError(err.message || "Couldn't rearrange the pages");
+    }
+  };
+  // index of the current page within the editable section, or -1
+  const editableIdx = currentPage?.editable ? pages.filter((pg) => pg.editable).indexOf(currentPage) : -1;
+  const addPage = (spec) => {
+    const day = arrangement();
+    const at = editableIdx >= 0 ? editableIdx + 1 : day.length;
+    day.splice(at, 0, spec);
+    // the first fixed page after the head is page_1 + head; the new page sits after the current one
+    rearrange(day, editableIdx >= 0 ? pageIdx + 1 : pageIdx);
+  };
+  const removePage = () => {
+    if (editableIdx < 0) return;
+    const day = arrangement();
+    day.splice(editableIdx, 1);
+    rearrange(day, pageIdx);
+  };
+  const movePage = (dir) => {
+    if (editableIdx < 0) return;
+    const day = arrangement();
+    const to = editableIdx + dir;
+    if (to < 0 || to >= day.length) return;
+    [day[editableIdx], day[to]] = [day[to], day[editableIdx]];
+    rearrange(day, pageIdx + dir);
+  };
+
   // Which photo slots the picker offers: the current page's on a book, all
   // of them on a filmstrip or the wall.
   const visibleSlots = isBook
@@ -459,9 +513,36 @@ export default function GiftWizard({
                   </div>
                   <p className="text-[11px] t-muted text-center mt-1">
                     {pageIdx === 0 ? 'The cover' : `Page ${pageIdx} of ${pages.length}`}
-                    {currentPage?.kind === 'gallery' ? ' — pick a photo below to fill it' : ''}
-                    {currentPage?.kind === 'write_in' ? ' — left blank, for a pen' : ''}
+                    {currentPage?.kind === 'gallery' ? ` — ${currentPage.count} photo${currentPage.count === 1 ? '' : 's'}, pick below to fill` : ''}
+                    {currentPage?.kind === 'write_in' ? ' — ruled, for a pen' : ''}
+                    {currentPage?.kind === 'notes' ? " — the family's notes" : ''}
                   </p>
+                  {/* Arranging the middle of the book. The title, clock, pool,
+                      milestones, the two pages for a pen and the closing stay
+                      where they are; everything between is the parent's. The
+                      book is always 24 pages: a page added takes the place of
+                      a ruled one, a page removed becomes one. */}
+                  {(currentPage?.editable || pageIdx === 0) && (
+                    <div className="flex flex-wrap items-center justify-center gap-2 mt-2 text-[11px]">
+                      {currentPage?.editable && (
+                        <>
+                          <button type="button" onClick={() => movePage(-1)} className="px-2 py-1 rounded border t-muted" style={{ borderColor: 'var(--t-soft-ring)' }}>← Move</button>
+                          <button type="button" onClick={() => movePage(1)} className="px-2 py-1 rounded border t-muted" style={{ borderColor: 'var(--t-soft-ring)' }}>Move →</button>
+                          <button type="button" onClick={removePage} className="px-2 py-1 rounded border t-muted" style={{ borderColor: 'var(--t-soft-ring)' }}>Remove page</button>
+                          <span className="t-faint">·</span>
+                        </>
+                      )}
+                      <span className="t-faint">Add after this:</span>
+                      {[1, 2, 3, 4].map((n) => (
+                        <button key={n} type="button" onClick={() => addPage({ kind: 'gallery', count: n })}
+                          className="px-2 py-1 rounded border t-ink" style={{ borderColor: 'var(--t-soft-ring)' }}>
+                          {n} photo{n === 1 ? '' : 's'}
+                        </button>
+                      ))}
+                      <button type="button" onClick={() => addPage({ kind: 'notes' })} className="px-2 py-1 rounded border t-ink" style={{ borderColor: 'var(--t-soft-ring)' }}>Notes</button>
+                      <button type="button" onClick={() => addPage({ kind: 'write_in' })} className="px-2 py-1 rounded border t-ink" style={{ borderColor: 'var(--t-soft-ring)' }}>Ruled</button>
+                    </div>
+                  )}
                 </div>
               )}
 

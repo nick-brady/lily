@@ -43,6 +43,7 @@ from repositories import gifts as gifts_repo
 from repositories import media as media_repo
 from routes.deps import BirthAccess, require_birth_access, require_parent_access
 from schemas import (
+    BookPlanOut,
     GiftPhotoOptionOut,
     GiftDesignIn,
     GiftGalleryOut,
@@ -84,6 +85,7 @@ def _serialize_rendering(rendering) -> GiftRenderingOut:
         # when it recorded that (the story fits as many photos as its line
         # holds), else the template's count
         pages=gifts_repo.book_pages(rendering),
+        layout_overrides=rendering.layout_overrides or {},
         photo_slot_count=(
             len((rendering.rendering_metadata or {}).get("selected_slot_media_ids") or [])
             or (template.photo_slots if template else 0)
@@ -411,6 +413,7 @@ class _Draft:
         self.photo_media_id = None if payload.removed else payload.media_id
         self.photo_removed = payload.removed
         self.photo_slots = {k: str(v) for k, v in (payload.photo_slots or {}).items()}
+        self.layout_overrides = {"pages": payload.pages} if payload.pages is not None else {}
         self.text_overrides = dict(payload.text or {})
         self.template_id = rendering.template_id
         self.product_key = payload.product_key
@@ -424,6 +427,7 @@ def _apply_draft(rendering, payload: GiftDesignIn) -> None:
     rendering.photo_slots = {
         k: str(v) for k, v in (payload.photo_slots or {}).items()
     }
+    rendering.layout_overrides = {"pages": payload.pages} if payload.pages is not None else {}
     rendering.text_overrides = dict(payload.text or {})
     # Unknown keys are ignored rather than rejected: the shortlist is a code
     # registry, and a design pointing at a product we've since retired should
@@ -537,6 +541,24 @@ def preview_gift_design(
             ),
         },
     )
+
+
+@router.post(
+    "/birth/{birth_id}/gifts/{rendering_id}/book-plan", response_model=BookPlanOut
+)
+def book_plan_preview(
+    rendering_id: uuid.UUID,
+    payload: GiftDesignIn,
+    access: BirthAccess = Depends(require_parent_access),
+    db: Session = Depends(get_db),
+) -> BookPlanOut:
+    """The book's page plan for a draft — nothing drawn, nothing saved. The
+    editor asks after a page is added, removed or moved, to learn which pages
+    now exist and which photo slots each holds."""
+    rendering, template = _load_editable(db, access, rendering_id)
+    if template.scene != "book":
+        raise HTTPException(status_code=400, detail="Not a book")
+    return BookPlanOut(pages=gift_artwork.book_plan_for(db, access.birth, rendering, payload.pages))
 
 
 @router.patch(

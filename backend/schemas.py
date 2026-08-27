@@ -705,6 +705,7 @@ class GiftRenderingOut(BaseModel):
     # The book: its pages in order — key, kind, which photo slots each holds,
     # and a URL for the rendered page once there is one.
     pages: list[dict] = []
+    layout_overrides: dict = {}
     # Slots this design lets a parent edit, and what they currently say.
     editable_text: list[str] = []
     text_overrides: dict[str, str] = {}
@@ -729,8 +730,16 @@ class GiftDesignIn(BaseModel):
     # For the filmstrip designs: slot index ("0".."3") → the chosen photo.
     # A missing slot stays on the auto sample; unknown slots are dropped.
     photo_slots: dict[str, uuid.UUID] = Field(default_factory=dict)
+    # The book's middle section, as the parent arranged it — None keeps the
+    # automatic plan. Each entry: {"kind": "gallery"|"notes"|"write_in",
+    # "count": 1–4 for a gallery}.
+    pages: Optional[list[dict]] = None
     text: dict[str, str] = Field(default_factory=dict)
     product_key: Optional[str] = None
+
+
+class BookPlanOut(BaseModel):
+    pages: list[dict]
 
 
 class GiftPhotoOptionOut(BaseModel):

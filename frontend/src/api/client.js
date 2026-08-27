@@ -632,9 +632,22 @@ export const api = {
       media_id: draft.mediaId ?? null,
       removed: Boolean(draft.removed),
       photo_slots: draft.slots || {},
+      // the book's middle section as arranged; null keeps the automatic plan
+      pages: draft.pages ?? null,
       text: draft.text || {},
       product_key: draft.productKey ?? null,
     });
+  },
+
+  // The book's page plan for a draft — which pages exist and which photo
+  // slots each holds — without drawing anything.
+  async bookPlan(birthId, renderingId, draft) {
+    const res = await fetch(`${API_URL}/birth/${birthId}/gifts/${renderingId}/book-plan`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: this._designBody(draft),
+    });
+    return jsonOrThrow(res);
   },
 
   // Renders the draft and returns an object URL. Nothing is saved — this is
