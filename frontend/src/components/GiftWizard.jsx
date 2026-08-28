@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { Fragment, useCallback, useEffect, useRef, useState } from 'react';
 import { api } from '../api/client';
 import { formatPrice } from '../utils/money';
 import { PRODUCT_NOUN } from '../utils/products';
@@ -393,19 +393,37 @@ export default function GiftWizard({
     // the first fixed page after the head is page_1 + head; the new page sits after the current one
     rearrange(day, editableIdx >= 0 ? pageIdx + 1 : pageIdx);
   };
-  const removePage = () => {
-    if (editableIdx < 0) return;
+  // The strip is the control: an × on a day page removes it, the + tile adds
+  // one after the page you're on, and a day page drags to a new place among
+  // the others. `e` indexes are into the editable (day) section.
+  const editablePages = pages.filter((pg) => pg.editable);
+  const editableIdxOf = (pg) => editablePages.indexOf(pg);
+  const firstEditableStrip = pages.findIndex((pg) => pg.editable) + 1; // strip index of day page 0
+  const removePageAt = (e) => {
+    if (e < 0) return;
     const day = arrangement();
-    day.splice(editableIdx, 1);
-    rearrange(day, pageIdx);
+    day.splice(e, 1);
+    rearrange(day, Math.min(pageIdx, firstEditableStrip + Math.max(0, day.length - 1)));
   };
-  const movePage = (dir) => {
-    if (editableIdx < 0) return;
+  const movePageTo = (from, to) => {
+    if (from < 0 || to < 0 || from === to) return;
     const day = arrangement();
-    const to = editableIdx + dir;
-    if (to < 0 || to >= day.length) return;
-    [day[editableIdx], day[to]] = [day[to], day[editableIdx]];
-    rearrange(day, pageIdx + dir);
+    if (from >= day.length || to >= day.length) return;
+    const [pg] = day.splice(from, 1);
+    day.splice(to, 0, pg);
+    rearrange(day, firstEditableStrip + to);
+  };
+  // where the + tile sits and where a new page goes: after the current day
+  // page, else at the end of the day section
+  const insertAt = editableIdx >= 0 ? editableIdx + 1 : editablePages.length;
+  const [adding, setAdding] = useState(false);
+  const [dragE, setDragE] = useState(null);       // day index being dragged
+  const [dragOverE, setDragOverE] = useState(null);
+  const addPageAt = (spec) => {
+    const day = arrangement();
+    day.splice(insertAt, 0, spec);
+    setAdding(false);
+    rearrange(day, firstEditableStrip + insertAt);
   };
 
   // A tick on the story's roll. Off → on pins the photo (safe from the
@@ -526,21 +544,62 @@ export default function GiftWizard({
                   <div className="flex items-center gap-2">
                     <button type="button" onClick={() => goToPage(pageIdx - 1)} disabled={pageIdx === 0}
                       className="px-2 py-1 text-sm t-muted disabled:opacity-30" aria-label="Previous page">‹</button>
-                    <div className="flex-1 min-w-0 flex gap-1.5 overflow-x-auto py-1">
+                    <div className="flex-1 min-w-0 flex gap-1.5 overflow-x-auto py-1 px-0.5">
                       {pageKeys.map((key, idx) => {
                         const pg = idx > 0 ? pages[idx - 1] : null;
                         const url = idx === 0 ? rendering.artwork_url : pg?.url;
+                        const e = pg?.editable ? editableIdxOf(pg) : -1;
+                        const plusHere = e >= 0 ? e === insertAt - 1 : idx === firstEditableStrip - 1 && insertAt === 0;
                         return (
-                          <button
-                            key={key}
-                            type="button"
-                            onClick={() => goToPage(idx)}
-                            title={idx === 0 ? 'Cover' : `Page ${idx} · ${(pg?.kind || '').replace('_', ' ')}`}
-                            className="flex-none w-12 h-12 rounded border-2 overflow-hidden bg-white text-[10px] t-muted"
-                            style={{ borderColor: idx === pageIdx ? 'var(--t-accent)' : 'var(--t-soft-ring)' }}
-                          >
-                            {url ? <img src={url} alt="" className="w-full h-full object-cover" /> : idx === 0 ? 'cover' : idx}
-                          </button>
+                          <Fragment key={key}>
+                            <div
+                              className="relative flex-none"
+                              draggable={e >= 0}
+                              onDragStart={(ev) => { setDragE(e); ev.dataTransfer.effectAllowed = 'move'; }}
+                              onDragEnd={() => { setDragE(null); setDragOverE(null); }}
+                              onDragOver={(ev) => { if (e >= 0 && dragE != null) { ev.preventDefault(); setDragOverE(e); } }}
+                              onDrop={(ev) => { ev.preventDefault(); if (e >= 0 && dragE != null) movePageTo(dragE, e); setDragE(null); setDragOverE(null); }}
+                              style={{ opacity: dragE === e && e >= 0 ? 0.4 : 1 }}
+                            >
+                              <button
+                                type="button"
+                                onClick={() => goToPage(idx)}
+                                title={idx === 0 ? 'Cover' : `Page ${idx} · ${(pg?.kind || '').replace('_', ' ')}${e >= 0 ? ' · drag to move' : ''}`}
+                                className={`w-12 h-12 rounded border-2 overflow-hidden bg-white text-[10px] t-muted ${e >= 0 ? 'cursor-grab' : ''}`}
+                                style={{
+                                  borderColor: idx === pageIdx ? 'var(--t-accent)' : 'var(--t-soft-ring)',
+                                  boxShadow: dragOverE === e && e >= 0 && dragE !== e ? 'inset 0 0 0 2px var(--t-accent)' : 'none',
+                                }}
+                              >
+                                {url ? <img src={url} alt="" className="w-full h-full object-cover pointer-events-none" /> : idx === 0 ? 'cover' : idx}
+                              </button>
+                              {e >= 0 && (
+                                <button
+                                  type="button"
+                                  onClick={(ev) => { ev.stopPropagation(); removePageAt(e); }}
+                                  aria-label={`Remove page ${idx}`}
+                                  title="Remove this page"
+                                  className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-white border text-[10px] leading-none flex items-center justify-center t-muted hover:t-ink"
+                                  style={{ borderColor: 'var(--t-soft-ring)' }}
+                                >
+                                  ×
+                                </button>
+                              )}
+                            </div>
+                            {plusHere && (
+                              <button
+                                type="button"
+                                onClick={() => setAdding((v) => !v)}
+                                aria-label="Add a page here"
+                                title="Add a page here"
+                                aria-expanded={adding}
+                                className="flex-none w-12 h-12 rounded border-2 border-dashed text-lg leading-none t-muted hover:t-ink"
+                                style={{ borderColor: adding ? 'var(--t-accent)' : 'var(--t-soft-ring)' }}
+                              >
+                                +
+                              </button>
+                            )}
+                          </Fragment>
                         );
                       })}
                     </div>
@@ -555,28 +614,22 @@ export default function GiftWizard({
                   </p>
                   {/* Arranging the middle of the book. The title, clock, pool,
                       milestones, the two pages for a pen and the closing stay
-                      where they are; everything between is the parent's. The
-                      book is always 24 pages: a page added takes the place of
-                      a ruled one, a page removed becomes one. */}
-                  {(currentPage?.editable || pageIdx === 0) && (
+                      where they are; everything between is the parent's — the
+                      × removes, a drag moves, the + adds. The book is always
+                      24 pages: a page added takes the place of a ruled one, a
+                      page removed becomes one. */}
+                  {adding && (
                     <div className="flex flex-wrap items-center justify-center gap-2 mt-2 text-[11px]">
-                      {currentPage?.editable && (
-                        <>
-                          <button type="button" onClick={() => movePage(-1)} className="px-2 py-1 rounded border t-muted" style={{ borderColor: 'var(--t-soft-ring)' }}>← Move</button>
-                          <button type="button" onClick={() => movePage(1)} className="px-2 py-1 rounded border t-muted" style={{ borderColor: 'var(--t-soft-ring)' }}>Move →</button>
-                          <button type="button" onClick={removePage} className="px-2 py-1 rounded border t-muted" style={{ borderColor: 'var(--t-soft-ring)' }}>Remove page</button>
-                          <span className="t-faint">·</span>
-                        </>
-                      )}
-                      <span className="t-faint">Add after this:</span>
+                      <span className="t-faint">Add a page of:</span>
                       {[1, 2, 3, 4].map((n) => (
-                        <button key={n} type="button" onClick={() => addPage({ kind: 'gallery', count: n })}
+                        <button key={n} type="button" onClick={() => addPageAt({ kind: 'gallery', count: n })}
                           className="px-2 py-1 rounded border t-ink" style={{ borderColor: 'var(--t-soft-ring)' }}>
                           {n} photo{n === 1 ? '' : 's'}
                         </button>
                       ))}
-                      <button type="button" onClick={() => addPage({ kind: 'notes' })} className="px-2 py-1 rounded border t-ink" style={{ borderColor: 'var(--t-soft-ring)' }}>Notes</button>
-                      <button type="button" onClick={() => addPage({ kind: 'write_in' })} className="px-2 py-1 rounded border t-ink" style={{ borderColor: 'var(--t-soft-ring)' }}>Ruled</button>
+                      <button type="button" onClick={() => addPageAt({ kind: 'notes' })} className="px-2 py-1 rounded border t-ink" style={{ borderColor: 'var(--t-soft-ring)' }}>Notes</button>
+                      <button type="button" onClick={() => addPageAt({ kind: 'write_in' })} className="px-2 py-1 rounded border t-ink" style={{ borderColor: 'var(--t-soft-ring)' }}>Ruled</button>
+                      <button type="button" onClick={() => setAdding(false)} className="px-2 py-1 t-faint">Cancel</button>
                     </div>
                   )}
                 </div>
