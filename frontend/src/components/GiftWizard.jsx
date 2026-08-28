@@ -444,8 +444,9 @@ export default function GiftWizard({
     rearrange(day, editableIdx >= 0 ? pageIdx + 1 : pageIdx);
   };
   // The strip is the control: an × on a day page removes it, the + tile adds
-  // one after the page you're on, and a day page drags to a new place among
-  // the others. `e` indexes are into the editable (day) section.
+  // one after the page you're on, and the selected day page wears ‹ › that
+  // step it one place either way. `e` indexes are into the editable (day)
+  // section.
   const editablePages = pages.filter((pg) => pg.editable);
   const editableIdxOf = (pg) => editablePages.indexOf(pg);
   const firstEditableStrip = pages.findIndex((pg) => pg.editable) + 1; // strip index of day page 0
@@ -469,41 +470,6 @@ export default function GiftWizard({
   // page, else at the end of the day section
   const insertAt = editableIdx >= 0 ? editableIdx + 1 : editablePages.length;
   const [adding, setAdding] = useState(false);
-  // Dragging a day page, on pointer events so a finger works as well as a
-  // mouse. Press, move a little, and the tile lifts; whatever day tile is
-  // under the pointer is the target; release to move it there.
-  const [dragE, setDragE] = useState(null);       // day index being dragged
-  const [dragOverE, setDragOverE] = useState(null);
-  const dragRef = useRef(null);                    // {e, x, y, moved}
-  const startDrag = (ev, e) => {
-    if (e < 0 || ev.button !== 0) return;
-    dragRef.current = { e, x: ev.clientX, y: ev.clientY, moved: false };
-    const onMove = (m) => {
-      const d = dragRef.current;
-      if (!d) return;
-      if (!d.moved && Math.hypot(m.clientX - d.x, m.clientY - d.y) < 6) return;
-      if (!d.moved) { d.moved = true; setDragE(d.e); }
-      const el = document.elementFromPoint(m.clientX, m.clientY)?.closest('[data-day-idx]');
-      setDragOverE(el ? Number(el.dataset.dayIdx) : null);
-    };
-    const onUp = (m) => {
-      window.removeEventListener('pointermove', onMove);
-      window.removeEventListener('pointerup', onUp);
-      const d = dragRef.current; dragRef.current = null;
-      if (d?.moved) {
-        const el = document.elementFromPoint(m.clientX, m.clientY)?.closest('[data-day-idx]');
-        const to = el ? Number(el.dataset.dayIdx) : null;
-        if (to != null && to !== d.e) movePageTo(d.e, to);
-        // swallow the click that follows a drag
-        suppressClickRef.current = true;
-        setTimeout(() => { suppressClickRef.current = false; }, 0);
-      }
-      setDragE(null); setDragOverE(null);
-    };
-    window.addEventListener('pointermove', onMove);
-    window.addEventListener('pointerup', onUp);
-  };
-  const suppressClickRef = useRef(false);
   const addPageAt = (spec) => {
     const day = arrangement();
     day.splice(insertAt, 0, spec);
@@ -638,33 +604,52 @@ export default function GiftWizard({
                         const plusHere = e >= 0 ? e === insertAt - 1 : idx === firstEditableStrip - 1 && insertAt === 0;
                         return (
                           <Fragment key={key}>
-                            <div
-                              className="relative flex-none"
-                              data-day-idx={e >= 0 ? e : undefined}
-                              onPointerDown={(ev) => startDrag(ev, e)}
-                              style={{
-                                opacity: dragE === e && e >= 0 ? 0.4 : 1,
-                                touchAction: e >= 0 ? 'none' : undefined,
-                                cursor: dragE != null ? 'grabbing' : undefined,
-                              }}
-                            >
+                            <div className="relative flex-none">
                               <button
                                 type="button"
                                 data-page-idx={idx}
-                                onClick={() => { if (!suppressClickRef.current) goToPage(idx); }}
-                                title={idx === 0 ? 'Cover' : `Page ${idx} · ${(pg?.kind || '').replace('_', ' ')}${e >= 0 ? ' · drag to move' : ''}`}
-                                className={`w-12 h-12 rounded border-2 overflow-hidden bg-white text-[10px] t-muted select-none ${e >= 0 ? 'cursor-grab' : ''}`}
-                                style={{
-                                  borderColor: idx === pageIdx ? 'var(--t-accent)' : 'var(--t-soft-ring)',
-                                  boxShadow: dragOverE === e && e >= 0 && dragE !== e ? 'inset 0 0 0 2px var(--t-accent)' : 'none',
-                                }}
+                                onClick={() => goToPage(idx)}
+                                title={idx === 0 ? 'Cover' : `Page ${idx} · ${(pg?.kind || '').replace('_', ' ')}`}
+                                className="w-12 h-12 rounded border-2 overflow-hidden bg-white text-[10px] t-muted"
+                                style={{ borderColor: idx === pageIdx ? 'var(--t-accent)' : 'var(--t-soft-ring)' }}
                               >
                                 {url ? (
-                                  <img src={url} alt="" draggable={false} className="w-full h-full object-cover pointer-events-none" />
+                                  <img src={url} alt="" className="w-full h-full object-cover pointer-events-none" />
                                 ) : (
                                   <PageGlyph page={pg} idx={idx} photoFor={photoFor} />
                                 )}
                               </button>
+                              {/* the selected day page carries its own ‹ › — one
+                                  step left or right per click; plain, and it
+                                  says what it does */}
+                              {e >= 0 && idx === pageIdx && (
+                                <>
+                                  {e > 0 && (
+                                    <button
+                                      type="button"
+                                      onClick={() => movePageTo(e, e - 1)}
+                                      aria-label="Move this page one earlier"
+                                      title="Move one earlier"
+                                      className="absolute -left-1.5 bottom-0.5 w-4 h-4 rounded-full bg-white border text-[11px] leading-none flex items-center justify-center t-ink"
+                                      style={{ borderColor: 'var(--t-accent)' }}
+                                    >
+                                      ‹
+                                    </button>
+                                  )}
+                                  {e < editablePages.length - 1 && (
+                                    <button
+                                      type="button"
+                                      onClick={() => movePageTo(e, e + 1)}
+                                      aria-label="Move this page one later"
+                                      title="Move one later"
+                                      className="absolute -right-1.5 bottom-0.5 w-4 h-4 rounded-full bg-white border text-[11px] leading-none flex items-center justify-center t-ink"
+                                      style={{ borderColor: 'var(--t-accent)' }}
+                                    >
+                                      ›
+                                    </button>
+                                  )}
+                                </>
+                              )}
                               {e >= 0 && (
                                 <button
                                   type="button"
@@ -707,7 +692,7 @@ export default function GiftWizard({
                   {/* Arranging the middle of the book. The title, clock, pool,
                       milestones, the two pages for a pen and the closing stay
                       where they are; everything between is the parent's — the
-                      × removes, a drag moves, the + adds. The book is always
+                      × removes, ‹ › move, the + adds. The book is always
                       24 pages: a page added takes the place of a ruled one, a
                       page removed becomes one. */}
                   {adding && (
