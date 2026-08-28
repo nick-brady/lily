@@ -604,7 +604,11 @@ export default function GiftWizard({
                         const plusHere = e >= 0 ? e === insertAt - 1 : idx === firstEditableStrip - 1 && insertAt === 0;
                         return (
                           <Fragment key={key}>
-                            <div className="relative flex-none">
+                            <div
+                              className="relative flex-none transition-[margin] duration-200"
+                              // the selected day page makes room either side for its ‹ ›
+                              style={{ margin: e >= 0 && idx === pageIdx ? '0 22px' : undefined }}
+                            >
                               <button
                                 type="button"
                                 data-page-idx={idx}
@@ -630,8 +634,10 @@ export default function GiftWizard({
                                       onClick={() => movePageTo(e, e - 1)}
                                       aria-label="Move this page one earlier"
                                       title="Move one earlier"
-                                      className="absolute -left-1.5 bottom-0.5 w-4 h-4 rounded-full bg-white border text-[11px] leading-none flex items-center justify-center t-ink"
+                                      className="absolute -left-6 top-1/2 -translate-y-1/2 w-7 h-7 rounded-full bg-white border shadow-sm text-lg leading-none flex items-center justify-center t-ink hover:text-white"
                                       style={{ borderColor: 'var(--t-accent)' }}
+                                      onMouseEnter={(ev) => { ev.currentTarget.style.backgroundColor = 'var(--t-accent)'; }}
+                                      onMouseLeave={(ev) => { ev.currentTarget.style.backgroundColor = 'white'; }}
                                     >
                                       ‹
                                     </button>
@@ -642,8 +648,10 @@ export default function GiftWizard({
                                       onClick={() => movePageTo(e, e + 1)}
                                       aria-label="Move this page one later"
                                       title="Move one later"
-                                      className="absolute -right-1.5 bottom-0.5 w-4 h-4 rounded-full bg-white border text-[11px] leading-none flex items-center justify-center t-ink"
+                                      className="absolute -right-6 top-1/2 -translate-y-1/2 w-7 h-7 rounded-full bg-white border shadow-sm text-lg leading-none flex items-center justify-center t-ink hover:text-white"
                                       style={{ borderColor: 'var(--t-accent)' }}
+                                      onMouseEnter={(ev) => { ev.currentTarget.style.backgroundColor = 'var(--t-accent)'; }}
+                                      onMouseLeave={(ev) => { ev.currentTarget.style.backgroundColor = 'white'; }}
                                     >
                                       ›
                                     </button>
