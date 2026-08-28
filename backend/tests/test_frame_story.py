@@ -144,3 +144,40 @@ def test_guesses_wear_their_names_without_overlapping():
     assert next(d for d in tagged if d["label"] == "Nathan")["row"] == 0
     # no names, no tags — the pool card's ruler is unchanged
     assert all("label" not in d for d in ga.weight_ruler([7.5], 8.4, x1=0, x2=860, y=100)["dots"])
+
+
+# ── the photo roll: ticks, not slots ──────────────────────────────────────
+
+
+def test_a_pinned_photo_survives_the_thinning():
+    """Forty photos, one the parent ticked on: the line thins around it."""
+    many = [_photo(i, T0 + timedelta(minutes=10 * i)) for i in range(40)]
+    without = ga.story_thin(many, _straight())
+    # m17 is an odd one out that the even sample normally drops
+    assert not any(m["media_id"] == "m17" for m in without)
+    kept = ga.story_thin(many, _straight(), pinned={"m17"})
+    assert any(m["media_id"] == "m17" for m in kept)
+    # pinning didn't buy extra room — the count is the same
+    assert sum(1 for m in kept if m["kind"] == "photo") == sum(
+        1 for m in without if m["kind"] == "photo"
+    )
+
+
+def test_capacity_is_the_count_the_line_holds():
+    many = [_photo(i, T0 + timedelta(minutes=10 * i)) for i in range(40)]
+    many.append({"kind": "water_broke", "when": T0 + timedelta(hours=1)})
+    cap = ga.story_capacity(many, _straight())
+    assert cap == sum(1 for m in ga.story_thin(many, _straight()) if m["kind"] == "photo")
+    # six photos: the line holds all six, so the capacity is six
+    few = [_photo(i, T0 + timedelta(hours=i)) for i in range(6)]
+    assert ga.story_capacity(few, _straight()) == 6
+
+
+def test_ticks_are_read_off_the_layout_and_off_beats_on():
+    class R:
+        layout_overrides = {"story": {"off": ["a", "b"], "on": ["b", "c"]}}
+
+    off, on = ga.story_overrides(R())
+    assert off == {"a", "b"} and on == {"c"}
+    assert ga.story_overrides(None) == (set(), set())
+    assert ga.story_overrides(type("R", (), {"layout_overrides": {}})()) == (set(), set())
