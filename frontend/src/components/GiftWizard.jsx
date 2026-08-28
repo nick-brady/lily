@@ -112,6 +112,12 @@ export default function GiftWizard({
   const hiResRef = useRef(null);
 
   const fileRef = useRef(null);
+  // the page strip: the selected tile slides into view as you move
+  const stripRef = useRef(null);
+  useEffect(() => {
+    const tile = stripRef.current?.querySelector(`[data-page-idx="${pageIdx}"]`);
+    tile?.scrollIntoView({ block: 'nearest', inline: 'center', behavior: 'smooth' });
+  }, [pageIdx]);
   const abortRef = useRef(null);
   const timerRef = useRef(null);
   const pollRef = useRef(null);
@@ -557,7 +563,7 @@ export default function GiftWizard({
                   <div className="flex items-center gap-2">
                     <button type="button" onClick={() => goToPage(pageIdx - 1)} disabled={pageIdx === 0}
                       className="px-2 py-1 text-sm t-muted disabled:opacity-30" aria-label="Previous page">‹</button>
-                    <div className="flex-1 min-w-0 flex gap-1.5 overflow-x-auto py-1 px-0.5">
+                    <div ref={stripRef} className="flex-1 min-w-0 flex gap-1.5 overflow-x-auto py-1 px-0.5 no-scrollbar">
                       {pageKeys.map((key, idx) => {
                         const pg = idx > 0 ? pages[idx - 1] : null;
                         const url = idx === 0 ? rendering.artwork_url : pg?.url;
@@ -576,6 +582,7 @@ export default function GiftWizard({
                             >
                               <button
                                 type="button"
+                                data-page-idx={idx}
                                 onClick={() => goToPage(idx)}
                                 title={idx === 0 ? 'Cover' : `Page ${idx} · ${(pg?.kind || '').replace('_', ' ')}${e >= 0 ? ' · drag to move' : ''}`}
                                 className={`w-12 h-12 rounded border-2 overflow-hidden bg-white text-[10px] t-muted ${e >= 0 ? 'cursor-grab' : ''}`}

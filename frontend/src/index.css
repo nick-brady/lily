@@ -243,3 +243,8 @@
 .t-date-input::-webkit-calendar-picker-indicator:hover {
   opacity: 1;
 }
+
+/* A strip that scrolls sideways without a bar under it — the arrows at its
+   ends and the selected tile sliding into view do the wayfinding. */
+.no-scrollbar { scrollbar-width: none; -ms-overflow-style: none; }
+.no-scrollbar::-webkit-scrollbar { display: none; }
