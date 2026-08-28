@@ -607,7 +607,7 @@ export default function GiftWizard({
                             <div
                               className="relative flex-none transition-[margin] duration-200"
                               // the selected day page makes room either side for its ‹ ›
-                              style={{ margin: e >= 0 && idx === pageIdx ? '0 22px' : undefined }}
+                              style={{ margin: e >= 0 && idx === pageIdx ? '0 34px' : undefined }}
                             >
                               <button
                                 type="button"
@@ -634,7 +634,7 @@ export default function GiftWizard({
                                       onClick={() => movePageTo(e, e - 1)}
                                       aria-label="Move this page one earlier"
                                       title="Move one earlier"
-                                      className="absolute -left-6 top-1/2 -translate-y-1/2 w-7 h-7 rounded-full bg-white border shadow-sm text-lg leading-none flex items-center justify-center t-ink hover:text-white"
+                                      className="absolute -left-[34px] top-1/2 -translate-y-1/2 w-7 h-7 rounded-full bg-white border shadow-sm text-lg leading-none flex items-center justify-center t-ink hover:text-white"
                                       style={{ borderColor: 'var(--t-accent)' }}
                                       onMouseEnter={(ev) => { ev.currentTarget.style.backgroundColor = 'var(--t-accent)'; }}
                                       onMouseLeave={(ev) => { ev.currentTarget.style.backgroundColor = 'white'; }}
@@ -648,7 +648,7 @@ export default function GiftWizard({
                                       onClick={() => movePageTo(e, e + 1)}
                                       aria-label="Move this page one later"
                                       title="Move one later"
-                                      className="absolute -right-6 top-1/2 -translate-y-1/2 w-7 h-7 rounded-full bg-white border shadow-sm text-lg leading-none flex items-center justify-center t-ink hover:text-white"
+                                      className="absolute -right-[34px] top-1/2 -translate-y-1/2 w-7 h-7 rounded-full bg-white border shadow-sm text-lg leading-none flex items-center justify-center t-ink hover:text-white"
                                       style={{ borderColor: 'var(--t-accent)' }}
                                       onMouseEnter={(ev) => { ev.currentTarget.style.backgroundColor = 'var(--t-accent)'; }}
                                       onMouseLeave={(ev) => { ev.currentTarget.style.backgroundColor = 'white'; }}
