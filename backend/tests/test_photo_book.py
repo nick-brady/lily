@@ -133,3 +133,21 @@ def test_the_two_pen_pages_at_the_back_take_their_own_words_by_position():
     assert ga.write_in_text(pens[1], "Lily") == ("DEAR LILY", "from mum")
     # and they're where they always were: just before the closing
     assert [p["kind"] for p in plan[-3:]] == ["write_in", "write_in", "closing"]
+
+
+def test_spare_ruled_pages_sent_back_keep_their_place_and_their_words():
+    """The editor round-trips every editable page. The fillers after the
+    milestones must come back as fillers — not as day pages that push the
+    milestones down the book — and words written on one stay on it."""
+    plan = ga.plan_book(n_photos=3, n_notes=0, has_pool=True, has_milestones=True)
+    day = [
+        {"kind": p["kind"], "count": p.get("count"), **({"spare": True} if p.get("spare") else {})}
+        for p in plan if p.get("editable")
+    ]
+    spares = [d for d in day if d.get("spare")]
+    assert spares, "the small book has fillers"
+    spares[0]["heading"] = "FOR GRANDMA"
+    again = ga.plan_book(n_photos=3, n_notes=0, has_pool=True, has_milestones=True, day=day)
+    assert [p["kind"] for p in again] == [p["kind"] for p in plan]
+    first_spare = next(p for p in again if p.get("spare"))
+    assert ga.write_in_text(first_spare, "Lily")[0] == "FOR GRANDMA"

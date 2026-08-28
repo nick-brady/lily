@@ -428,6 +428,8 @@ def _page_spec(pg: dict) -> dict:
     spec = {"kind": str(pg.get("kind") or "")}
     if pg.get("count") is not None:
         spec["count"] = int(pg["count"])
+    if pg.get("spare"):
+        spec["spare"] = True
     for k, cap in (("heading", gift_artwork.WRITE_IN_HEADING_MAX), ("subheading", gift_artwork.WRITE_IN_SUB_MAX)):
         v = str(pg.get(k) or "").strip()[:cap]
         if v:

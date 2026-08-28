@@ -377,6 +377,8 @@ export default function GiftWizard({
     pages.filter((pg) => pg.editable).map((pg) => ({
       kind: pg.kind,
       count: pg.count,
+      // a filler ruled page stays a filler — after the milestones — not a day page
+      ...(pg.spare ? { spare: true } : {}),
       // a ruled page's own words ride along; the book's defaults don't
       ...(pg.kind === 'write_in' && pg.custom ? { heading: pg.heading, subheading: pg.subheading } : {}),
     }));
