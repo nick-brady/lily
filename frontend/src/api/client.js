@@ -636,6 +636,8 @@ export const api = {
       pages: draft.pages ?? null,
       // the part of each placed photo that shows: {"hero": [x, y, w], "3": [x, y, w]}
       crop: draft.crop || {},
+      // the story frame's ticks: photos kept off the line, photos pinned on it
+      story: draft.story ?? null,
       text: draft.text || {},
       product_key: draft.productKey ?? null,
     });
@@ -643,6 +645,17 @@ export const api = {
 
   // The book's page plan for a draft — which pages exist and which photo
   // slots each holds — without drawing anything.
+  // The story frame's photo roll for a draft — which of the day's photos
+  // make the line under its ticks, and how many fit.
+  async storyRoll(birthId, renderingId, draft) {
+    const res = await fetch(`${API_URL}/birth/${birthId}/gifts/${renderingId}/story-roll`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: this._designBody(draft),
+    });
+    return jsonOrThrow(res);
+  },
+
   async bookPlan(birthId, renderingId, draft) {
     const res = await fetch(`${API_URL}/birth/${birthId}/gifts/${renderingId}/book-plan`, {
       method: 'POST',

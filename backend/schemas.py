@@ -711,6 +711,9 @@ class GiftRenderingOut(BaseModel):
     # so the editor draws a crop rectangle of the right proportions
     slot_frame_aspects: list[float] = []
     hero_frame_aspect: float = 1.0
+    # The story frame only: its photo roll at the last render — every day
+    # photo, whether it made the line, and how many the line holds.
+    story_roll: Optional[dict] = None
     # Slots this design lets a parent edit, and what they currently say.
     editable_text: list[str] = []
     text_overrides: dict[str, str] = {}
@@ -744,12 +747,25 @@ class GiftDesignIn(BaseModel):
     # frame's shape). "hero" for a design's single photo, the slot index for
     # the rest. Absent means the centre of the picture fills the frame.
     crop: dict[str, list[float]] = Field(default_factory=dict)
+    # The story frame's photo roll: which of the day's photos the parent has
+    # ticked off the line ("off") and which they've pinned on it ("on").
+    # A photo sits at the moment it was taken, so there is nothing to place —
+    # only whether it goes. Unmentioned photos are the thinning's to decide.
+    story: Optional[dict[str, list[uuid.UUID]]] = None
     text: dict[str, str] = Field(default_factory=dict)
     product_key: Optional[str] = None
 
 
 class BookPlanOut(BaseModel):
     pages: list[dict]
+
+
+class StoryRollOut(BaseModel):
+    """The story frame's photos in order, each on or off the line under the
+    draft's ticks, and how many the line holds."""
+
+    photos: list[dict]
+    capacity: int
 
 
 class GiftPhotoOptionOut(BaseModel):

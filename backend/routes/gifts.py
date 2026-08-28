@@ -3,6 +3,7 @@ and mockups. Purchasing lives in routes/checkout.py."""
 from __future__ import annotations
 
 import json
+import math
 import uuid
 
 from pathlib import Path
@@ -44,6 +45,7 @@ from repositories import media as media_repo
 from routes.deps import BirthAccess, require_birth_access, require_parent_access
 from schemas import (
     BookPlanOut,
+    StoryRollOut,
     GiftPhotoOptionOut,
     GiftDesignIn,
     GiftGalleryOut,
@@ -88,6 +90,7 @@ def _serialize_rendering(rendering) -> GiftRenderingOut:
         layout_overrides=rendering.layout_overrides or {},
         photo_crop=(rendering.layout_overrides or {}).get("crop") or {},
         slot_frame_aspects=(rendering.rendering_metadata or {}).get("slot_frame_aspects") or [],
+        story_roll=(rendering.rendering_metadata or {}).get("story_roll"),
         photo_slot_count=(
             len((rendering.rendering_metadata or {}).get("selected_slot_media_ids") or [])
             or (template.photo_slots if template else 0)
@@ -434,6 +437,11 @@ def _layout_overrides(payload: GiftDesignIn) -> dict:
     }
     if crop:
         out["crop"] = crop
+    if payload.story is not None:
+        out["story"] = {
+            side: [str(m) for m in (payload.story.get(side) or [])]
+            for side in ("off", "on")
+        }
     return out
 
 
@@ -577,6 +585,28 @@ def book_plan_preview(
     if template.scene != "book":
         raise HTTPException(status_code=400, detail="Not a book")
     return BookPlanOut(pages=gift_artwork.book_plan_for(db, access.birth, rendering, payload.pages))
+
+
+@router.post(
+    "/birth/{birth_id}/gifts/{rendering_id}/story-roll", response_model=StoryRollOut
+)
+def story_roll_preview(
+    rendering_id: uuid.UUID,
+    payload: GiftDesignIn,
+    access: BirthAccess = Depends(require_parent_access),
+    db: Session = Depends(get_db),
+) -> StoryRollOut:
+    """The story frame's photo roll for a draft — nothing drawn, nothing
+    saved. The editor asks after a tick, to learn which photos now make the
+    line: untick one and the room it frees brings back the next."""
+    rendering, template = _load_editable(db, access, rendering_id)
+    layout = gift_artwork._layout_of(template)
+    if layout.scene != "frame_story":
+        raise HTTPException(status_code=400, detail="Not the story frame")
+    edges = gift_artwork._story_edges(layout.width, layout.height)
+    straight = sum(math.hypot(b[0] - a[0], b[1] - a[1]) for a, b, _ in edges)
+    roll = gift_artwork.story_roll(db, access.birth, _Draft(rendering, payload), straight)
+    return StoryRollOut(**roll)
 
 
 @router.patch(

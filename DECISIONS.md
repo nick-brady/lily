@@ -876,3 +876,32 @@ rationale already written into commits and code comments. Entries without a
 commit hash come from conversation and were checked against current behavior
 where possible. Correct anything misattributed.
 -->
+
+## The story frame's photos are ticked, not placed
+
+*2026-08-27.* The story frame borrowed the wall's editor: pick a panel, then
+choose its photo. On the wall that's the right model — the panels are free
+and any photo can sit anywhere. On the story it's a lie: a photo's place on
+the line *is* the moment it was taken, so swapping panel five for a photo
+from three hours later puts it at the wrong point in the day. The only real
+decision a parent has is which photos make the line — the line has a length
+budget (`story_thin`, an inch a photo) and drops photos evenly when the day
+has more than fit.
+
+So the story's photo section is a **roll**: every day photo in order, each
+with a tick. Ticked ones are on the frame at their true time; unticked are
+left off. The thinning picks the initial ticks; a parent's ticks are stored
+as `layout_overrides.story = {off: [...], on: [...]}` — *off* never boards,
+*on* is pinned past the thinning, and the rest stay the thinning's to
+decide, so unticking one brings the next dropped photo back on its own. When
+the line is full the remaining ticks grey out with "untick one to make room";
+nothing moves that the parent didn't move. `/gifts/{rendering}/story-roll`
+answers a draft the way `book-plan` does, so the ticks never guess.
+
+Crops on the story are keyed by the photo's media id rather than its slot
+index: positions shift as photos come and go, the photo doesn't. There is no
+upload for this design — a photo that never rode the timeline has no time
+and so no place on the line. The wall and the book keep the picker.
+
+Per-slot `photo_slots` overrides saved against the story before this are
+ignored at render, as are its old index-keyed crops.

@@ -268,6 +268,7 @@ def render(
     photo, when, stats, layout = parts["photo"], parts["when"], parts["stats"], parts["layout"]
     # Panel provenance rides to the metadata, not to Jinja.
     slot_media_ids = context.pop("slot_media_ids", None)
+    story_roll_meta = context.pop("story_roll", None)
     # and the shape of each photo's frame, for the editor's crop rectangle
     for key in ("reel_panels", "wall_tiles", "story_photos"):
         tiles = context.get(key)
@@ -291,6 +292,9 @@ def render(
         "selected_media_id": str(photo.id) if photo else None,
         "selected_slot_media_ids": slot_media_ids,
         "slot_frame_aspects": context.pop("slot_frame_aspects", None),
+        # the story's photo roll — every day photo, on or off the line, and
+        # how many fit — so the editor can offer ticks without a round trip
+        "story_roll": story_roll_meta,
         "stats": stats.as_metadata(),
         "child": {
             "name": birth.child_name,
@@ -2054,13 +2058,16 @@ def _story_path(W: float, H: float) -> str:
     return "M " + " L ".join(f"{x:.1f},{y:.1f}" for x, y in pts)
 
 
-def story_thin(moments: list[dict], straight: float) -> list[dict]:
+def story_thin(moments: list[dict], straight: float, *, pinned: set | None = None) -> list[dict]:
     """What fits on the line at an inch a photo. Notes are capped first;
     then photos come off one at a time, evenly, until the rest fit. Every
-    milestone stays. Pure, so the choice of *which* photos is testable."""
+    milestone stays, and so does every photo whose media_id is `pinned` —
+    the parent ticked it, so the thinning chooses among the others. Pure,
+    so the choice of *which* photos is testable."""
     def wt(m):
         return STORY_WEIGHT.get(m["kind"], STORY_WEIGHT["milestone"])
 
+    pinned = pinned or set()
     notes = [m for m in moments if m["kind"] == "note"]
     if len(notes) > STORY_MAX_NOTES:
         keep = {id(m) for m in _sample_spaced(notes, STORY_MAX_NOTES)}
@@ -2068,11 +2075,34 @@ def story_thin(moments: list[dict], straight: float) -> list[dict]:
     budget = straight / (STORY_THUMB * 1.25)
     while sum(wt(m) for m in moments) > budget:
         photos = [m for m in moments if m["kind"] == "photo"]
-        if len(photos) <= STORY_MIN_PHOTOS:
+        loose = [m for m in photos if m.get("media_id") not in pinned]
+        if len(photos) <= STORY_MIN_PHOTOS or not loose:
             break
-        keep = {id(m) for m in _sample_spaced(photos, len(photos) - 1)}
-        moments = [m for m in moments if m["kind"] != "photo" or id(m) in keep]
+        keep = {id(m) for m in _sample_spaced(loose, len(loose) - 1)}
+        moments = [
+            m for m in moments
+            if m["kind"] != "photo" or m.get("media_id") in pinned or id(m) in keep
+        ]
     return moments
+
+
+def story_capacity(moments: list[dict], straight: float) -> int:
+    """How many photos the line holds beside these moments' notes and
+    milestones — the number the editor shows as "N of M fit"."""
+    photos = [m for m in moments if m["kind"] == "photo"]
+    others = [m for m in moments if m["kind"] != "photo"]
+    probe = others + [{"kind": "photo", "media_id": f"probe-{i}", "when": m["when"]} for i, m in enumerate(photos)]
+    return sum(1 for m in story_thin(probe, straight) if m["kind"] == "photo")
+
+
+def story_overrides(rendering) -> tuple[set[str], set[str]]:
+    """The parent's ticks on the story's photo roll: (off, on) as media ids.
+    `off` leaves a photo off the frame however much room there is; `on`
+    keeps it however little. Neither, and the thinning decides."""
+    raw = ((getattr(rendering, "layout_overrides", None) or {}).get("story") or {}) if rendering is not None else {}
+    off = {str(x) for x in (raw.get("off") or [])}
+    on = {str(x) for x in (raw.get("on") or [])} - off
+    return off, on
 
 
 def _weeks_label(when: datetime, due_date) -> str | None:
@@ -2270,9 +2300,9 @@ def book_plan_for(db: Session, birth: Birth, rendering, day: list[dict] | None) 
     ]
 
 
-def _story_moments(db: Session, birth: Birth, rendering, straight: float, *, photo_max_px: int) -> list[dict]:
-    """The timeline as moments, thinned to what fits, with the parent's
-    per-slot photo choices laid over the photos that made the cut."""
+def _story_raw(db: Session, birth: Birth) -> list[dict]:
+    """Every moment the story could show, in time order: the day's photos
+    (viewer-visible, unarchived), its notes and its marked milestones."""
     events = list(
         db.scalars(
             select(TimelineEvent)
@@ -2301,33 +2331,50 @@ def _story_moments(db: Session, birth: Birth, rendering, straight: float, *, pho
             kind = pl.get("kind")
             if kind == "born" or has_mark(kind):
                 raw.append({"kind": kind, "when": when})
-    moments = story_thin(raw, straight)
-    # the parent's choices, slot by slot, over the photos that made the cut
-    photo_slots = [m for m in moments if m["kind"] == "photo"]
-    for i, media_id in sorted(slot_overrides(rendering, len(photo_slots)).items()):
-        if i >= len(photo_slots):
-            continue
-        try:
-            asset = db.get(MediaAsset, uuid.UUID(media_id))
-        except (ValueError, TypeError):
-            continue
-        if asset is None or asset.birth_id != birth.id or asset.archived_at is not None:
-            continue
-        photo_slots[i]["asset"] = asset
-        photo_slots[i]["media_id"] = media_id
+    return raw
+
+
+def _story_moments(db: Session, birth: Birth, rendering, straight: float, *, photo_max_px: int) -> list[dict]:
+    """The timeline as moments, thinned to what fits under the parent's
+    ticks, each photo carrying its picture data and crop."""
+    raw = _story_raw(db, birth)
+    # A photo's place on the line is the moment it was taken, so there is no
+    # choosing what goes where — only whether it goes. The parent's ticks:
+    # `off` photos never board; `on` ones are safe from the thinning.
+    off, on = story_overrides(rendering)
+    candidates = [m for m in raw if m["kind"] != "photo" or m["media_id"] not in off]
+    moments = story_thin(candidates, straight, pinned=on)
     out = []
-    slot = 0
     for m in moments:
         if m["kind"] == "photo":
             data = _photo_data(m["asset"], max_px=photo_max_px)
             if data is None:
                 continue
             uri, w, h = data
-            out.append({**m, "uri": uri, "w": w, "h": h, "crop": photo_crop(rendering, slot)})
-            slot += 1
+            # cropped by the photo, not its position — positions shift as
+            # photos come and go; the photo is the same photo
+            out.append({**m, "uri": uri, "w": w, "h": h, "crop": photo_crop(rendering, m["media_id"])})
         else:
             out.append(m)
     return out
+
+
+def story_roll(db: Session, birth: Birth, rendering, straight: float) -> dict:
+    """The day's photos in order, each marked on or off the frame under the
+    parent's ticks, and how many the line holds — what the editor's roll
+    shows. Nothing drawn."""
+    raw = _story_raw(db, birth)
+    off, on = story_overrides(rendering)
+    candidates = [m for m in raw if m["kind"] != "photo" or m["media_id"] not in off]
+    kept = {m["media_id"] for m in story_thin(candidates, straight, pinned=on) if m["kind"] == "photo"}
+    return {
+        "capacity": story_capacity(raw, straight),
+        "photos": [
+            {"media_id": m["media_id"], "when": m["when"].isoformat(), "on": m["media_id"] in kept}
+            for m in raw
+            if m["kind"] == "photo"
+        ],
+    }
 
 
 def _build_frame_story_scene(
@@ -2378,6 +2425,8 @@ def _build_frame_story_scene(
             canvas_w=template.width,
         )
     )
+    # the roll for the editor: every day photo, on or off, and how many fit
+    scene["story_roll"] = story_roll(db, birth, rendering, straight)
     return scene
 
 # ── the book: the whole story, twenty-four pages and a cover ─────────────

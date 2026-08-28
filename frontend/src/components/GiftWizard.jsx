@@ -64,8 +64,18 @@ export default function GiftWizard({
     pages: initialRendering.layout_overrides?.pages ?? null,
     // the part of each placed photo that shows; absent = the centre fills the frame
     crop: { ...(initialRendering.photo_crop || {}) },
+    // the story frame's ticks: {off: [...], on: [...]}; null = the thinning decides
+    story: initialRendering.layout_overrides?.story ?? null,
   }));
-  const slotCount = initialRendering.photo_slot_count || 0;
+  // The story frame's photo roll — every day photo, on or off the line, and
+  // how many fit. Seeded from the saved render, refreshed after each tick.
+  // Present only on the story frame; its presence is what switches the photo
+  // section from a picker to a roll.
+  const [roll, setRoll] = useState(initialRendering.story_roll || null);
+  const isStory = Boolean(roll);
+  // which roll photo the crop box is showing
+  const [activeMedia, setActiveMedia] = useState(null);
+  const slotCount = isStory ? 0 : initialRendering.photo_slot_count || 0;
   const noun = PRODUCT_NOUN[item.product_kind] || 'product';
   // Which panel the story grid is currently choosing for.
   const [activeSlot, setActiveSlot] = useState(0);
@@ -205,7 +215,8 @@ export default function GiftWizard({
     || Boolean(rendering.photo_removed)
     || Boolean(rendering.product_key)
     || Object.keys(rendering.text_overrides || {}).length > 0
-    || Object.keys(rendering.photo_slots || {}).length > 0;
+    || Object.keys(rendering.photo_slots || {}).length > 0
+    || Boolean(rendering.layout_overrides?.story);
 
   // Back to the design as it was before anyone touched it: auto photo, no
   // text, the standard mug. Deliberately re-resolves the photo guess — the
@@ -213,9 +224,10 @@ export default function GiftWizard({
   // default is the one time re-resolving is the point. Nothing is saved
   // until Next, so this too can be walked away from.
   const resetToDefault = () => {
-    const next = { mediaId: null, removed: false, slots: {}, text: {}, productKey: null, pages: null, crop: {} };
+    const next = { mediaId: null, removed: false, slots: {}, text: {}, productKey: null, pages: null, crop: {}, story: null };
     setDraft(next);
     setPlanPages(null);
+    if (isStory) api.storyRoll(birthId, rendering.id, next).then(setRoll).catch(() => {});
     setActiveSlot(0);
     if (hiResRef.current) {
       URL.revokeObjectURL(hiResRef.current);
@@ -394,6 +406,27 @@ export default function GiftWizard({
     if (to < 0 || to >= day.length) return;
     [day[editableIdx], day[to]] = [day[to], day[editableIdx]];
     rearrange(day, pageIdx + dir);
+  };
+
+  // A tick on the story's roll. Off → on pins the photo (safe from the
+  // thinning); on → off keeps it away however much room there is. The
+  // server then says which photos make the line now — untick one and the
+  // room it frees brings back the next — so the roll never guesses.
+  const onCount = roll ? roll.photos.filter((p) => p.on).length : 0;
+  const rollFull = roll ? onCount >= roll.capacity : false;
+  const toggleStoryPhoto = async (mediaId, currentlyOn) => {
+    const cur = draft.story || { off: [], on: [] };
+    const without = (xs) => (xs || []).filter((x) => x !== mediaId);
+    const next = currentlyOn
+      ? { off: [...without(cur.off), mediaId], on: without(cur.on) }
+      : { off: without(cur.off), on: [...without(cur.on), mediaId] };
+    const draftNext = { ...draft, story: next };
+    edit({ story: next });
+    try {
+      setRoll(await api.storyRoll(birthId, rendering.id, draftNext));
+    } catch {
+      /* the preview still shows the truth; the ticks catch up on the next change */
+    }
   };
 
   // Which photo slots the picker offers: the current page's on a book, all
@@ -699,7 +732,86 @@ export default function GiftWizard({
                 </div>
               )}
 
-              {(rendering.has_photo || visibleSlots.length > 0) && (
+              {isStory && (
+                <div>
+                  <span className="text-xs font-medium t-muted">Photos</span>
+                  {/* Not a picker. A photo's place on the line is the moment
+                      it was taken, so there is nothing to choose but whether
+                      it goes. The roll is the day in order; the tick is the
+                      whole decision. */}
+                  <p className="text-[11px] t-faint mt-0.5">
+                    The day's photos, in order. Each sits on the line at the moment it was taken — tick the ones that go on.
+                  </p>
+                  <p className="text-[11px] t-muted mt-1">
+                    {onCount} of {roll.photos.length} on the frame
+                    {roll.photos.length > roll.capacity ? ` · the line holds ${roll.capacity}` : ''}
+                    {rollFull && roll.photos.length > onCount ? ' — untick one to make room' : ''}
+                  </p>
+                  <div className="mt-1.5 grid grid-cols-4 gap-1.5 max-h-56 overflow-y-auto">
+                    {roll.photos.map((p, n) => {
+                      const blocked = !p.on && rollFull;
+                      return (
+                        <div
+                          key={p.media_id}
+                          className={`relative rounded overflow-hidden border-2 aspect-square ${p.on ? '' : 'opacity-60'}`}
+                          style={{
+                            borderColor: activeMedia === p.media_id ? 'var(--t-accent)' : 'var(--t-soft-ring)',
+                          }}
+                        >
+                          <button
+                            type="button"
+                            onClick={() => setActiveMedia(p.media_id)}
+                            aria-label={`Photo ${n + 1}`}
+                            className="absolute inset-0"
+                          >
+                            <img
+                              src={api.mediaUrl(p.media_id)}
+                              alt=""
+                              className={`absolute inset-0 w-full h-full object-cover ${p.on ? '' : 'grayscale'}`}
+                            />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => toggleStoryPhoto(p.media_id, p.on)}
+                            disabled={blocked}
+                            title={blocked ? 'The line is full — untick another first' : p.on ? 'Leave off the frame' : 'Put on the frame'}
+                            aria-label={p.on ? 'On the frame' : 'Off the frame'}
+                            aria-pressed={p.on}
+                            className="absolute top-1 left-1 w-5 h-5 rounded-full text-[11px] leading-none flex items-center justify-center border disabled:opacity-40"
+                            style={{
+                              backgroundColor: p.on ? 'var(--t-accent)' : 'rgba(255,255,255,0.85)',
+                              borderColor: p.on ? 'var(--t-accent)' : 'var(--t-soft-ring)',
+                              color: p.on ? 'white' : 'var(--t-ink)',
+                            }}
+                          >
+                            {p.on ? '✓' : ''}
+                          </button>
+                          <span className="absolute bottom-0.5 right-1 text-[10px] px-1 rounded bg-black/50 text-white">
+                            {n + 1}
+                          </span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                  {(() => {
+                    const p = roll.photos.find((x) => x.media_id === activeMedia);
+                    if (!p || !p.on) return null;
+                    const idx = roll.photos.filter((x) => x.on).indexOf(p);
+                    const aspect = (rendering.slot_frame_aspects || [])[idx] || 1;
+                    return (
+                      <CropBox
+                        key={p.media_id}
+                        src={api.mediaUrl(p.media_id)}
+                        frameAspect={aspect}
+                        value={draft.crop?.[p.media_id] || null}
+                        onChange={(rect) => edit({ crop: { ...(draft.crop || {}), [p.media_id]: rect } })}
+                      />
+                    );
+                  })()}
+                </div>
+              )}
+
+              {!isStory && (rendering.has_photo || visibleSlots.length > 0) && (
                 <div>
                   <span className="text-xs font-medium t-muted">
                     {visibleSlots.length > 0 ? 'Photos' : 'Photo'}
