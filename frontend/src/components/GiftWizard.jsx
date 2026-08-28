@@ -372,7 +372,16 @@ export default function GiftWizard({
     setDirty(true);
     try {
       const { pages: fresh } = await api.bookPlan(birthId, rendering.id, draftNext);
-      setPlanPages(fresh.map((pg) => ({ ...pg, url: null })));   // not drawn yet
+      // Not drawn yet — but a fixed page that kept its place is the same page,
+      // so it keeps its picture. Only the day's pages go blank until Next.
+      const before = new Map(pages.map((pg) => [pg.key, pg]));
+      setPlanPages(
+        fresh.map((pg) => {
+          const was = before.get(pg.key);
+          const same = was && !pg.editable && !was.editable && was.kind === pg.kind;
+          return { ...pg, url: same ? was.url : null };
+        }),
+      );
       const keys = ['cover_front', ...fresh.map((pg) => pg.key)];
       const idx = focusKeyIdx == null ? Math.min(pageIdx, keys.length - 1) : Math.max(0, Math.min(keys.length - 1, focusKeyIdx));
       setPageIdx(idx);
@@ -413,6 +422,8 @@ export default function GiftWizard({
     day.splice(to, 0, pg);
     rearrange(day, firstEditableStrip + to);
   };
+  // the photo a slot will show: the draft's pick, else the last render's
+  const photoFor = (slot) => draft.slots?.[slot] ?? rendering.photo_slots_effective?.[slot] ?? null;
   // where the + tile sits and where a new page goes: after the current day
   // page, else at the end of the day section
   const insertAt = editableIdx >= 0 ? editableIdx + 1 : editablePages.length;
@@ -571,7 +582,11 @@ export default function GiftWizard({
                                   boxShadow: dragOverE === e && e >= 0 && dragE !== e ? 'inset 0 0 0 2px var(--t-accent)' : 'none',
                                 }}
                               >
-                                {url ? <img src={url} alt="" className="w-full h-full object-cover pointer-events-none" /> : idx === 0 ? 'cover' : idx}
+                                {url ? (
+                                  <img src={url} alt="" className="w-full h-full object-cover pointer-events-none" />
+                                ) : (
+                                  <PageGlyph page={pg} idx={idx} photoFor={photoFor} />
+                                )}
                               </button>
                               {e >= 0 && (
                                 <button
@@ -1232,4 +1247,32 @@ function NextButton({ saving, onClick }) {
       {saving ? 'Saving…' : 'Next — see it on the product'}
     </button>
   );
+}
+
+// A page that hasn't been drawn yet, as a stand-in: the photos a gallery page
+// will hold, laid out roughly as they'll sit; a word for the rest.
+function PageGlyph({ page, idx, photoFor }) {
+  if (!page) return idx === 0 ? 'cover' : idx;
+  if (page.kind === 'gallery') {
+    const ids = (page.slots || []).map(photoFor);
+    const n = ids.length;
+    const cols = n <= 1 ? 1 : 2;
+    return (
+      <span
+        className="grid w-full h-full gap-px p-1 pointer-events-none"
+        style={{ gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))` }}
+      >
+        {ids.map((id, i) => (
+          <span
+            key={i}
+            className={`block overflow-hidden rounded-sm bg-gray-100 ${n === 3 && i === 0 ? 'col-span-2' : ''}`}
+          >
+            {id && <img src={api.mediaUrl(id)} alt="" className="w-full h-full object-cover" />}
+          </span>
+        ))}
+      </span>
+    );
+  }
+  const word = { notes: 'notes', write_in: 'ruled', title: 'title', clock: 'clock', pool: 'pool', milestones: 'marks', closing: 'end' }[page.kind] || idx;
+  return <span className="pointer-events-none">{word}</span>;
 }
