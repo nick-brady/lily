@@ -450,6 +450,7 @@ export default function GiftWizard({
         )}
 
         {step === 0 && (
+          <div className="flex-1 min-h-0 flex flex-col">
           <div className="flex-1 min-h-0 overflow-y-auto sm:overflow-visible grid sm:grid-cols-[minmax(0,3fr)_minmax(0,1fr)]">
             {/* The artwork leads and updates as you type; the product shots sit
                 beneath it, real but honest about being behind.
@@ -580,10 +581,16 @@ export default function GiftWizard({
               )}
             </div>
 
+            {/* The controls scroll; Next doesn't. A long design — the frame
+                with its strip, gallery and crop — used to push the button
+                below the fold, where nothing said it was there. Pinned
+                beneath the column on wide screens, beneath the whole modal
+                on a phone, it's in view whatever the design's length. */}
             <div
-              className="p-5 space-y-4 border-t sm:border-t-0 sm:border-l sm:overflow-y-auto sm:min-h-0"
+              className="border-t sm:border-t-0 sm:border-l sm:min-h-0 flex flex-col"
               style={{ borderColor: 'var(--t-soft-ring)' }}
             >
+            <div className="p-5 space-y-4 sm:flex-1 sm:min-h-0 sm:overflow-y-auto">
               <div>
                 <div className="flex items-baseline justify-between gap-2">
                   <h2 className="text-base font-semibold t-ink">{item.display_name}</h2>
@@ -834,15 +841,21 @@ export default function GiftWizard({
                 </div>
               )}
 
-              <button
-                type="button"
-                onClick={goToProduct}
-                disabled={saving}
-                className="w-full py-3 rounded-xl text-sm font-medium t-btn-accent disabled:opacity-50"
-              >
-                {saving ? 'Saving…' : 'Next — see it on the product'}
-              </button>
             </div>
+            <div
+              className="hidden sm:block p-4 border-t shadow-[0_-6px_12px_-8px_rgba(0,0,0,0.25)]"
+              style={{ borderColor: 'var(--t-soft-ring)' }}
+            >
+              <NextButton saving={saving} onClick={goToProduct} />
+            </div>
+            </div>
+          </div>
+          <div
+            className="sm:hidden p-4 border-t shadow-[0_-6px_12px_-8px_rgba(0,0,0,0.25)]"
+            style={{ borderColor: 'var(--t-soft-ring)' }}
+          >
+            <NextButton saving={saving} onClick={goToProduct} />
+          </div>
           </div>
         )}
 
@@ -1040,5 +1053,18 @@ function CropBox({ src, frameAspect, value, onChange }) {
         </div>
       )}
     </div>
+  );
+}
+
+function NextButton({ saving, onClick }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={saving}
+      className="w-full py-3 rounded-xl text-sm font-medium t-btn-accent disabled:opacity-50"
+    >
+      {saving ? 'Saving…' : 'Next — see it on the product'}
+    </button>
   );
 }
