@@ -712,7 +712,7 @@ export default function GiftWizard({
 
               {slots.map((slot) => (
                 <label key={slot} className="block">
-                  <span className="text-xs font-medium t-muted">{SLOT_LABELS[slot] || slot}</span>
+                  <span className="text-xs font-medium t-muted">{(isBook && slot === 'custom_line' ? 'Under the title, on page one' : SLOT_LABELS[slot]) || slot}</span>
                   <input
                     type="text"
                     value={draft.text[slot] ?? ''}
@@ -762,9 +762,43 @@ export default function GiftWizard({
                 </label>
               ))}
 
-              {(products || []).length > 1 && (
+              {/* Two white books look identical at any size, so the paper is
+                  a pair of words on one line rather than two pictures of
+                  nothing. Every other product shows the blanks: a frame's
+                  colour and a mug's shape are the choice. */}
+              {(products || []).length > 1 && isBook && (
+                <div className="flex items-center justify-between gap-3">
+                  <span className="text-xs font-medium t-muted">Paper</span>
+                  <div
+                    className="inline-flex rounded-full border p-0.5 text-xs"
+                    style={{ borderColor: 'var(--t-soft-ring)' }}
+                    role="radiogroup"
+                    aria-label="Paper"
+                  >
+                    {products.map((product) => {
+                      const chosen = (draft.productKey || products[0].product_key) === product.product_key;
+                      return (
+                        <button
+                          key={product.product_key}
+                          type="button"
+                          role="radio"
+                          aria-checked={chosen}
+                          onClick={() => edit({ productKey: product.product_key })}
+                          className={`px-3 py-1 rounded-full ${chosen ? 'text-white' : 't-muted'}`}
+                          style={chosen ? { backgroundColor: 'var(--t-accent)' } : undefined}
+                        >
+                          {product.caption || product.display_name}
+                          {product.surcharge_cents > 0 && <span className="opacity-70"> +{formatPrice(product.surcharge_cents)}</span>}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {(products || []).length > 1 && !isBook && (
                 <div>
-                  <span className="text-xs font-medium t-muted">{({ framed_print: 'Frame', ornament: 'Shape', photo_book: 'Paper' })[item.product_kind] || 'Mug'}</span>
+                  <span className="text-xs font-medium t-muted">{({ framed_print: 'Frame', ornament: 'Shape' })[item.product_kind] || 'Mug'}</span>
                   <div className="mt-1 grid grid-cols-3 gap-1.5">
                     {products.map((product, i) => {
                       const chosen = (draft.productKey || products[0].product_key)
