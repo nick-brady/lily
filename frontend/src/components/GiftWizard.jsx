@@ -712,7 +712,10 @@ export default function GiftWizard({
                 </p>
               </div>
 
-              {slots.map((slot) => (
+              {/* On the book the name and the line are printed on the cover
+                  and the title page and nowhere else, so the fields show
+                  only there — on page 9 they'd be a puzzle. */}
+              {(!isBook || pageIdx <= 1) && slots.map((slot) => (
                 <label key={slot} className="block">
                   <span className="text-xs font-medium t-muted">{(isBook && slot === 'custom_line' ? 'Under the title, on page one' : SLOT_LABELS[slot]) || slot}</span>
                   <input
