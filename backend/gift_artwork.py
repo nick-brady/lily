@@ -2311,8 +2311,8 @@ def plan_pages_out(plan: list[dict], birth: Birth) -> list[dict]:
             row["custom"] = bool(p.get("words"))
             if "pen" in p:
                 row["pen"] = p["pen"]
-            if p.get("spare"):
-                row["spare"] = True
+            if p.get("spare") is not None:
+                row["spare"] = p["spare"]
         out.append(row)
     return out
 
@@ -2566,12 +2566,15 @@ def plan_book(
         # the milestones, not a page the parent placed — it stays there, with
         # any words they wrote on it, so the book keeps its shape.
         mid: list[dict] = []
-        spares_in: list[dict] = []
+        spares_in: dict[int, dict] = {}   # by the filler's own number, not its place in the list
         notes_seen = 0
         for pg in day[:room_all]:
             kind = pg.get("kind")
-            if kind == "write_in" and pg.get("spare"):
-                spares_in.append(pg)
+            if kind == "write_in" and pg.get("spare") is not None and pg.get("spare") is not False:
+                try:
+                    spares_in[int(pg["spare"])] = pg
+                except (TypeError, ValueError):
+                    pass
             elif kind == "gallery":
                 mid.append({"kind": "gallery", "count": max(1, min(BOOK_MAX_PER_GALLERY, int(pg.get("count") or 1)))})
             elif kind == "notes":
@@ -2581,7 +2584,7 @@ def plan_book(
         spare = room_all - len(mid)
         n_ruled = sum(1 for m in mid if m["kind"] == "write_in")
         extra_write = [
-            {"kind": "write_in", "heading": 2 + n_ruled + i, "spare": True, **_write_in_words(spares_in[i] if i < len(spares_in) else None)}
+            {"kind": "write_in", "heading": 2 + n_ruled + i, "spare": i, **_write_in_words(spares_in.get(i))}
             for i in range(spare)
         ]
     else:
@@ -2602,7 +2605,7 @@ def plan_book(
             at = round((j + 1) * (len(mid) + 1) / (note_pages + 1))
             mid.insert(min(at, len(mid)), {"kind": "notes", "index": j})
         spare = room - galleries
-        extra_write = [{"kind": "write_in", "heading": 2 + i, "spare": True} for i in range(spare)]
+        extra_write = [{"kind": "write_in", "heading": 2 + i, "spare": i} for i in range(spare)]
     for pg in mid + extra_write:
         pg["editable"] = True
 

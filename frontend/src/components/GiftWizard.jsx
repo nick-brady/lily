@@ -378,7 +378,7 @@ export default function GiftWizard({
       kind: pg.kind,
       count: pg.count,
       // a filler ruled page stays a filler — after the milestones — not a day page
-      ...(pg.spare ? { spare: true } : {}),
+      ...(pg.spare != null ? { spare: pg.spare } : {}),
       // a ruled page's own words ride along; the book's defaults don't
       ...(pg.kind === 'write_in' && pg.custom ? { heading: pg.heading, subheading: pg.subheading } : {}),
     }));
@@ -469,8 +469,41 @@ export default function GiftWizard({
   // page, else at the end of the day section
   const insertAt = editableIdx >= 0 ? editableIdx + 1 : editablePages.length;
   const [adding, setAdding] = useState(false);
+  // Dragging a day page, on pointer events so a finger works as well as a
+  // mouse. Press, move a little, and the tile lifts; whatever day tile is
+  // under the pointer is the target; release to move it there.
   const [dragE, setDragE] = useState(null);       // day index being dragged
   const [dragOverE, setDragOverE] = useState(null);
+  const dragRef = useRef(null);                    // {e, x, y, moved}
+  const startDrag = (ev, e) => {
+    if (e < 0 || ev.button !== 0) return;
+    dragRef.current = { e, x: ev.clientX, y: ev.clientY, moved: false };
+    const onMove = (m) => {
+      const d = dragRef.current;
+      if (!d) return;
+      if (!d.moved && Math.hypot(m.clientX - d.x, m.clientY - d.y) < 6) return;
+      if (!d.moved) { d.moved = true; setDragE(d.e); }
+      const el = document.elementFromPoint(m.clientX, m.clientY)?.closest('[data-day-idx]');
+      setDragOverE(el ? Number(el.dataset.dayIdx) : null);
+    };
+    const onUp = (m) => {
+      window.removeEventListener('pointermove', onMove);
+      window.removeEventListener('pointerup', onUp);
+      const d = dragRef.current; dragRef.current = null;
+      if (d?.moved) {
+        const el = document.elementFromPoint(m.clientX, m.clientY)?.closest('[data-day-idx]');
+        const to = el ? Number(el.dataset.dayIdx) : null;
+        if (to != null && to !== d.e) movePageTo(d.e, to);
+        // swallow the click that follows a drag
+        suppressClickRef.current = true;
+        setTimeout(() => { suppressClickRef.current = false; }, 0);
+      }
+      setDragE(null); setDragOverE(null);
+    };
+    window.addEventListener('pointermove', onMove);
+    window.addEventListener('pointerup', onUp);
+  };
+  const suppressClickRef = useRef(false);
   const addPageAt = (spec) => {
     const day = arrangement();
     day.splice(insertAt, 0, spec);
@@ -607,26 +640,27 @@ export default function GiftWizard({
                           <Fragment key={key}>
                             <div
                               className="relative flex-none"
-                              draggable={e >= 0}
-                              onDragStart={(ev) => { setDragE(e); ev.dataTransfer.effectAllowed = 'move'; }}
-                              onDragEnd={() => { setDragE(null); setDragOverE(null); }}
-                              onDragOver={(ev) => { if (e >= 0 && dragE != null) { ev.preventDefault(); setDragOverE(e); } }}
-                              onDrop={(ev) => { ev.preventDefault(); if (e >= 0 && dragE != null) movePageTo(dragE, e); setDragE(null); setDragOverE(null); }}
-                              style={{ opacity: dragE === e && e >= 0 ? 0.4 : 1 }}
+                              data-day-idx={e >= 0 ? e : undefined}
+                              onPointerDown={(ev) => startDrag(ev, e)}
+                              style={{
+                                opacity: dragE === e && e >= 0 ? 0.4 : 1,
+                                touchAction: e >= 0 ? 'none' : undefined,
+                                cursor: dragE != null ? 'grabbing' : undefined,
+                              }}
                             >
                               <button
                                 type="button"
                                 data-page-idx={idx}
-                                onClick={() => goToPage(idx)}
+                                onClick={() => { if (!suppressClickRef.current) goToPage(idx); }}
                                 title={idx === 0 ? 'Cover' : `Page ${idx} · ${(pg?.kind || '').replace('_', ' ')}${e >= 0 ? ' · drag to move' : ''}`}
-                                className={`w-12 h-12 rounded border-2 overflow-hidden bg-white text-[10px] t-muted ${e >= 0 ? 'cursor-grab' : ''}`}
+                                className={`w-12 h-12 rounded border-2 overflow-hidden bg-white text-[10px] t-muted select-none ${e >= 0 ? 'cursor-grab' : ''}`}
                                 style={{
                                   borderColor: idx === pageIdx ? 'var(--t-accent)' : 'var(--t-soft-ring)',
                                   boxShadow: dragOverE === e && e >= 0 && dragE !== e ? 'inset 0 0 0 2px var(--t-accent)' : 'none',
                                 }}
                               >
                                 {url ? (
-                                  <img src={url} alt="" className="w-full h-full object-cover pointer-events-none" />
+                                  <img src={url} alt="" draggable={false} className="w-full h-full object-cover pointer-events-none" />
                                 ) : (
                                   <PageGlyph page={pg} idx={idx} photoFor={photoFor} />
                                 )}

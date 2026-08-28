@@ -141,13 +141,17 @@ def test_spare_ruled_pages_sent_back_keep_their_place_and_their_words():
     milestones down the book — and words written on one stay on it."""
     plan = ga.plan_book(n_photos=3, n_notes=0, has_pool=True, has_milestones=True)
     day = [
-        {"kind": p["kind"], "count": p.get("count"), **({"spare": True} if p.get("spare") else {})}
+        {"kind": p["kind"], "count": p.get("count"), **({"spare": p["spare"]} if p.get("spare") is not None else {})}
         for p in plan if p.get("editable")
     ]
-    spares = [d for d in day if d.get("spare")]
+    spares = [d for d in day if d.get("spare") is not None]
     assert spares, "the small book has fillers"
     spares[0]["heading"] = "FOR GRANDMA"
     again = ga.plan_book(n_photos=3, n_notes=0, has_pool=True, has_milestones=True, day=day)
     assert [p["kind"] for p in again] == [p["kind"] for p in plan]
-    first_spare = next(p for p in again if p.get("spare"))
+    first_spare = next(p for p in again if p.get("spare") == 0)
+    # and sent back out of order, the words still find their page
+    shuffled = [d for d in day if d.get("spare") is None] + [d for d in day if d.get("spare") is not None][::-1]
+    twice = ga.plan_book(n_photos=3, n_notes=0, has_pool=True, has_milestones=True, day=shuffled)
+    assert ga.write_in_text(next(p for p in twice if p.get("spare") == 0), "Lily")[0] == "FOR GRANDMA"
     assert ga.write_in_text(first_spare, "Lily")[0] == "FOR GRANDMA"
