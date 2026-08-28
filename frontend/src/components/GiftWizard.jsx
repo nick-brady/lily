@@ -560,9 +560,10 @@ export default function GiftWizard({
 
               {isBook && pageKeys.length > 1 && (
                 <div className="w-full min-w-0 sm:flex-none">
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-start gap-2">
+                    {/* the arrows sit level with the tiles (h-12 + pt-1), not the row that also holds the scrollbar */}
                     <button type="button" onClick={() => goToPage(pageIdx - 1)} disabled={pageIdx === 0}
-                      className="px-2 py-1 text-sm t-muted disabled:opacity-30" aria-label="Previous page">‹</button>
+                      className="mt-1 w-8 h-12 flex items-center justify-center text-2xl leading-none t-muted hover:t-ink disabled:opacity-30" aria-label="Previous page">‹</button>
                     <div ref={stripRef} className="flex-1 min-w-0 flex gap-1.5 overflow-x-auto pt-1 pb-2 px-0.5 thin-scrollbar">
                       {pageKeys.map((key, idx) => {
                         const pg = idx > 0 ? pages[idx - 1] : null;
@@ -628,7 +629,7 @@ export default function GiftWizard({
                       })}
                     </div>
                     <button type="button" onClick={() => goToPage(pageIdx + 1)} disabled={pageIdx >= pageKeys.length - 1}
-                      className="px-2 py-1 text-sm t-muted disabled:opacity-30" aria-label="Next page">›</button>
+                      className="mt-1 w-8 h-12 flex items-center justify-center text-2xl leading-none t-muted hover:t-ink disabled:opacity-30" aria-label="Next page">›</button>
                   </div>
                   <p className="text-[11px] t-muted text-center mt-1">
                     {pageIdx === 0 ? 'The cover' : `Page ${pageIdx} of ${pages.length}`}
