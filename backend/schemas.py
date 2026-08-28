@@ -742,6 +742,10 @@ class GiftDesignIn(BaseModel):
     # automatic plan. Each entry: {"kind": "gallery"|"notes"|"write_in",
     # "count": 1–4 for a gallery}.
     pages: Optional[list[dict]] = None
+    # The two ruled pages at the back, by position: {"heading", "subheading"}
+    # for either; None or an empty entry keeps the book's own words. A ruled
+    # page in `pages` may carry the same two keys.
+    pen_pages: Optional[list[dict]] = None
     # The part of each placed photo that shows, as fractions of the picture:
     # [x, y, width] of the region's top-left and width (its height follows the
     # frame's shape). "hero" for a design's single photo, the slot index for

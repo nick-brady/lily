@@ -62,6 +62,8 @@ export default function GiftWizard({
     productKey: initialRendering.product_key || null,
     // the book's middle section as the parent arranged it; null = automatic
     pages: initialRendering.layout_overrides?.pages ?? null,
+    // the two pen pages at the back, in the parent's words; null = the book's own
+    penPages: initialRendering.layout_overrides?.pen_pages ?? null,
     // the part of each placed photo that shows; absent = the centre fills the frame
     crop: { ...(initialRendering.photo_crop || {}) },
     // the story frame's ticks: {off: [...], on: [...]}; null = the thinning decides
@@ -230,7 +232,7 @@ export default function GiftWizard({
   // default is the one time re-resolving is the point. Nothing is saved
   // until Next, so this too can be walked away from.
   const resetToDefault = () => {
-    const next = { mediaId: null, removed: false, slots: {}, text: {}, productKey: null, pages: null, crop: {}, story: null };
+    const next = { mediaId: null, removed: false, slots: {}, text: {}, productKey: null, pages: null, penPages: null, crop: {}, story: null };
     setDraft(next);
     setPlanPages(null);
     if (isStory) api.storyRoll(birthId, rendering.id, next).then(setRoll).catch(() => {});
@@ -371,7 +373,36 @@ export default function GiftWizard({
   // plan on screen (its editable pages), each change is sent for a fresh
   // plan so the strip and the slots follow — nothing is drawn until Next.
   const arrangement = () =>
-    draft.pages ?? pages.filter((pg) => pg.editable).map((pg) => ({ kind: pg.kind, count: pg.count }));
+    draft.pages ??
+    pages.filter((pg) => pg.editable).map((pg) => ({
+      kind: pg.kind,
+      count: pg.count,
+      // a ruled page's own words ride along; the book's defaults don't
+      ...(pg.kind === 'write_in' && pg.custom ? { heading: pg.heading, subheading: pg.subheading } : {}),
+    }));
+  // The words on a ruled page. Typing changes the arrangement (or the pen
+  // pages) and the strip's copy of the page at once, then previews — no
+  // round trip for a plan that hasn't changed shape.
+  const setRuledWords = (patch) => {
+    if (!currentPage || currentPage.kind !== 'write_in') return;
+    const words = { heading: currentPage.heading, subheading: currentPage.subheading, ...patch };
+    let draftNext;
+    if (currentPage.pen != null) {
+      const pens = [...(draft.penPages || [null, null])];
+      pens[currentPage.pen] = words;
+      draftNext = { ...draft, penPages: pens };
+    } else {
+      const day = arrangement();
+      const e = editableIdxOf(currentPage);
+      if (e < 0) return;
+      day[e] = { ...day[e], ...words };
+      draftNext = { ...draft, pages: day };
+    }
+    setPlanPages(pages.map((pg) => (pg === currentPage ? { ...pg, ...words, custom: true, url: null } : pg)));
+    setDraft(draftNext);
+    setDirty(true);
+    schedulePreview(draftNext);
+  };
   const rearrange = async (next, focusKeyIdx = null) => {
     const draftNext = { ...draft, pages: next };
     setDraft(draftNext);
@@ -774,6 +805,37 @@ export default function GiftWizard({
                   })()}
                 </label>
               ))}
+
+              {/* A ruled page's words. Every ruled page has a heading and a
+                  line under it — the book's own for its position until the
+                  parent writes theirs. */}
+              {isBook && currentPage?.kind === 'write_in' && (
+                <div className="space-y-3">
+                  <label className="block">
+                    <span className="text-xs font-medium t-muted">Heading on this page</span>
+                    <input
+                      type="text"
+                      value={currentPage.heading || ''}
+                      maxLength={40}
+                      onChange={(e) => setRuledWords({ heading: e.target.value })}
+                      className="mt-1 w-full px-3 py-2 rounded-lg border text-sm bg-white dark:bg-gray-800 t-ink uppercase"
+                      style={{ borderColor: 'var(--t-soft-ring)' }}
+                    />
+                  </label>
+                  <label className="block">
+                    <span className="text-xs font-medium t-muted">Under it</span>
+                    <input
+                      type="text"
+                      value={currentPage.subheading || ''}
+                      maxLength={90}
+                      onChange={(e) => setRuledWords({ subheading: e.target.value })}
+                      className="mt-1 w-full px-3 py-2 rounded-lg border text-sm bg-white dark:bg-gray-800 t-ink"
+                      style={{ borderColor: 'var(--t-soft-ring)' }}
+                    />
+                  </label>
+                  <p className="text-[11px] t-faint">Printed in capitals; the line under it as you type it.</p>
+                </div>
+              )}
 
               {/* Two white books look identical at any size, so the paper is
                   a pair of words on one line rather than two pictures of

@@ -424,12 +424,26 @@ class _Draft:
         self.product_key = payload.product_key
 
 
+def _page_spec(pg: dict) -> dict:
+    spec = {"kind": str(pg.get("kind") or "")}
+    if pg.get("count") is not None:
+        spec["count"] = int(pg["count"])
+    for k, cap in (("heading", gift_artwork.WRITE_IN_HEADING_MAX), ("subheading", gift_artwork.WRITE_IN_SUB_MAX)):
+        v = str(pg.get(k) or "").strip()[:cap]
+        if v:
+            spec[k] = v
+    return spec
+
+
 def _layout_overrides(payload: GiftDesignIn) -> dict:
     """The parent's arrangement, as stored: the book's pages when given, and
     the crop of any placed photo they've moved or zoomed."""
     out: dict = {}
     if payload.pages is not None:
-        out["pages"] = payload.pages
+        # only what a page can be, plus a ruled page's own words
+        out["pages"] = [_page_spec(pg) for pg in payload.pages if isinstance(pg, dict)]
+    if payload.pen_pages is not None:
+        out["pen_pages"] = [_page_spec(pg) for pg in payload.pen_pages[:2] if isinstance(pg, dict)]
     crop = {
         str(k): [float(v[0]), float(v[1]), float(v[2])]
         for k, v in (payload.crop or {}).items()
