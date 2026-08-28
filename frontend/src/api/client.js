@@ -634,6 +634,8 @@ export const api = {
       photo_slots: draft.slots || {},
       // the book's middle section as arranged; null keeps the automatic plan
       pages: draft.pages ?? null,
+      // the two ruled pages at the back, their own words; null keeps the book's
+      pen_pages: draft.penPages ?? null,
       // the part of each placed photo that shows: {"hero": [x, y, w], "3": [x, y, w]}
       crop: draft.crop || {},
       // the story frame's ticks: photos kept off the line, photos pinned on it

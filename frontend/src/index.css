@@ -243,3 +243,12 @@
 .t-date-input::-webkit-calendar-picker-indicator:hover {
   opacity: 1;
 }
+
+/* A strip that scrolls sideways under a bar that's a hairline, not a plank:
+   thin, the theme's soft ring for the thumb, no track, so it says "there's
+   more" without shouting. The selected tile sliding into view does the rest. */
+.thin-scrollbar { scrollbar-width: thin; scrollbar-color: var(--t-soft-ring) transparent; }
+.thin-scrollbar::-webkit-scrollbar { height: 4px; }
+.thin-scrollbar::-webkit-scrollbar-track { background: transparent; }
+.thin-scrollbar::-webkit-scrollbar-thumb { background: var(--t-soft-ring); border-radius: 9999px; }
+.thin-scrollbar:hover::-webkit-scrollbar-thumb { background: var(--t-accent); opacity: 0.6; }

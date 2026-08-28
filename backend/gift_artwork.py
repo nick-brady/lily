@@ -2293,11 +2293,28 @@ def book_plan_for(db: Session, birth: Birth, rendering, day: list[dict] | None) 
     all_events = list(db.scalars(select(TimelineEvent).where(TimelineEvent.birth_id == birth.id, TimelineEvent.deleted_at.is_(None))).all())
     stats = gift_stats.compute(birth, all_events)
     has_marks = bool(stats.first_contraction_at) and any(has_mark(m["kind"]) for m in _gather_milestones(db, birth, stats))
-    plan = plan_book(n_photos=len(refs), n_notes=n_notes, has_pool=has_pool, has_milestones=has_marks, day=day)
-    return [
-        {"key": p["key"], "kind": p["kind"], "slots": p.get("slots", []), "count": p.get("count"), "editable": bool(p.get("editable"))}
-        for p in plan
-    ]
+    lo = (getattr(rendering, "layout_overrides", None) or {}) if rendering is not None else {}
+    plan = plan_book(n_photos=len(refs), n_notes=n_notes, has_pool=has_pool, has_milestones=has_marks, day=day, pen_pages=lo.get("pen_pages"))
+    return plan_pages_out(plan, birth)
+
+
+def plan_pages_out(plan: list[dict], birth: Birth) -> list[dict]:
+    """The plan as the editor sees it: key, kind, slots, count, whether the
+    page is the parent's to move — and for a ruled page, what it says and
+    whether those are the parent's words."""
+    first_name = (birth.child_name or "").split()[0] if birth.child_name else ""
+    out = []
+    for p in plan:
+        row = {"key": p["key"], "kind": p["kind"], "slots": p.get("slots", []), "count": p.get("count"), "editable": bool(p.get("editable"))}
+        if p["kind"] == "write_in":
+            row["heading"], row["subheading"] = write_in_text(p, first_name)
+            row["custom"] = bool(p.get("words"))
+            if "pen" in p:
+                row["pen"] = p["pen"]
+            if p.get("spare") is not None:
+                row["spare"] = p["spare"]
+        out.append(row)
+    return out
 
 
 def _story_raw(db: Session, birth: Birth) -> list[dict]:
@@ -2474,6 +2491,36 @@ BOOK_WRITE_IN = (  # headings for the ruled pages, in the order they're needed
 BOOK_PAGE_KINDS = ("gallery", "notes", "write_in")   # what a parent may add
 
 
+WRITE_IN_HEADING_MAX = 40
+WRITE_IN_SUB_MAX = 90
+
+
+def _write_in_words(pg: dict | None) -> dict:
+    """The parent's own words for a ruled page, if they gave any: {"words":
+    {"heading", "subheading"}} with each trimmed and capped, or nothing."""
+    if not pg:
+        return {}
+    words = {}
+    h = str(pg.get("heading") or "").strip()[:WRITE_IN_HEADING_MAX]
+    sub = str(pg.get("subheading") or "").strip()[:WRITE_IN_SUB_MAX]
+    if h:
+        words["heading"] = h
+    if sub:
+        words["subheading"] = sub
+    return {"words": words} if words else {}
+
+
+def write_in_text(page: dict, first_name: str) -> tuple[str, str]:
+    """What a ruled page says: the parent's words where given, the book's
+    own heading for its position otherwise — either half can be theirs."""
+    heading, sub = BOOK_WRITE_IN[page["heading"] % len(BOOK_WRITE_IN)]
+    words = page.get("words") or {}
+    return (
+        words.get("heading") or heading.format(NAME=first_name.upper()),
+        words.get("subheading") or sub.format(name=first_name),
+    )
+
+
 def plan_book(
     *,
     n_photos: int,
@@ -2481,6 +2528,7 @@ def plan_book(
     has_pool: bool,
     has_milestones: bool,
     day: list[dict] | None = None,
+    pen_pages: list[dict] | None = None,
 ) -> list[dict]:
     """Which page is which, for a story of this size. Pure, so the shape of
     the book is testable without a database.
@@ -2502,24 +2550,43 @@ def plan_book(
     carry "editable": True."""
     head = [{"kind": "title"}, {"kind": "clock"}] + ([{"kind": "pool"}] if has_pool else [])
     tail = ([{"kind": "milestones"}] if has_milestones else [])
-    tail += [{"kind": "write_in", "heading": 0}, {"kind": "write_in", "heading": 1}, {"kind": "closing"}]
+    # the two pages for a pen at the back: the book's own headings, or the
+    # parent's words for them (`pen_pages`, by position — these two never move)
+    pens = list(pen_pages or [])
+    tail += [
+        {"kind": "write_in", "heading": 0, "pen": 0, **_write_in_words(pens[0] if len(pens) > 0 else None)},
+        {"kind": "write_in", "heading": 1, "pen": 1, **_write_in_words(pens[1] if len(pens) > 1 else None)},
+        {"kind": "closing"},
+    ]
     room_all = BOOK_PAGES - len(head) - len(tail)
     if day is not None:
         # the parent's section: only kinds we can draw, gallery counts 1–4,
         # cut to the room, ruled pages to fill what's left
+        # A ruled page the editor marks `spare` is one of the fillers after
+        # the milestones, not a page the parent placed — it stays there, with
+        # any words they wrote on it, so the book keeps its shape.
         mid: list[dict] = []
+        spares_in: dict[int, dict] = {}   # by the filler's own number, not its place in the list
         notes_seen = 0
         for pg in day[:room_all]:
             kind = pg.get("kind")
-            if kind == "gallery":
+            if kind == "write_in" and pg.get("spare") is not None and pg.get("spare") is not False:
+                try:
+                    spares_in[int(pg["spare"])] = pg
+                except (TypeError, ValueError):
+                    pass
+            elif kind == "gallery":
                 mid.append({"kind": "gallery", "count": max(1, min(BOOK_MAX_PER_GALLERY, int(pg.get("count") or 1)))})
             elif kind == "notes":
                 mid.append({"kind": "notes", "index": notes_seen}); notes_seen += 1
             elif kind == "write_in":
-                mid.append({"kind": "write_in", "heading": 2 + sum(1 for m in mid if m["kind"] == "write_in")})
+                mid.append({"kind": "write_in", "heading": 2 + sum(1 for m in mid if m["kind"] == "write_in"), **_write_in_words(pg)})
         spare = room_all - len(mid)
         n_ruled = sum(1 for m in mid if m["kind"] == "write_in")
-        extra_write = [{"kind": "write_in", "heading": 2 + n_ruled + i} for i in range(spare)]
+        extra_write = [
+            {"kind": "write_in", "heading": 2 + n_ruled + i, "spare": i, **_write_in_words(spares_in.get(i))}
+            for i in range(spare)
+        ]
     else:
         note_pages = min(2, math.ceil(n_notes / BOOK_NOTES_PER_PAGE)) if n_notes else 0
         room = room_all - note_pages
@@ -2538,7 +2605,7 @@ def plan_book(
             at = round((j + 1) * (len(mid) + 1) / (note_pages + 1))
             mid.insert(min(at, len(mid)), {"kind": "notes", "index": j})
         spare = room - galleries
-        extra_write = [{"kind": "write_in", "heading": 2 + i} for i in range(spare)]
+        extra_write = [{"kind": "write_in", "heading": 2 + i, "spare": i} for i in range(spare)]
     for pg in mid + extra_write:
         pg["editable"] = True
 
@@ -2648,8 +2715,8 @@ def render_book(
     milestones = [(m["kind"], first + timedelta(seconds=int(m["offset_seconds"]))) for m in _gather_milestones(db, birth, stats)] if first else []
     marks = [(k, t) for k, t in milestones if has_mark(k)]
 
-    day = ((getattr(rendering, "layout_overrides", None) or {}).get("pages")) if rendering is not None else None
-    plan = plan_book(n_photos=len(refs), n_notes=len(notes), has_pool=has_pool, has_milestones=bool(marks), day=day)
+    lo = (getattr(rendering, "layout_overrides", None) or {}) if rendering is not None else {}
+    plan = plan_book(n_photos=len(refs), n_notes=len(notes), has_pool=has_pool, has_milestones=bool(marks), day=lo.get("pages"), pen_pages=lo.get("pen_pages"))
     total_slots = sum(p.get("count", 0) for p in plan if p["kind"] == "gallery")
     photos = _slot_photos(db, birth, rendering, total_slots, photo_max_px=photo_max_px or 1000) if total_slots else []
     photos += [None] * (total_slots - len(photos))
@@ -2732,10 +2799,10 @@ def render_book(
             rows.append({"mark": {"d": _heart_path(560, y - 14, 20), "transform": None, "stroke": 3.0}, "label": f"{base['child_name']} arrives", "when": _fmt_time(when).upper() if when else "", "y": y, "born": True})
             pages_ctx[page["key"]] = ("book_milestones.svg.j2", {"book_milestones": rows})
         elif k == "write_in":
-            heading, sub = BOOK_WRITE_IN[page["heading"] % len(BOOK_WRITE_IN)]
+            heading, sub = write_in_text(page, first_name)
             rules = list(range(620, BOOK_PAGE - 260, 118))
             pages_ctx[page["key"]] = ("book_write_in.svg.j2", {
-                "book_heading": heading.format(NAME=first_name.upper()), "book_subheading": sub.format(name=first_name),
+                "book_heading": heading, "book_subheading": sub,
                 "book_rules": rules, "book_small_heart": _heart_path(BOOK_PAGE / 2, BOOK_PAGE - 260 + 90, 16),
             })
         elif k == "closing":
@@ -2790,10 +2857,7 @@ def render_book(
         "selected_media_id": None,
         "selected_slot_media_ids": [ph["media_id"] if ph else None for ph in photos],
         "slot_frame_aspects": [(ph or {}).get("frame_aspect") or 1.0 for ph in photos],
-        "book_plan": [
-            {"key": p["key"], "kind": p["kind"], "slots": p.get("slots", []), "count": p.get("count"), "editable": bool(p.get("editable"))}
-            for p in plan
-        ],
+        "book_plan": plan_pages_out(plan, birth),
         "stats": stats.as_metadata(),
         "child": {"name": birth.child_name, "when": when.isoformat() if when else None},
         "dimensions": {"w": template.width, "h": template.height, "dpi": template.dpi},

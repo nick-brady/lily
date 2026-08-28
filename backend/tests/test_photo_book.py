@@ -100,3 +100,58 @@ def test_an_arrangement_is_cut_to_the_book_and_counts_are_sane():
     assert len(plan) == 24
     assert all(p["count"] <= ga.BOOK_MAX_PER_GALLERY for p in plan if p["kind"] == "gallery")
     assert "mystery" not in _kinds(plan)
+
+
+# ── the ruled pages' own words ─────────────────────────────────────────────
+
+
+def test_a_ruled_page_says_what_the_parent_wrote_else_the_books_words():
+    day = [{"kind": "write_in", "heading": "  for grandma ", "subheading": "a line each visit"}, {"kind": "write_in"}]
+    plan = ga.plan_book(n_photos=2, n_notes=0, has_pool=False, has_milestones=False, day=day)
+    ruled = [p for p in plan if p["kind"] == "write_in" and p.get("editable")]
+    assert ga.write_in_text(ruled[0], "Lily") == ("for grandma", "a line each visit")
+    # the second keeps the book's heading for its position, with the name in it
+    h, sub = ga.write_in_text(ruled[1], "Lily")
+    assert h == "FOR LATER" and sub  # the second ruled page of the day takes the fourth heading
+
+
+def test_either_half_alone_can_be_the_parents():
+    plan = ga.plan_book(n_photos=2, n_notes=0, has_pool=False, has_milestones=False, day=[{"kind": "write_in", "heading": "x" * 60}])
+    ruled = [p for p in plan if p["kind"] == "write_in" and p.get("editable")][0]
+    h, sub = ga.write_in_text(ruled, "Lily")
+    assert h == "x" * ga.WRITE_IN_HEADING_MAX  # capped
+    assert sub == "how it went, in a few lines"  # the book's own, for that position
+
+
+def test_the_two_pen_pages_at_the_back_take_their_own_words_by_position():
+    plan = ga.plan_book(
+        n_photos=2, n_notes=0, has_pool=False, has_milestones=False,
+        pen_pages=[None, {"heading": "DEAR LILY", "subheading": "from mum"}],
+    )
+    pens = sorted([p for p in plan if p.get("pen") is not None], key=lambda p: p["pen"])
+    assert ga.write_in_text(pens[0], "Lily") == ("A LETTER TO LILY", "from the ones who were there")
+    assert ga.write_in_text(pens[1], "Lily") == ("DEAR LILY", "from mum")
+    # and they're where they always were: just before the closing
+    assert [p["kind"] for p in plan[-3:]] == ["write_in", "write_in", "closing"]
+
+
+def test_spare_ruled_pages_sent_back_keep_their_place_and_their_words():
+    """The editor round-trips every editable page. The fillers after the
+    milestones must come back as fillers — not as day pages that push the
+    milestones down the book — and words written on one stay on it."""
+    plan = ga.plan_book(n_photos=3, n_notes=0, has_pool=True, has_milestones=True)
+    day = [
+        {"kind": p["kind"], "count": p.get("count"), **({"spare": p["spare"]} if p.get("spare") is not None else {})}
+        for p in plan if p.get("editable")
+    ]
+    spares = [d for d in day if d.get("spare") is not None]
+    assert spares, "the small book has fillers"
+    spares[0]["heading"] = "FOR GRANDMA"
+    again = ga.plan_book(n_photos=3, n_notes=0, has_pool=True, has_milestones=True, day=day)
+    assert [p["kind"] for p in again] == [p["kind"] for p in plan]
+    first_spare = next(p for p in again if p.get("spare") == 0)
+    # and sent back out of order, the words still find their page
+    shuffled = [d for d in day if d.get("spare") is None] + [d for d in day if d.get("spare") is not None][::-1]
+    twice = ga.plan_book(n_photos=3, n_notes=0, has_pool=True, has_milestones=True, day=shuffled)
+    assert ga.write_in_text(next(p for p in twice if p.get("spare") == 0), "Lily")[0] == "FOR GRANDMA"
+    assert ga.write_in_text(first_spare, "Lily")[0] == "FOR GRANDMA"

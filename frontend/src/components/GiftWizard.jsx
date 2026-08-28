@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { Fragment, useCallback, useEffect, useRef, useState } from 'react';
 import { api } from '../api/client';
 import { formatPrice } from '../utils/money';
 import { PRODUCT_NOUN } from '../utils/products';
@@ -62,6 +62,8 @@ export default function GiftWizard({
     productKey: initialRendering.product_key || null,
     // the book's middle section as the parent arranged it; null = automatic
     pages: initialRendering.layout_overrides?.pages ?? null,
+    // the two pen pages at the back, in the parent's words; null = the book's own
+    penPages: initialRendering.layout_overrides?.pen_pages ?? null,
     // the part of each placed photo that shows; absent = the centre fills the frame
     crop: { ...(initialRendering.photo_crop || {}) },
     // the story frame's ticks: {off: [...], on: [...]}; null = the thinning decides
@@ -112,6 +114,12 @@ export default function GiftWizard({
   const hiResRef = useRef(null);
 
   const fileRef = useRef(null);
+  // the page strip: the selected tile slides into view as you move
+  const stripRef = useRef(null);
+  useEffect(() => {
+    const tile = stripRef.current?.querySelector(`[data-page-idx="${pageIdx}"]`);
+    tile?.scrollIntoView({ block: 'nearest', inline: 'center', behavior: 'smooth' });
+  }, [pageIdx]);
   const abortRef = useRef(null);
   const timerRef = useRef(null);
   const pollRef = useRef(null);
@@ -224,7 +232,7 @@ export default function GiftWizard({
   // default is the one time re-resolving is the point. Nothing is saved
   // until Next, so this too can be walked away from.
   const resetToDefault = () => {
-    const next = { mediaId: null, removed: false, slots: {}, text: {}, productKey: null, pages: null, crop: {}, story: null };
+    const next = { mediaId: null, removed: false, slots: {}, text: {}, productKey: null, pages: null, penPages: null, crop: {}, story: null };
     setDraft(next);
     setPlanPages(null);
     if (isStory) api.storyRoll(birthId, rendering.id, next).then(setRoll).catch(() => {});
@@ -365,14 +373,56 @@ export default function GiftWizard({
   // plan on screen (its editable pages), each change is sent for a fresh
   // plan so the strip and the slots follow — nothing is drawn until Next.
   const arrangement = () =>
-    draft.pages ?? pages.filter((pg) => pg.editable).map((pg) => ({ kind: pg.kind, count: pg.count }));
+    draft.pages ??
+    pages.filter((pg) => pg.editable).map((pg) => ({
+      kind: pg.kind,
+      count: pg.count,
+      // a filler ruled page stays a filler — after the milestones — not a day page
+      ...(pg.spare != null ? { spare: pg.spare } : {}),
+      // a ruled page's own words ride along; the book's defaults don't
+      ...(pg.kind === 'write_in' && pg.custom ? { heading: pg.heading, subheading: pg.subheading } : {}),
+    }));
+  // The words on a ruled page. Typing changes the arrangement (or the pen
+  // pages) and the strip's copy of the page at once, then previews — no
+  // round trip for a plan that hasn't changed shape.
+  const setRuledWords = (patch) => {
+    if (!currentPage || currentPage.kind !== 'write_in') return;
+    const words = { heading: currentPage.heading, subheading: currentPage.subheading, ...patch };
+    let draftNext;
+    if (currentPage.pen != null) {
+      const pens = [...(draft.penPages || [null, null])];
+      pens[currentPage.pen] = words;
+      draftNext = { ...draft, penPages: pens };
+    } else {
+      const day = arrangement();
+      const e = editableIdxOf(currentPage);
+      if (e < 0) return;
+      day[e] = { ...day[e], ...words };
+      draftNext = { ...draft, pages: day };
+    }
+    setPlanPages(pages.map((pg) => (pg === currentPage ? { ...pg, ...words, custom: true, url: null } : pg)));
+    setDraft(draftNext);
+    setDirty(true);
+    schedulePreview(draftNext);
+  };
   const rearrange = async (next, focusKeyIdx = null) => {
     const draftNext = { ...draft, pages: next };
     setDraft(draftNext);
     setDirty(true);
     try {
       const { pages: fresh } = await api.bookPlan(birthId, rendering.id, draftNext);
-      setPlanPages(fresh.map((pg) => ({ ...pg, url: null })));   // not drawn yet
+      // Not drawn yet — but a fixed page that kept its place is the same page,
+      // so it keeps its picture. Only the day's pages go blank until Next.
+      // …compared against the book as saved, not the strip as it stands, so a
+      // blank from an earlier rearrange isn't inherited by the next one
+      const before = new Map((rendering.pages || []).map((pg) => [pg.key, pg]));
+      setPlanPages(
+        fresh.map((pg) => {
+          const was = before.get(pg.key);
+          const same = was && !pg.editable && !was.editable && was.kind === pg.kind;
+          return { ...pg, url: same ? was.url : null };
+        }),
+      );
       const keys = ['cover_front', ...fresh.map((pg) => pg.key)];
       const idx = focusKeyIdx == null ? Math.min(pageIdx, keys.length - 1) : Math.max(0, Math.min(keys.length - 1, focusKeyIdx));
       setPageIdx(idx);
@@ -393,19 +443,38 @@ export default function GiftWizard({
     // the first fixed page after the head is page_1 + head; the new page sits after the current one
     rearrange(day, editableIdx >= 0 ? pageIdx + 1 : pageIdx);
   };
-  const removePage = () => {
-    if (editableIdx < 0) return;
+  // The strip is the control: an × on a day page removes it, the + tile adds
+  // one after the page you're on, and the selected day page wears ‹ › that
+  // step it one place either way. `e` indexes are into the editable (day)
+  // section.
+  const editablePages = pages.filter((pg) => pg.editable);
+  const editableIdxOf = (pg) => editablePages.indexOf(pg);
+  const firstEditableStrip = pages.findIndex((pg) => pg.editable) + 1; // strip index of day page 0
+  const removePageAt = (e) => {
+    if (e < 0) return;
     const day = arrangement();
-    day.splice(editableIdx, 1);
-    rearrange(day, pageIdx);
+    day.splice(e, 1);
+    rearrange(day, Math.min(pageIdx, firstEditableStrip + Math.max(0, day.length - 1)));
   };
-  const movePage = (dir) => {
-    if (editableIdx < 0) return;
+  const movePageTo = (from, to) => {
+    if (from < 0 || to < 0 || from === to) return;
     const day = arrangement();
-    const to = editableIdx + dir;
-    if (to < 0 || to >= day.length) return;
-    [day[editableIdx], day[to]] = [day[to], day[editableIdx]];
-    rearrange(day, pageIdx + dir);
+    if (from >= day.length || to >= day.length) return;
+    const [pg] = day.splice(from, 1);
+    day.splice(to, 0, pg);
+    rearrange(day, firstEditableStrip + to);
+  };
+  // the photo a slot will show: the draft's pick, else the last render's
+  const photoFor = (slot) => draft.slots?.[slot] ?? rendering.photo_slots_effective?.[slot] ?? null;
+  // where the + tile sits and where a new page goes: after the current day
+  // page, else at the end of the day section
+  const insertAt = editableIdx >= 0 ? editableIdx + 1 : editablePages.length;
+  const [adding, setAdding] = useState(false);
+  const addPageAt = (spec) => {
+    const day = arrangement();
+    day.splice(insertAt, 0, spec);
+    setAdding(false);
+    rearrange(day, firstEditableStrip + insertAt);
   };
 
   // A tick on the story's roll. Off → on pins the photo (safe from the
@@ -523,29 +592,104 @@ export default function GiftWizard({
 
               {isBook && pageKeys.length > 1 && (
                 <div className="w-full min-w-0 sm:flex-none">
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-start gap-2">
+                    {/* the arrows sit level with the tiles (h-12 + pt-1), not the row that also holds the scrollbar */}
                     <button type="button" onClick={() => goToPage(pageIdx - 1)} disabled={pageIdx === 0}
-                      className="px-2 py-1 text-sm t-muted disabled:opacity-30" aria-label="Previous page">‹</button>
-                    <div className="flex-1 min-w-0 flex gap-1.5 overflow-x-auto py-1">
+                      className="mt-1 w-8 h-12 flex items-center justify-center text-2xl leading-none t-muted hover:t-ink disabled:opacity-30" aria-label="Previous page">‹</button>
+                    <div ref={stripRef} className="flex-1 min-w-0 flex gap-1.5 overflow-x-auto pt-1 pb-2 px-0.5 thin-scrollbar">
                       {pageKeys.map((key, idx) => {
                         const pg = idx > 0 ? pages[idx - 1] : null;
                         const url = idx === 0 ? rendering.artwork_url : pg?.url;
+                        const e = pg?.editable ? editableIdxOf(pg) : -1;
+                        const plusHere = e >= 0 ? e === insertAt - 1 : idx === firstEditableStrip - 1 && insertAt === 0;
                         return (
-                          <button
-                            key={key}
-                            type="button"
-                            onClick={() => goToPage(idx)}
-                            title={idx === 0 ? 'Cover' : `Page ${idx} · ${(pg?.kind || '').replace('_', ' ')}`}
-                            className="flex-none w-12 h-12 rounded border-2 overflow-hidden bg-white text-[10px] t-muted"
-                            style={{ borderColor: idx === pageIdx ? 'var(--t-accent)' : 'var(--t-soft-ring)' }}
-                          >
-                            {url ? <img src={url} alt="" className="w-full h-full object-cover" /> : idx === 0 ? 'cover' : idx}
-                          </button>
+                          <Fragment key={key}>
+                            <div
+                              className="relative flex-none flex transition-[margin] duration-200"
+                              // the selected day page makes room either side for its ‹ ›
+                              style={{ margin: e >= 0 && idx === pageIdx ? '0 34px' : undefined }}
+                            >
+                              <button
+                                type="button"
+                                data-page-idx={idx}
+                                onClick={() => goToPage(idx)}
+                                title={idx === 0 ? 'Cover' : `Page ${idx} · ${(pg?.kind || '').replace('_', ' ')}`}
+                                className="w-12 h-12 rounded border-2 overflow-hidden bg-white text-[10px] t-muted"
+                                style={{ borderColor: idx === pageIdx ? 'var(--t-accent)' : 'var(--t-soft-ring)' }}
+                              >
+                                {url ? (
+                                  <img src={url} alt="" className="w-full h-full object-cover pointer-events-none" />
+                                ) : (
+                                  <PageGlyph page={pg} idx={idx} photoFor={photoFor} />
+                                )}
+                              </button>
+                              {/* the selected day page carries its own ‹ › — one
+                                  step left or right per click; plain, and it
+                                  says what it does */}
+                              {e >= 0 && idx === pageIdx && (
+                                <>
+                                  {e > 0 && (
+                                    <button
+                                      type="button"
+                                      onClick={() => movePageTo(e, e - 1)}
+                                      aria-label="Move this page one earlier"
+                                      title="Move one earlier"
+                                      className="absolute -left-[34px] top-1/2 -translate-y-1/2 w-7 h-7 rounded-full bg-white border shadow-sm flex items-center justify-center t-ink hover:text-white"
+                                      style={{ borderColor: 'var(--t-accent)' }}
+                                      onMouseEnter={(ev) => { ev.currentTarget.style.backgroundColor = 'var(--t-accent)'; }}
+                                      onMouseLeave={(ev) => { ev.currentTarget.style.backgroundColor = 'white'; }}
+                                    >
+                                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M15 6l-6 6 6 6" /></svg>
+                                    </button>
+                                  )}
+                                  {e < editablePages.length - 1 && (
+                                    <button
+                                      type="button"
+                                      onClick={() => movePageTo(e, e + 1)}
+                                      aria-label="Move this page one later"
+                                      title="Move one later"
+                                      className="absolute -right-[34px] top-1/2 -translate-y-1/2 w-7 h-7 rounded-full bg-white border shadow-sm flex items-center justify-center t-ink hover:text-white"
+                                      style={{ borderColor: 'var(--t-accent)' }}
+                                      onMouseEnter={(ev) => { ev.currentTarget.style.backgroundColor = 'var(--t-accent)'; }}
+                                      onMouseLeave={(ev) => { ev.currentTarget.style.backgroundColor = 'white'; }}
+                                    >
+                                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M9 6l6 6-6 6" /></svg>
+                                    </button>
+                                  )}
+                                </>
+                              )}
+                              {e >= 0 && (
+                                <button
+                                  type="button"
+                                  onClick={(ev) => { ev.stopPropagation(); removePageAt(e); }}
+                                  aria-label={`Remove page ${idx}`}
+                                  title="Remove this page"
+                                  className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-white border text-[10px] leading-none flex items-center justify-center t-muted hover:t-ink"
+                                  style={{ borderColor: 'var(--t-soft-ring)' }}
+                                >
+                                  ×
+                                </button>
+                              )}
+                            </div>
+                            {plusHere && (
+                              <button
+                                type="button"
+                                onClick={() => setAdding((v) => !v)}
+                                aria-label="Add a page here"
+                                title="Add a page here"
+                                aria-expanded={adding}
+                                className="flex-none w-12 h-12 rounded border-2 border-dashed text-lg leading-none t-muted hover:t-ink"
+                                style={{ borderColor: adding ? 'var(--t-accent)' : 'var(--t-soft-ring)' }}
+                              >
+                                +
+                              </button>
+                            )}
+                          </Fragment>
                         );
                       })}
                     </div>
                     <button type="button" onClick={() => goToPage(pageIdx + 1)} disabled={pageIdx >= pageKeys.length - 1}
-                      className="px-2 py-1 text-sm t-muted disabled:opacity-30" aria-label="Next page">›</button>
+                      className="mt-1 w-8 h-12 flex items-center justify-center text-2xl leading-none t-muted hover:t-ink disabled:opacity-30" aria-label="Next page">›</button>
                   </div>
                   <p className="text-[11px] t-muted text-center mt-1">
                     {pageIdx === 0 ? 'The cover' : `Page ${pageIdx} of ${pages.length}`}
@@ -555,28 +699,22 @@ export default function GiftWizard({
                   </p>
                   {/* Arranging the middle of the book. The title, clock, pool,
                       milestones, the two pages for a pen and the closing stay
-                      where they are; everything between is the parent's. The
-                      book is always 24 pages: a page added takes the place of
-                      a ruled one, a page removed becomes one. */}
-                  {(currentPage?.editable || pageIdx === 0) && (
+                      where they are; everything between is the parent's — the
+                      × removes, ‹ › move, the + adds. The book is always
+                      24 pages: a page added takes the place of a ruled one, a
+                      page removed becomes one. */}
+                  {adding && (
                     <div className="flex flex-wrap items-center justify-center gap-2 mt-2 text-[11px]">
-                      {currentPage?.editable && (
-                        <>
-                          <button type="button" onClick={() => movePage(-1)} className="px-2 py-1 rounded border t-muted" style={{ borderColor: 'var(--t-soft-ring)' }}>← Move</button>
-                          <button type="button" onClick={() => movePage(1)} className="px-2 py-1 rounded border t-muted" style={{ borderColor: 'var(--t-soft-ring)' }}>Move →</button>
-                          <button type="button" onClick={removePage} className="px-2 py-1 rounded border t-muted" style={{ borderColor: 'var(--t-soft-ring)' }}>Remove page</button>
-                          <span className="t-faint">·</span>
-                        </>
-                      )}
-                      <span className="t-faint">Add after this:</span>
+                      <span className="t-faint">Add a page of:</span>
                       {[1, 2, 3, 4].map((n) => (
-                        <button key={n} type="button" onClick={() => addPage({ kind: 'gallery', count: n })}
+                        <button key={n} type="button" onClick={() => addPageAt({ kind: 'gallery', count: n })}
                           className="px-2 py-1 rounded border t-ink" style={{ borderColor: 'var(--t-soft-ring)' }}>
                           {n} photo{n === 1 ? '' : 's'}
                         </button>
                       ))}
-                      <button type="button" onClick={() => addPage({ kind: 'notes' })} className="px-2 py-1 rounded border t-ink" style={{ borderColor: 'var(--t-soft-ring)' }}>Notes</button>
-                      <button type="button" onClick={() => addPage({ kind: 'write_in' })} className="px-2 py-1 rounded border t-ink" style={{ borderColor: 'var(--t-soft-ring)' }}>Ruled</button>
+                      <button type="button" onClick={() => addPageAt({ kind: 'notes' })} className="px-2 py-1 rounded border t-ink" style={{ borderColor: 'var(--t-soft-ring)' }}>Notes</button>
+                      <button type="button" onClick={() => addPageAt({ kind: 'write_in' })} className="px-2 py-1 rounded border t-ink" style={{ borderColor: 'var(--t-soft-ring)' }}>Ruled</button>
+                      <button type="button" onClick={() => setAdding(false)} className="px-2 py-1 t-faint">Cancel</button>
                     </div>
                   )}
                 </div>
@@ -642,9 +780,12 @@ export default function GiftWizard({
                 </p>
               </div>
 
-              {slots.map((slot) => (
+              {/* On the book the name and the line are printed on the cover
+                  and the title page and nowhere else, so the fields show
+                  only there — on page 9 they'd be a puzzle. */}
+              {(!isBook || pageIdx <= 1) && slots.map((slot) => (
                 <label key={slot} className="block">
-                  <span className="text-xs font-medium t-muted">{SLOT_LABELS[slot] || slot}</span>
+                  <span className="text-xs font-medium t-muted">{(isBook && slot === 'custom_line' ? 'Under the title, on page one' : SLOT_LABELS[slot]) || slot}</span>
                   <input
                     type="text"
                     value={draft.text[slot] ?? ''}
@@ -694,9 +835,74 @@ export default function GiftWizard({
                 </label>
               ))}
 
-              {(products || []).length > 1 && (
+              {/* A ruled page's words. Every ruled page has a heading and a
+                  line under it — the book's own for its position until the
+                  parent writes theirs. */}
+              {isBook && currentPage?.kind === 'write_in' && (
+                <div className="space-y-3">
+                  <label className="block">
+                    <span className="text-xs font-medium t-muted">Heading on this page</span>
+                    <input
+                      type="text"
+                      value={currentPage.heading || ''}
+                      maxLength={40}
+                      onChange={(e) => setRuledWords({ heading: e.target.value })}
+                      className="mt-1 w-full px-3 py-2 rounded-lg border text-sm bg-white dark:bg-gray-800 t-ink uppercase"
+                      style={{ borderColor: 'var(--t-soft-ring)' }}
+                    />
+                  </label>
+                  <label className="block">
+                    <span className="text-xs font-medium t-muted">Under it</span>
+                    <input
+                      type="text"
+                      value={currentPage.subheading || ''}
+                      maxLength={90}
+                      onChange={(e) => setRuledWords({ subheading: e.target.value })}
+                      className="mt-1 w-full px-3 py-2 rounded-lg border text-sm bg-white dark:bg-gray-800 t-ink"
+                      style={{ borderColor: 'var(--t-soft-ring)' }}
+                    />
+                  </label>
+                  <p className="text-[11px] t-faint">Printed in capitals; the line under it as you type it.</p>
+                </div>
+              )}
+
+              {/* Two white books look identical at any size, so the paper is
+                  a pair of words on one line rather than two pictures of
+                  nothing. Every other product shows the blanks: a frame's
+                  colour and a mug's shape are the choice. */}
+              {(products || []).length > 1 && isBook && (
+                <div className="flex items-center justify-between gap-3">
+                  <span className="text-xs font-medium t-muted">Paper</span>
+                  <div
+                    className="inline-flex rounded-full border p-0.5 text-xs"
+                    style={{ borderColor: 'var(--t-soft-ring)' }}
+                    role="radiogroup"
+                    aria-label="Paper"
+                  >
+                    {products.map((product) => {
+                      const chosen = (draft.productKey || products[0].product_key) === product.product_key;
+                      return (
+                        <button
+                          key={product.product_key}
+                          type="button"
+                          role="radio"
+                          aria-checked={chosen}
+                          onClick={() => edit({ productKey: product.product_key })}
+                          className={`px-3 py-1 rounded-full ${chosen ? 'text-white' : 't-muted'}`}
+                          style={chosen ? { backgroundColor: 'var(--t-accent)' } : undefined}
+                        >
+                          {product.caption || product.display_name}
+                          {product.surcharge_cents > 0 && <span className="opacity-70"> +{formatPrice(product.surcharge_cents)}</span>}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {(products || []).length > 1 && !isBook && (
                 <div>
-                  <span className="text-xs font-medium t-muted">{({ framed_print: 'Frame', ornament: 'Shape', photo_book: 'Paper' })[item.product_kind] || 'Mug'}</span>
+                  <span className="text-xs font-medium t-muted">{({ framed_print: 'Frame', ornament: 'Shape' })[item.product_kind] || 'Mug'}</span>
                   <div className="mt-1 grid grid-cols-3 gap-1.5">
                     {products.map((product, i) => {
                       const chosen = (draft.productKey || products[0].product_key)
@@ -1179,4 +1385,32 @@ function NextButton({ saving, onClick }) {
       {saving ? 'Saving…' : 'Next — see it on the product'}
     </button>
   );
+}
+
+// A page that hasn't been drawn yet, as a stand-in: the photos a gallery page
+// will hold, laid out roughly as they'll sit; a word for the rest.
+function PageGlyph({ page, idx, photoFor }) {
+  if (!page) return idx === 0 ? 'cover' : idx;
+  if (page.kind === 'gallery') {
+    const ids = (page.slots || []).map(photoFor);
+    const n = ids.length;
+    const cols = n <= 1 ? 1 : 2;
+    return (
+      <span
+        className="grid w-full h-full gap-px p-1 pointer-events-none"
+        style={{ gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))` }}
+      >
+        {ids.map((id, i) => (
+          <span
+            key={i}
+            className={`block overflow-hidden rounded-sm bg-gray-100 ${n === 3 && i === 0 ? 'col-span-2' : ''}`}
+          >
+            {id && <img src={api.mediaUrl(id)} alt="" className="w-full h-full object-cover" />}
+          </span>
+        ))}
+      </span>
+    );
+  }
+  const word = { notes: 'notes', write_in: 'ruled', title: 'title', clock: 'clock', pool: 'pool', milestones: 'marks', closing: 'end' }[page.kind] || idx;
+  return <span className="pointer-events-none">{word}</span>;
 }
