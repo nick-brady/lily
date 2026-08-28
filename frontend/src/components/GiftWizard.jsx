@@ -605,7 +605,7 @@ export default function GiftWizard({
                         return (
                           <Fragment key={key}>
                             <div
-                              className="relative flex-none transition-[margin] duration-200"
+                              className="relative flex-none flex transition-[margin] duration-200"
                               // the selected day page makes room either side for its ‹ ›
                               style={{ margin: e >= 0 && idx === pageIdx ? '0 34px' : undefined }}
                             >
@@ -634,12 +634,12 @@ export default function GiftWizard({
                                       onClick={() => movePageTo(e, e - 1)}
                                       aria-label="Move this page one earlier"
                                       title="Move one earlier"
-                                      className="absolute -left-[34px] top-1/2 -translate-y-1/2 w-7 h-7 rounded-full bg-white border shadow-sm text-lg leading-none flex items-center justify-center t-ink hover:text-white"
+                                      className="absolute -left-[34px] top-1/2 -translate-y-1/2 w-7 h-7 rounded-full bg-white border shadow-sm flex items-center justify-center t-ink hover:text-white"
                                       style={{ borderColor: 'var(--t-accent)' }}
                                       onMouseEnter={(ev) => { ev.currentTarget.style.backgroundColor = 'var(--t-accent)'; }}
                                       onMouseLeave={(ev) => { ev.currentTarget.style.backgroundColor = 'white'; }}
                                     >
-                                      ‹
+                                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M15 6l-6 6 6 6" /></svg>
                                     </button>
                                   )}
                                   {e < editablePages.length - 1 && (
@@ -648,12 +648,12 @@ export default function GiftWizard({
                                       onClick={() => movePageTo(e, e + 1)}
                                       aria-label="Move this page one later"
                                       title="Move one later"
-                                      className="absolute -right-[34px] top-1/2 -translate-y-1/2 w-7 h-7 rounded-full bg-white border shadow-sm text-lg leading-none flex items-center justify-center t-ink hover:text-white"
+                                      className="absolute -right-[34px] top-1/2 -translate-y-1/2 w-7 h-7 rounded-full bg-white border shadow-sm flex items-center justify-center t-ink hover:text-white"
                                       style={{ borderColor: 'var(--t-accent)' }}
                                       onMouseEnter={(ev) => { ev.currentTarget.style.backgroundColor = 'var(--t-accent)'; }}
                                       onMouseLeave={(ev) => { ev.currentTarget.style.backgroundColor = 'white'; }}
                                     >
-                                      ›
+                                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M9 6l6 6-6 6" /></svg>
                                     </button>
                                   )}
                                 </>
