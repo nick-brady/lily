@@ -905,3 +905,8 @@ and so no place on the line. The wall and the book keep the picker.
 
 Per-slot `photo_slots` overrides saved against the story before this are
 ignored at render, as are its old index-keyed crops.
+
+Notes and milestones don't get ticks. Milestones always stay; notes are
+capped at eight, sampled evenly, before any photo is thinned — and that
+stays automatic. A single roll of every moment with a shared budget was
+considered and declined (2026-08-27) as too much editor for the gain.
