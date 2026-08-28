@@ -374,7 +374,9 @@ export default function GiftWizard({
       const { pages: fresh } = await api.bookPlan(birthId, rendering.id, draftNext);
       // Not drawn yet — but a fixed page that kept its place is the same page,
       // so it keeps its picture. Only the day's pages go blank until Next.
-      const before = new Map(pages.map((pg) => [pg.key, pg]));
+      // …compared against the book as saved, not the strip as it stands, so a
+      // blank from an earlier rearrange isn't inherited by the next one
+      const before = new Map((rendering.pages || []).map((pg) => [pg.key, pg]));
       setPlanPages(
         fresh.map((pg) => {
           const was = before.get(pg.key);
