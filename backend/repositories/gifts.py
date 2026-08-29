@@ -281,38 +281,39 @@ def reset_to_pending(
 
 
 # What the editor shows is not what the printer gets. A book page is a
-# 2325px print file — up to 2.4MB, and 31MB for the twenty-five of them —
-# which the browser was downloading in full to draw a 48px tile. A screen
-# copy at 900px in WebP is around 50KB, so the whole book is under a
-# megabyte. The print files are untouched; they're what the order ships.
-SCREEN_WIDTH = 900
-SCREEN_QUALITY = 82
+# 2325px print file — up to 2.4MB, and 31.6MB for the twenty-five of them —
+# which the browser was downloading in full to draw a 48px tile. So a page is
+# stored three ways, the shape Pearl settled on: `raw` is the print file and
+# what the order ships; `display` is what the editor shows on screen;
+# `thumbnail` is what the page strip draws. Measured over this book:
+# raw 31.58MB · display 0.78MB (32KB a page) · thumbnail 0.17MB (7KB a page).
+#
+# Made once, at render time, beside the print files — never on request.
+VARIANTS = {"display": (900, 82), "thumbnail": (300, 85)}
 
 
-def _screen_copy(png: bytes) -> bytes | None:
-    """A page as the editor should see it. None if it can't be made — a
-    screen copy is a convenience, never a reason to fail a render."""
+def _variant_bytes(png: bytes, size: int, quality: int) -> bytes | None:
+    """One derivative of a page. None if it can't be made — a smaller copy is
+    a convenience, never a reason to fail a render."""
     try:
         from PIL import Image
 
         im = Image.open(io.BytesIO(png)).convert("RGB")
-        if im.width > SCREEN_WIDTH:
-            im = im.resize(
-                (SCREEN_WIDTH, round(im.height * SCREEN_WIDTH / im.width)),
-                Image.LANCZOS,
-            )
+        im.thumbnail((size, size), Image.LANCZOS)
         buf = io.BytesIO()
-        im.save(buf, "WEBP", quality=SCREEN_QUALITY, method=4)
+        im.save(buf, "WEBP", quality=quality, method=4)
         return buf.getvalue()
     except Exception:  # noqa: BLE001 - never fail a render for a thumbnail
-        logger.warning("screen copy failed", exc_info=True)
+        logger.warning("page variant failed", exc_info=True)
         return None
 
 
-def screen_pages(rendering: GiftRendering) -> dict[str, str]:
-    """The screen copies of a many-file design, key → s3 key. Empty for a
-    book rendered before they existed, which then shows its print files."""
-    return dict((rendering.rendering_metadata or {}).get("page_screens") or {})
+def page_variants(rendering: GiftRendering, variant: str) -> dict[str, str]:
+    """The pages of a many-file design at one size, key → s3 key. Empty for a
+    book rendered before that size existed, which then shows its print
+    files."""
+    store = (rendering.rendering_metadata or {}).get("page_variants") or {}
+    return dict(store.get(variant) or {})
 
 
 def print_pages(rendering: GiftRendering) -> dict[str, str]:
@@ -322,14 +323,21 @@ def print_pages(rendering: GiftRendering) -> dict[str, str]:
 
 
 def book_pages(rendering: GiftRendering) -> list[dict]:
-    """The book's pages for the editor: in order, with kind, photo slots and a
-    presigned URL once rendered. Empty for anything that isn't a book."""
+    """The book's pages for the editor: in order, with kind, photo slots, a
+    presigned URL for the page on screen and one for its strip thumbnail.
+    Empty for anything that isn't a book."""
     plan = (rendering.rendering_metadata or {}).get("book_plan") or []
-    # the screen copy where there is one; the print file for books drawn
-    # before there were, so an old book still shows its pages
-    keys = {**print_pages(rendering), **screen_pages(rendering)}
+    # each size where there is one; the print file for books drawn before
+    # there were, so an old book still shows its pages
+    raw = print_pages(rendering)
+    display = {**raw, **page_variants(rendering, "display")}
+    thumb = {**display, **page_variants(rendering, "thumbnail")}
     return [
-        {**p, "url": presigned_get_url(keys[p["key"]]) if p["key"] in keys else None}
+        {
+            **p,
+            "url": presigned_get_url(display[p["key"]]) if p["key"] in display else None,
+            "thumb_url": presigned_get_url(thumb[p["key"]]) if p["key"] in thumb else None,
+        }
         for p in plan
     ]
 
@@ -470,7 +478,8 @@ def render_rendering(rendering_id: uuid.UUID) -> None:
         put_object(key=key, body=png, content_type="image/png")
         # a many-file design keeps its print files beside the one it shows
         if files:
-            pages, screens = {}, {}
+            pages: dict[str, str] = {}
+            variants: dict[str, dict[str, str]] = {v: {} for v in VARIANTS}
             for page_key, body in files.items():
                 pk = object_key(
                     family_id=birth.family_id,
@@ -479,17 +488,19 @@ def render_rendering(rendering_id: uuid.UUID) -> None:
                 )
                 put_object(key=pk, body=body, content_type="image/png")
                 pages[page_key] = pk
-                small = _screen_copy(body)
-                if small is not None:
-                    sk = object_key(
+                for variant, (size, quality) in VARIANTS.items():
+                    small = _variant_bytes(body, size, quality)
+                    if small is None:
+                        continue
+                    vk = object_key(
                         family_id=birth.family_id,
                         birth_id=birth.id,
-                        filename=f"gifts/{rendering.id}-{page_key}-screen.webp",
+                        filename=f"gifts/{rendering.id}-{page_key}-{variant}.webp",
                     )
-                    put_object(key=sk, body=small, content_type="image/webp")
-                    screens[page_key] = sk
+                    put_object(key=vk, body=small, content_type="image/webp")
+                    variants[variant][page_key] = vk
             metadata["pages"] = pages
-            metadata["page_screens"] = screens
+            metadata["page_variants"] = variants
         rendering.artwork_s3_key = key
         rendering.rendering_metadata = metadata
         rendering.status = GiftRenderingStatus.ready

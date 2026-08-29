@@ -689,7 +689,8 @@ export default function GiftWizard({
                     <div ref={stripRef} className="flex-1 min-w-0 flex gap-1.5 overflow-x-auto pt-1 pb-2 px-0.5 thin-scrollbar">
                       {pageKeys.map((key, idx) => {
                         const pg = idx > 0 ? pages[idx - 1] : null;
-                        const url = idx === 0 ? rendering.artwork_url : pg?.url;
+                        // the strip is a thumbnail's job — 7KB a page, not 32
+                        const url = idx === 0 ? rendering.artwork_url : (pg?.thumb_url || pg?.url);
                         const e = pg?.editable ? editableIdxOf(pg) : -1;
                         const plusHere = e >= 0 ? e === insertAt - 1 : idx === firstEditableStrip - 1 && insertAt === 0;
                         return (

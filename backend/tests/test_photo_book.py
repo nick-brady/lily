@@ -211,32 +211,43 @@ def test_choices_from_before_pages_carried_photos_still_apply():
 # ── what the editor is served ──────────────────────────────────────────────
 
 
-def test_the_editor_gets_the_screen_copy_and_the_order_the_print_file():
+def test_the_editor_gets_the_small_copies_and_the_order_the_print_file():
     from repositories import gifts as repo
 
     class R:
         rendering_metadata = {
             "book_plan": [{"key": "page_1", "kind": "title"}, {"key": "page_2", "kind": "notes"}],
             "pages": {"page_1": "print/1.png", "page_2": "print/2.png", "cover": "print/c.png"},
-            "page_screens": {"page_1": "screen/1.webp"},
+            "page_variants": {
+                "display": {"page_1": "display/1.webp"},
+                "thumbnail": {"page_1": "thumb/1.webp"},
+            },
         }
 
+    # the order ships the print file whatever the editor is shown
     assert repo.print_pages(R())["page_1"] == "print/1.png"
-    urls = {p["key"]: p["url"] for p in repo.book_pages(R())}
-    # the screen copy where there is one; the print file where there isn't yet
-    assert "screen/1.webp" in urls["page_1"]
-    assert "print/2.png" in urls["page_2"]
+    by_key = {p["key"]: p for p in repo.book_pages(R())}
+    assert "display/1.webp" in by_key["page_1"]["url"]
+    assert "thumb/1.webp" in by_key["page_1"]["thumb_url"]
+    # a page drawn before the small copies existed still shows, at print size
+    assert "print/2.png" in by_key["page_2"]["url"]
+    assert "print/2.png" in by_key["page_2"]["thumb_url"]
 
 
-def test_a_screen_copy_is_small_and_never_fails_a_render():
+def test_each_variant_is_smaller_than_the_last_and_never_fails_a_render():
     import io
     from PIL import Image
     from repositories import gifts as repo
 
     buf = io.BytesIO()
     Image.new("RGB", (2325, 2325), "white").save(buf, "PNG")
-    small = repo._screen_copy(buf.getvalue())
-    assert small and len(small) < len(buf.getvalue())
-    assert Image.open(io.BytesIO(small)).width == repo.SCREEN_WIDTH
+    page = buf.getvalue()
+    sizes = {}
+    for variant, (size, quality) in repo.VARIANTS.items():
+        out = repo._variant_bytes(page, size, quality)
+        assert out and len(out) < len(page)
+        assert Image.open(io.BytesIO(out)).width == size
+        sizes[variant] = size
+    assert sizes["thumbnail"] < sizes["display"]
     # a body that isn't an image doesn't take the render down with it
-    assert repo._screen_copy(b"not a png") is None
+    assert repo._variant_bytes(b"not a png", 300, 85) is None

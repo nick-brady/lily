@@ -727,7 +727,8 @@ class GiftRenderingOut(BaseModel):
     photo_slots: dict[str, uuid.UUID] = {}
     photo_slots_effective: list[Optional[uuid.UUID]] = []
     # The book: its pages in order — key, kind, which photo slots each holds,
-    # and a URL for the rendered page once there is one.
+    # a URL for the page on screen and one for its strip thumbnail, once
+    # there is one.
     pages: list[dict] = []
     layout_overrides: dict = {}
     photo_crop: dict[str, list[float]] = {}
