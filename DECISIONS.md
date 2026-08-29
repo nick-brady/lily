@@ -910,3 +910,53 @@ Notes and milestones don't get ticks. Milestones always stay; notes are
 capped at eight, sampled evenly, before any photo is thinned — and that
 stays automatic. A single roll of every moment with a shared budget was
 considered and declined (2026-08-27) as too much editor for the gain.
+
+## A gallery page in the book carries its own photos
+
+*2026-08-28.* Moving a gallery page did nothing you could see. Photo slots
+are handed out by walking the finished page list (`plan_book`), and the day's
+photos fill slots 0, 1, 2… in order — so a page moved, the photos were
+re-dealt by the new positions, and everything landed where it started.
+Swapping two gallery pages produced a byte-identical plan. Moving a gallery
+*past a notes or ruled page* did work; gallery-past-gallery was a no-op.
+
+A gallery page now carries its photos in the arrangement:
+`{"kind": "gallery", "count": 2, "photos": [media_id, …]}`. Moving the page
+moves them; choosing a photo writes it onto the page rather than into a
+numbered slot; the auto sample fills only what a page hasn't been given.
+`book_slot_choices` turns the pages back into the slot→photo map the renderer
+wants, with any index-keyed `photo_slots` from before as its base, so a book
+arranged under the old shape keeps its picks.
+
+The same reason the story's photos are ticked rather than placed: what the
+parent moves should carry what's on it. Crops on the book key by media id for
+the same reason — a slot number means nothing once pages move. The wall and
+the filmstrips keep index-keyed crops: their slots are fixed positions.
+
+The first rearrange pins every gallery page to the photo it was showing.
+That's the point — from then on the order is the parent's, not the day's —
+and *Reset to default* hands it back.
+
+## The book's editor shows the parent's pages, not the printer's twenty-four
+
+*2026-08-28.* The strip padded itself to twenty-four with ruled filler pages,
+so removing a page appeared to do nothing: the count never moved, and a
+filler quietly took the removed page's place. Telling the parent how many
+were "still free to fill" made the arithmetic visible but kept the padding in
+their book, which isn't theirs.
+
+The strip now shows only the pages the parent has made — remove one and it
+says *Page 19 of 19*. The partner still binds twenty-four and no other
+number, so at **Next** a shorter book is told what will happen: *"Your book
+has 19 pages. The book is bound with twenty-four pages, so we need to add 5
+ruled pages at the back, for writing in. If you'd prefer, you can go back and
+fill it yourself."* **Add them and continue**, or **Go back** and
+fill them yourself. The + is refused only at twenty-four.
+
+> "have a warning where it actually does decrease the pages … they can either
+> continue, hit go back, or cancel, so they can add the pages themselves"
+
+Nothing about the printed book changed — `plan_book` fills to twenty-four
+exactly as before. The fillers simply stop pretending to be the parent's
+pages before they've agreed to them, which is why the arrangement the editor
+sends no longer carries them.

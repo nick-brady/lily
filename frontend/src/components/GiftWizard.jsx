@@ -315,7 +315,16 @@ export default function GiftWizard({
   // Next commits the draft and re-renders at print resolution. Only then does
   // the mockup question arise — and only if something actually changed, so
   // someone who liked what they saw spends none of the partner's budget.
-  const goToProduct = async () => {
+  // The partner binds twenty-four pages. A book left shorter isn't refused —
+  // it's filled with ruled pages at the back — but that's the parent's to
+  // know before they see it on the product, not a surprise in the preview.
+  const [fillAsk, setFillAsk] = useState(false);
+  const goToProduct = async (confirmed) => {
+    if (isBook && roomLeft > 0 && confirmed !== true) {
+      setFillAsk(true);
+      return;
+    }
+    setFillAsk(false);
     if (!dirty) {
       setStep(1);
       return;
@@ -345,9 +354,14 @@ export default function GiftWizard({
     }
   };
 
-  // The book: its pages, and which one is on screen. `pages` is the saved
-  // plan — kind and slots per page — with a URL once each has been drawn.
-  const pages = isBook ? planPages || rendering.pages || [] : [];
+  // The book: its pages, and which one is on screen. `allPages` is the plan
+  // the server drew up — always the twenty-four the partner binds. The ruled
+  // fillers at the back aren't the parent's pages, though: they're what we'd
+  // add to reach twenty-four, and they're kept out of the strip until the
+  // parent has seen the offer. `pages` is the book as they've made it.
+  const allPages = isBook ? planPages || rendering.pages || [] : [];
+  const pages = allPages.filter((pg) => pg.spare == null);
+  const filling = allPages.length - pages.length;
   const pageKeys = isBook ? ['cover_front', ...pages.map((pg) => pg.key)] : [];
   const currentPage = isBook && pageIdx > 0 ? pages[pageIdx - 1] : null;
   const savedPageUrl = isBook
@@ -377,10 +391,10 @@ export default function GiftWizard({
     pages.filter((pg) => pg.editable).map((pg) => ({
       kind: pg.kind,
       count: pg.count,
-      // a filler ruled page stays a filler — after the milestones — not a day page
-      ...(pg.spare != null ? { spare: pg.spare } : {}),
       // a ruled page's own words ride along; the book's defaults don't
       ...(pg.kind === 'write_in' && pg.custom ? { heading: pg.heading, subheading: pg.subheading } : {}),
+      // and a gallery page carries its photos, so moving the page moves them
+      ...(pg.kind === 'gallery' && pg.photos ? { photos: pg.photos } : {}),
     }));
   // The words on a ruled page. Typing changes the arrangement (or the pen
   // pages) and the strip's copy of the page at once, then previews — no
@@ -423,11 +437,11 @@ export default function GiftWizard({
           return { ...pg, url: same ? was.url : null };
         }),
       );
-      const keys = ['cover_front', ...fresh.map((pg) => pg.key)];
+      const keys = ['cover_front', ...fresh.filter((pg) => pg.spare == null).map((pg) => pg.key)];
       const idx = focusKeyIdx == null ? Math.min(pageIdx, keys.length - 1) : Math.max(0, Math.min(keys.length - 1, focusKeyIdx));
       setPageIdx(idx);
       pageKeyRef.current = keys[idx];
-      const pg = idx > 0 ? fresh[idx - 1] : null;
+      const pg = idx > 0 ? fresh.filter((q) => q.spare == null)[idx - 1] : null;
       if (pg?.slots?.length) setActiveSlot(pg.slots[0]);
       schedulePreview(draftNext);
     } catch (err) {
@@ -465,10 +479,40 @@ export default function GiftWizard({
     rearrange(day, firstEditableStrip + to);
   };
   // the photo a slot will show: the draft's pick, else the last render's
-  const photoFor = (slot) => draft.slots?.[slot] ?? rendering.photo_slots_effective?.[slot] ?? null;
+  const pageOf = (slot) => pages.find((pg) => pg.kind === 'gallery' && (pg.slots || []).includes(slot));
+  const photoFor = (slot) => {
+    if (isBook) {
+      const pg = pageOf(slot);
+      const at = pg ? pg.slots.indexOf(slot) : -1;
+      if (at >= 0 && pg.photos?.[at]) return pg.photos[at];
+    }
+    return draft.slots?.[slot] ?? rendering.photo_slots_effective?.[slot] ?? null;
+  };
+  // Putting a photo on the book: it goes onto the page, not into a numbered
+  // slot — the page keeps it wherever the page ends up.
+  const setPagePhoto = (slot, mediaId) => {
+    const pg = pageOf(slot);
+    const at = pg ? pg.slots.indexOf(slot) : -1;
+    if (at < 0) return;
+    const day = arrangement();
+    const e = editableIdxOf(pg);
+    if (e < 0) return;
+    const photos = [...(day[e].photos || pg.photos || [])];
+    while (photos.length < pg.count) photos.push(null);
+    photos[at] = mediaId;
+    day[e] = { ...day[e], photos };
+    const draftNext = { ...draft, pages: day };
+    setPlanPages(pages.map((p) => (p === pg ? { ...p, photos, url: null } : p)));
+    setDraft(draftNext);
+    setDirty(true);
+    schedulePreview(draftNext);
+  };
   // where the + tile sits and where a new page goes: after the current day
   // page, else at the end of the day section
   const insertAt = editableIdx >= 0 ? editableIdx + 1 : editablePages.length;
+  // How many pages the partner would add to reach the twenty-four it binds.
+  // Not shown while arranging — it's the question asked at Next.
+  const roomLeft = filling;
   const [adding, setAdding] = useState(false);
   const addPageAt = (spec) => {
     const day = arrangement();
@@ -514,7 +558,7 @@ export default function GiftWizard({
     >
       <div
         className="animate-slide-up w-full sm:max-w-6xl bg-white dark:bg-gray-900
-                   rounded-t-2xl sm:rounded-2xl shadow-xl max-h-[94vh] sm:h-[94vh] flex flex-col"
+                   rounded-t-2xl sm:rounded-2xl shadow-xl max-h-[94vh] sm:h-[94vh] flex flex-col relative"
         onClick={(e) => e.stopPropagation()}
       >
         <header
@@ -548,6 +592,39 @@ export default function GiftWizard({
         {error && (
           <div className="mx-5 mt-4 p-3 rounded-lg bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-300 text-sm">
             {error}
+          </div>
+        )}
+
+        {fillAsk && (
+          <div className="absolute inset-0 z-10 bg-black/30 flex items-center justify-center p-6 rounded-2xl">
+            <div
+              className="w-full sm:max-w-sm bg-white dark:bg-gray-900 rounded-2xl shadow-xl p-5 space-y-3"
+              role="dialog"
+              aria-modal="true"
+            >
+              <h3 className="text-base font-semibold t-ink">
+                Your book has {pages.length} page{pages.length === 1 ? '' : 's'}
+              </h3>
+              <p className="text-sm t-muted">
+                The book is bound with twenty-four pages, so we need to add {roomLeft}{' '}
+                ruled page{roomLeft === 1 ? '' : 's'} at the back, for writing in. If
+                you&rsquo;d prefer, you can go back and fill it yourself.
+              </p>
+              <button
+                type="button"
+                onClick={() => goToProduct(true)}
+                className="w-full py-3 rounded-xl text-sm font-medium t-btn-accent"
+              >
+                Add {roomLeft === 1 ? 'it' : 'them'} and continue
+              </button>
+              <button
+                type="button"
+                onClick={() => setFillAsk(false)}
+                className="w-full py-2 rounded-xl text-sm text-gray-600 dark:text-gray-300"
+              >
+                Go back
+              </button>
+            </div>
           </div>
         )}
 
@@ -675,10 +752,11 @@ export default function GiftWizard({
                               <button
                                 type="button"
                                 onClick={() => setAdding((v) => !v)}
+                                disabled={roomLeft === 0}
                                 aria-label="Add a page here"
-                                title="Add a page here"
+                                title={roomLeft === 0 ? 'The book is full at twenty-four pages — remove one to make room' : 'Add a page here'}
                                 aria-expanded={adding}
-                                className="flex-none w-12 h-12 rounded border-2 border-dashed text-lg leading-none t-muted hover:t-ink"
+                                className="flex-none w-12 h-12 rounded border-2 border-dashed text-lg leading-none t-muted hover:t-ink disabled:opacity-30 disabled:hover:t-muted"
                                 style={{ borderColor: adding ? 'var(--t-accent)' : 'var(--t-soft-ring)' }}
                               >
                                 +
@@ -697,12 +775,13 @@ export default function GiftWizard({
                     {currentPage?.kind === 'write_in' ? ' — ruled, for a pen' : ''}
                     {currentPage?.kind === 'notes' ? " — the family's notes" : ''}
                   </p>
+
                   {/* Arranging the middle of the book. The title, clock, pool,
                       milestones, the two pages for a pen and the closing stay
                       where they are; everything between is the parent's — the
-                      × removes, ‹ › move, the + adds. The book is always
-                      24 pages: a page added takes the place of a ruled one, a
-                      page removed becomes one. */}
+                      × removes, ‹ › move, the + adds. The partner binds
+                      twenty-four pages and no other number, so a book left
+                      shorter is offered the rest as ruled pages at Next. */}
                   {adding && (
                     <div className="flex flex-wrap items-center justify-center gap-2 mt-2 text-[11px]">
                       <span className="t-faint">Add a page of:</span>
@@ -1044,9 +1123,9 @@ export default function GiftWizard({
                                   : 'var(--t-soft-ring)',
                             }}
                           >
-                            {draft.slots?.[i] ? (
+                            {photoFor(i) ? (
                               <img
-                                src={api.mediaUrl(draft.slots[i])}
+                                src={api.mediaUrl(photoFor(i))}
                                 alt=""
                                 className="absolute inset-0 w-full h-full object-cover"
                               />
@@ -1083,9 +1162,8 @@ export default function GiftWizard({
                         type="button"
                         onClick={() => {
                           if (visibleSlots.length > 0) {
-                            edit({
-                              slots: { ...draft.slots, [activeSlot]: photo.media_id },
-                            });
+                            if (isBook) setPagePhoto(activeSlot, photo.media_id);
+                            else edit({ slots: { ...draft.slots, [activeSlot]: photo.media_id } });
                             // filling in order is the common case
                             setActiveSlot((cur) => {
                               const k = visibleSlots.indexOf(cur);
@@ -1099,7 +1177,7 @@ export default function GiftWizard({
                         style={{
                           borderColor: (
                             visibleSlots.length > 0
-                              ? draft.slots?.[activeSlot] === photo.media_id
+                              ? photoFor(activeSlot) === photo.media_id
                               : draft.mediaId === photo.media_id && !draft.removed
                           )
                             ? 'var(--t-accent)'
@@ -1119,9 +1197,11 @@ export default function GiftWizard({
                       going into. Drag it to move; zoom in to shrink it, out
                       until it's as large as the photo allows. */}
                   {(() => {
-                    const key = visibleSlots.length > 0 ? String(activeSlot) : 'hero';
-                    const mediaId = visibleSlots.length > 0 ? draft.slots?.[activeSlot] : (draft.mediaId && !draft.removed ? draft.mediaId : null);
+                    const mediaId = visibleSlots.length > 0 ? photoFor(activeSlot) : (draft.mediaId && !draft.removed ? draft.mediaId : null);
                     if (!mediaId) return null;
+                    // the book crops by the photo, not the slot: a page's
+                    // photos move with it, so a numbered slot means nothing
+                    const key = visibleSlots.length === 0 ? 'hero' : isBook ? mediaId : String(activeSlot);
                     const aspect = visibleSlots.length > 0
                       ? (rendering.slot_frame_aspects || [])[activeSlot] || 1
                       : rendering.hero_frame_aspect || 1;
@@ -1392,7 +1472,7 @@ function NextButton({ saving, onClick }) {
 function PageGlyph({ page, idx, photoFor }) {
   if (!page) return idx === 0 ? 'cover' : idx;
   if (page.kind === 'gallery') {
-    const ids = (page.slots || []).map(photoFor);
+    const ids = page.photos?.length ? page.photos : (page.slots || []).map(photoFor);
     const n = ids.length;
     const cols = n <= 1 ? 1 : 2;
     return (
