@@ -948,8 +948,9 @@ their book, which isn't theirs.
 The strip now shows only the pages the parent has made — remove one and it
 says *Page 19 of 19*. The partner still binds twenty-four and no other
 number, so at **Next** a shorter book is told what will happen: *"Your book
-has 19 pages. It's bound with twenty-four, so we'll add 5 ruled pages at the
-back — lined, for writing in."* **Add them and continue**, or **Go back** and
+has 19 pages. The book is bound with twenty-four pages, so we need to add 5
+ruled pages at the back, for writing in. If you'd prefer, you can go back and
+fill it yourself."* **Add them and continue**, or **Go back** and
 fill them yourself. The + is refused only at twenty-four.
 
 > "have a warning where it actually does decrease the pages … they can either

@@ -606,9 +606,9 @@ export default function GiftWizard({
                 Your book has {pages.length} page{pages.length === 1 ? '' : 's'}
               </h3>
               <p className="text-sm t-muted">
-                It&rsquo;s bound with twenty-four, so we&rsquo;ll add {roomLeft} ruled{' '}
-                page{roomLeft === 1 ? '' : 's'} at the back — lined, for writing in. Or go
-                back and fill {roomLeft === 1 ? 'it' : 'them'} yourself.
+                The book is bound with twenty-four pages, so we need to add {roomLeft}{' '}
+                ruled page{roomLeft === 1 ? '' : 's'} at the back, for writing in. If
+                you&rsquo;d prefer, you can go back and fill it yourself.
               </p>
               <button
                 type="button"
