@@ -381,6 +381,8 @@ export default function GiftWizard({
       ...(pg.spare != null ? { spare: pg.spare } : {}),
       // a ruled page's own words ride along; the book's defaults don't
       ...(pg.kind === 'write_in' && pg.custom ? { heading: pg.heading, subheading: pg.subheading } : {}),
+      // and a gallery page carries its photos, so moving the page moves them
+      ...(pg.kind === 'gallery' && pg.photos ? { photos: pg.photos } : {}),
     }));
   // The words on a ruled page. Typing changes the arrangement (or the pen
   // pages) and the strip's copy of the page at once, then previews — no
@@ -465,7 +467,34 @@ export default function GiftWizard({
     rearrange(day, firstEditableStrip + to);
   };
   // the photo a slot will show: the draft's pick, else the last render's
-  const photoFor = (slot) => draft.slots?.[slot] ?? rendering.photo_slots_effective?.[slot] ?? null;
+  const pageOf = (slot) => pages.find((pg) => pg.kind === 'gallery' && (pg.slots || []).includes(slot));
+  const photoFor = (slot) => {
+    if (isBook) {
+      const pg = pageOf(slot);
+      const at = pg ? pg.slots.indexOf(slot) : -1;
+      if (at >= 0 && pg.photos?.[at]) return pg.photos[at];
+    }
+    return draft.slots?.[slot] ?? rendering.photo_slots_effective?.[slot] ?? null;
+  };
+  // Putting a photo on the book: it goes onto the page, not into a numbered
+  // slot — the page keeps it wherever the page ends up.
+  const setPagePhoto = (slot, mediaId) => {
+    const pg = pageOf(slot);
+    const at = pg ? pg.slots.indexOf(slot) : -1;
+    if (at < 0) return;
+    const day = arrangement();
+    const e = editableIdxOf(pg);
+    if (e < 0) return;
+    const photos = [...(day[e].photos || pg.photos || [])];
+    while (photos.length < pg.count) photos.push(null);
+    photos[at] = mediaId;
+    day[e] = { ...day[e], photos };
+    const draftNext = { ...draft, pages: day };
+    setPlanPages(pages.map((p) => (p === pg ? { ...p, photos, url: null } : p)));
+    setDraft(draftNext);
+    setDirty(true);
+    schedulePreview(draftNext);
+  };
   // where the + tile sits and where a new page goes: after the current day
   // page, else at the end of the day section
   const insertAt = editableIdx >= 0 ? editableIdx + 1 : editablePages.length;
@@ -1044,9 +1073,9 @@ export default function GiftWizard({
                                   : 'var(--t-soft-ring)',
                             }}
                           >
-                            {draft.slots?.[i] ? (
+                            {photoFor(i) ? (
                               <img
-                                src={api.mediaUrl(draft.slots[i])}
+                                src={api.mediaUrl(photoFor(i))}
                                 alt=""
                                 className="absolute inset-0 w-full h-full object-cover"
                               />
@@ -1083,9 +1112,8 @@ export default function GiftWizard({
                         type="button"
                         onClick={() => {
                           if (visibleSlots.length > 0) {
-                            edit({
-                              slots: { ...draft.slots, [activeSlot]: photo.media_id },
-                            });
+                            if (isBook) setPagePhoto(activeSlot, photo.media_id);
+                            else edit({ slots: { ...draft.slots, [activeSlot]: photo.media_id } });
                             // filling in order is the common case
                             setActiveSlot((cur) => {
                               const k = visibleSlots.indexOf(cur);
@@ -1099,7 +1127,7 @@ export default function GiftWizard({
                         style={{
                           borderColor: (
                             visibleSlots.length > 0
-                              ? draft.slots?.[activeSlot] === photo.media_id
+                              ? photoFor(activeSlot) === photo.media_id
                               : draft.mediaId === photo.media_id && !draft.removed
                           )
                             ? 'var(--t-accent)'
@@ -1119,9 +1147,11 @@ export default function GiftWizard({
                       going into. Drag it to move; zoom in to shrink it, out
                       until it's as large as the photo allows. */}
                   {(() => {
-                    const key = visibleSlots.length > 0 ? String(activeSlot) : 'hero';
-                    const mediaId = visibleSlots.length > 0 ? draft.slots?.[activeSlot] : (draft.mediaId && !draft.removed ? draft.mediaId : null);
+                    const mediaId = visibleSlots.length > 0 ? photoFor(activeSlot) : (draft.mediaId && !draft.removed ? draft.mediaId : null);
                     if (!mediaId) return null;
+                    // the book crops by the photo, not the slot: a page's
+                    // photos move with it, so a numbered slot means nothing
+                    const key = visibleSlots.length === 0 ? 'hero' : isBook ? mediaId : String(activeSlot);
                     const aspect = visibleSlots.length > 0
                       ? (rendering.slot_frame_aspects || [])[activeSlot] || 1
                       : rendering.hero_frame_aspect || 1;
@@ -1392,7 +1422,7 @@ function NextButton({ saving, onClick }) {
 function PageGlyph({ page, idx, photoFor }) {
   if (!page) return idx === 0 ? 'cover' : idx;
   if (page.kind === 'gallery') {
-    const ids = (page.slots || []).map(photoFor);
+    const ids = page.photos?.length ? page.photos : (page.slots || []).map(photoFor);
     const n = ids.length;
     const cols = n <= 1 ? 1 : 2;
     return (

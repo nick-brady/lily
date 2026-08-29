@@ -428,6 +428,9 @@ def _page_spec(pg: dict) -> dict:
     spec = {"kind": str(pg.get("kind") or "")}
     if pg.get("count") is not None:
         spec["count"] = int(pg["count"])
+    photos = pg.get("photos")
+    if isinstance(photos, list) and any(photos):
+        spec["photos"] = [str(m) if m else None for m in photos[:4]]
     if pg.get("spare") is not None and pg.get("spare") is not False:
         spec["spare"] = int(pg["spare"]) if not isinstance(pg["spare"], bool) else 0
     for k, cap in (("heading", gift_artwork.WRITE_IN_HEADING_MAX), ("subheading", gift_artwork.WRITE_IN_SUB_MAX)):

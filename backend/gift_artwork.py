@@ -1722,18 +1722,26 @@ def slot_overrides(rendering, slot_count: int) -> dict[int, str]:
 
 
 def _slot_photos(
-    db: Session, birth: Birth, rendering, n: int, *, photo_max_px: int
+    db: Session, birth: Birth, rendering, n: int, *, photo_max_px: int,
+    choices: dict[int, str] | None = None, crop_by_media: bool = False,
 ) -> list[dict]:
     """The photos for an n-panel design: the auto sample across the day, with
     the parent's per-slot choices laid over it. A choice replaces its slot's
     auto pick; the other slots keep theirs. A chosen photo that has since
     been deleted falls back to the auto pick rather than failing — same
     posture as the single-photo designs. Each comes back with its data URI,
-    caption, time and media id."""
+    caption, time and media id.
+
+    `choices` overrides where the choices come from — the book's come off its
+    pages, which carry their own photos so a page keeps them when it moves.
+    `crop_by_media` keys each crop by the photo rather than the slot, for the
+    same reason: the slot a photo sits in is not a fixed thing there."""
     refs = _reel_refs(db, birth)
     chosen = _sample_spaced(refs, n)
     by_id = {r["media_id"]: r for r in refs}
-    for i, media_id in sorted(slot_overrides(rendering, n).items()):
+    if choices is None:
+        choices = slot_overrides(rendering, n)
+    for i, media_id in sorted(choices.items()):
         ref = by_id.get(media_id) or _keepsake_ref(db, birth, media_id)
         if ref is None:
             continue
@@ -1751,7 +1759,7 @@ def _slot_photos(
         photos.append(
             {
                 "uri": uri,
-                "w": w, "h": h, "crop": photo_crop(rendering, i),
+                "w": w, "h": h, "crop": photo_crop(rendering, ref["media_id"] if crop_by_media else i),
                 "caption": ref["caption"],
                 "caption_full": ref.get("caption_full", ""),
                 "event_id": ref.get("event_id"),
@@ -2295,17 +2303,45 @@ def book_plan_for(db: Session, birth: Birth, rendering, day: list[dict] | None) 
     has_marks = bool(stats.first_contraction_at) and any(has_mark(m["kind"]) for m in _gather_milestones(db, birth, stats))
     lo = (getattr(rendering, "layout_overrides", None) or {}) if rendering is not None else {}
     plan = plan_book(n_photos=len(refs), n_notes=n_notes, has_pool=has_pool, has_milestones=has_marks, day=day, pen_pages=lo.get("pen_pages"))
-    return plan_pages_out(plan, birth)
+    total = sum(p.get("count", 0) for p in plan if p["kind"] == "gallery")
+    auto = [r["media_id"] for r in _sample_spaced(refs, total)]
+    auto += [None] * (total - len(auto))
+    for slot, media_id in book_slot_choices(plan, rendering, total).items():
+        if slot < len(auto):
+            auto[slot] = media_id
+    return plan_pages_out(plan, birth, auto)
 
 
-def plan_pages_out(plan: list[dict], birth: Birth) -> list[dict]:
+def book_slot_choices(plan: list[dict], rendering, n_slots: int) -> dict[int, str]:
+    """Slot → the photo the parent put there, taken off the pages that carry
+    their own. A gallery page holds its photos, so moving the page moves
+    them; the index-keyed choices from before pages did are the base, for
+    books arranged under the old shape."""
+    out = {i: m for i, m in slot_overrides(rendering, n_slots).items()}
+    for page in plan:
+        if page["kind"] != "gallery":
+            continue
+        for slot, media_id in zip(page.get("slots", []), page.get("photos") or []):
+            if media_id:
+                out[slot] = str(media_id)
+    return out
+
+
+def plan_pages_out(plan: list[dict], birth: Birth, slot_media: list | None = None) -> list[dict]:
     """The plan as the editor sees it: key, kind, slots, count, whether the
-    page is the parent's to move — and for a ruled page, what it says and
-    whether those are the parent's words."""
+    page is the parent's to move — for a ruled page what it says, and for a
+    gallery page which photos it holds, resolved (the parent's where they
+    chose, the day's own where they didn't) so the editor draws the page
+    without working it out a second time."""
     first_name = (birth.child_name or "").split()[0] if birth.child_name else ""
+    slot_media = slot_media or []
     out = []
     for p in plan:
         row = {"key": p["key"], "kind": p["kind"], "slots": p.get("slots", []), "count": p.get("count"), "editable": bool(p.get("editable"))}
+        if p["kind"] == "gallery":
+            row["photos"] = [
+                slot_media[i] if i < len(slot_media) else None for i in p.get("slots", [])
+            ]
         if p["kind"] == "write_in":
             row["heading"], row["subheading"] = write_in_text(p, first_name)
             row["custom"] = bool(p.get("words"))
@@ -2576,7 +2612,9 @@ def plan_book(
                 except (TypeError, ValueError):
                     pass
             elif kind == "gallery":
-                mid.append({"kind": "gallery", "count": max(1, min(BOOK_MAX_PER_GALLERY, int(pg.get("count") or 1)))})
+                count = max(1, min(BOOK_MAX_PER_GALLERY, int(pg.get("count") or 1)))
+                photos = [str(m) if m else None for m in (pg.get("photos") or [])][:count]
+                mid.append({"kind": "gallery", "count": count, **({"photos": photos} if any(photos) else {})})
             elif kind == "notes":
                 mid.append({"kind": "notes", "index": notes_seen}); notes_seen += 1
             elif kind == "write_in":
@@ -2718,7 +2756,10 @@ def render_book(
     lo = (getattr(rendering, "layout_overrides", None) or {}) if rendering is not None else {}
     plan = plan_book(n_photos=len(refs), n_notes=len(notes), has_pool=has_pool, has_milestones=bool(marks), day=lo.get("pages"), pen_pages=lo.get("pen_pages"))
     total_slots = sum(p.get("count", 0) for p in plan if p["kind"] == "gallery")
-    photos = _slot_photos(db, birth, rendering, total_slots, photo_max_px=photo_max_px or 1000) if total_slots else []
+    photos = _slot_photos(
+        db, birth, rendering, total_slots, photo_max_px=photo_max_px or 1000,
+        choices=book_slot_choices(plan, rendering, total_slots), crop_by_media=True,
+    ) if total_slots else []
     photos += [None] * (total_slots - len(photos))
 
     # notes: which fall in each gallery's stretch of the day, and the pages of them
@@ -2857,7 +2898,7 @@ def render_book(
         "selected_media_id": None,
         "selected_slot_media_ids": [ph["media_id"] if ph else None for ph in photos],
         "slot_frame_aspects": [(ph or {}).get("frame_aspect") or 1.0 for ph in photos],
-        "book_plan": plan_pages_out(plan, birth),
+        "book_plan": plan_pages_out(plan, birth, [ph["media_id"] if ph else None for ph in photos]),
         "stats": stats.as_metadata(),
         "child": {"name": birth.child_name, "when": when.isoformat() if when else None},
         "dimensions": {"w": template.width, "h": template.height, "dpi": template.dpi},
