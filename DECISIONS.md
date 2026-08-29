@@ -877,6 +877,89 @@ commit hash come from conversation and were checked against current behavior
 where possible. Correct anything misattributed.
 -->
 
+## The story frame's photos are ticked, not placed
+
+*2026-08-27.* The story frame borrowed the wall's editor: pick a panel, then
+choose its photo. On the wall that's the right model — the panels are free
+and any photo can sit anywhere. On the story it's a lie: a photo's place on
+the line *is* the moment it was taken, so swapping panel five for a photo
+from three hours later puts it at the wrong point in the day. The only real
+decision a parent has is which photos make the line — the line has a length
+budget (`story_thin`, an inch a photo) and drops photos evenly when the day
+has more than fit.
+
+So the story's photo section is a **roll**: every day photo in order, each
+with a tick. Ticked ones are on the frame at their true time; unticked are
+left off. The thinning picks the initial ticks; a parent's ticks are stored
+as `layout_overrides.story = {off: [...], on: [...]}` — *off* never boards,
+*on* is pinned past the thinning, and the rest stay the thinning's to
+decide, so unticking one brings the next dropped photo back on its own. When
+the line is full the remaining ticks grey out with "untick one to make room";
+nothing moves that the parent didn't move. `/gifts/{rendering}/story-roll`
+answers a draft the way `book-plan` does, so the ticks never guess.
+
+Crops on the story are keyed by the photo's media id rather than its slot
+index: positions shift as photos come and go, the photo doesn't. There is no
+upload for this design — a photo that never rode the timeline has no time
+and so no place on the line. The wall and the book keep the picker.
+
+Per-slot `photo_slots` overrides saved against the story before this are
+ignored at render, as are its old index-keyed crops.
+
+Notes and milestones don't get ticks. Milestones always stay; notes are
+capped at eight, sampled evenly, before any photo is thinned — and that
+stays automatic. A single roll of every moment with a shared budget was
+considered and declined (2026-08-27) as too much editor for the gain.
+
+## A gallery page in the book carries its own photos
+
+*2026-08-28.* Moving a gallery page did nothing you could see. Photo slots
+are handed out by walking the finished page list (`plan_book`), and the day's
+photos fill slots 0, 1, 2… in order — so a page moved, the photos were
+re-dealt by the new positions, and everything landed where it started.
+Swapping two gallery pages produced a byte-identical plan. Moving a gallery
+*past a notes or ruled page* did work; gallery-past-gallery was a no-op.
+
+A gallery page now carries its photos in the arrangement:
+`{"kind": "gallery", "count": 2, "photos": [media_id, …]}`. Moving the page
+moves them; choosing a photo writes it onto the page rather than into a
+numbered slot; the auto sample fills only what a page hasn't been given.
+`book_slot_choices` turns the pages back into the slot→photo map the renderer
+wants, with any index-keyed `photo_slots` from before as its base, so a book
+arranged under the old shape keeps its picks.
+
+The same reason the story's photos are ticked rather than placed: what the
+parent moves should carry what's on it. Crops on the book key by media id for
+the same reason — a slot number means nothing once pages move. The wall and
+the filmstrips keep index-keyed crops: their slots are fixed positions.
+
+The first rearrange pins every gallery page to the photo it was showing.
+That's the point — from then on the order is the parent's, not the day's —
+and *Reset to default* hands it back.
+
+## The book's editor shows the parent's pages, not the printer's twenty-four
+
+*2026-08-28.* The strip padded itself to twenty-four with ruled filler pages,
+so removing a page appeared to do nothing: the count never moved, and a
+filler quietly took the removed page's place. Telling the parent how many
+were "still free to fill" made the arithmetic visible but kept the padding in
+their book, which isn't theirs.
+
+The strip now shows only the pages the parent has made — remove one and it
+says *Page 19 of 19*. The partner still binds twenty-four and no other
+number, so at **Next** a shorter book is told what will happen: *"Your book
+has 19 pages. The book is bound with twenty-four pages, so we need to add 5
+ruled pages at the back, for writing in. If you'd prefer, you can go back and
+fill it yourself."* **Add them and continue**, or **Go back** and
+fill them yourself. The + is refused only at twenty-four.
+
+> "have a warning where it actually does decrease the pages … they can either
+> continue, hit go back, or cancel, so they can add the pages themselves"
+
+Nothing about the printed book changed — `plan_book` fills to twenty-four
+exactly as before. The fillers simply stop pretending to be the parent's
+pages before they've agreed to them, which is why the arrangement the editor
+sends no longer carries them.
 ## Postage is charged, per parcel, at the partner's rate
 
 *2026-08-27.* Printful bills us shipping on every order — $5–$10.50 inside

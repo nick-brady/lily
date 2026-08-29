@@ -3,6 +3,7 @@ and mockups. Purchasing lives in routes/checkout.py."""
 from __future__ import annotations
 
 import json
+import math
 import uuid
 
 from pathlib import Path
@@ -44,6 +45,7 @@ from repositories import media as media_repo
 from routes.deps import BirthAccess, require_birth_access, require_parent_access
 from schemas import (
     BookPlanOut,
+    StoryRollOut,
     GiftPhotoOptionOut,
     GiftDesignIn,
     GiftGalleryOut,
@@ -88,6 +90,7 @@ def _serialize_rendering(rendering) -> GiftRenderingOut:
         layout_overrides=rendering.layout_overrides or {},
         photo_crop=(rendering.layout_overrides or {}).get("crop") or {},
         slot_frame_aspects=(rendering.rendering_metadata or {}).get("slot_frame_aspects") or [],
+        story_roll=(rendering.rendering_metadata or {}).get("story_roll"),
         photo_slot_count=(
             len((rendering.rendering_metadata or {}).get("selected_slot_media_ids") or [])
             or (template.photo_slots if template else 0)
@@ -421,12 +424,31 @@ class _Draft:
         self.product_key = payload.product_key
 
 
+def _page_spec(pg: dict) -> dict:
+    spec = {"kind": str(pg.get("kind") or "")}
+    if pg.get("count") is not None:
+        spec["count"] = int(pg["count"])
+    photos = pg.get("photos")
+    if isinstance(photos, list) and any(photos):
+        spec["photos"] = [str(m) if m else None for m in photos[:4]]
+    if pg.get("spare") is not None and pg.get("spare") is not False:
+        spec["spare"] = int(pg["spare"]) if not isinstance(pg["spare"], bool) else 0
+    for k, cap in (("heading", gift_artwork.WRITE_IN_HEADING_MAX), ("subheading", gift_artwork.WRITE_IN_SUB_MAX)):
+        v = str(pg.get(k) or "").strip()[:cap]
+        if v:
+            spec[k] = v
+    return spec
+
+
 def _layout_overrides(payload: GiftDesignIn) -> dict:
     """The parent's arrangement, as stored: the book's pages when given, and
     the crop of any placed photo they've moved or zoomed."""
     out: dict = {}
     if payload.pages is not None:
-        out["pages"] = payload.pages
+        # only what a page can be, plus a ruled page's own words
+        out["pages"] = [_page_spec(pg) for pg in payload.pages if isinstance(pg, dict)]
+    if payload.pen_pages is not None:
+        out["pen_pages"] = [_page_spec(pg) for pg in payload.pen_pages[:2] if isinstance(pg, dict)]
     crop = {
         str(k): [float(v[0]), float(v[1]), float(v[2])]
         for k, v in (payload.crop or {}).items()
@@ -434,6 +456,11 @@ def _layout_overrides(payload: GiftDesignIn) -> dict:
     }
     if crop:
         out["crop"] = crop
+    if payload.story is not None:
+        out["story"] = {
+            side: [str(m) for m in (payload.story.get(side) or [])]
+            for side in ("off", "on")
+        }
     return out
 
 
@@ -577,6 +604,28 @@ def book_plan_preview(
     if template.scene != "book":
         raise HTTPException(status_code=400, detail="Not a book")
     return BookPlanOut(pages=gift_artwork.book_plan_for(db, access.birth, rendering, payload.pages))
+
+
+@router.post(
+    "/birth/{birth_id}/gifts/{rendering_id}/story-roll", response_model=StoryRollOut
+)
+def story_roll_preview(
+    rendering_id: uuid.UUID,
+    payload: GiftDesignIn,
+    access: BirthAccess = Depends(require_parent_access),
+    db: Session = Depends(get_db),
+) -> StoryRollOut:
+    """The story frame's photo roll for a draft — nothing drawn, nothing
+    saved. The editor asks after a tick, to learn which photos now make the
+    line: untick one and the room it frees brings back the next."""
+    rendering, template = _load_editable(db, access, rendering_id)
+    layout = gift_artwork._layout_of(template)
+    if layout.scene != "frame_story":
+        raise HTTPException(status_code=400, detail="Not the story frame")
+    edges = gift_artwork._story_edges(layout.width, layout.height)
+    straight = sum(math.hypot(b[0] - a[0], b[1] - a[1]) for a, b, _ in edges)
+    roll = gift_artwork.story_roll(db, access.birth, _Draft(rendering, payload), straight)
+    return StoryRollOut(**roll)
 
 
 @router.patch(

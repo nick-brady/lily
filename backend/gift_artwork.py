@@ -268,6 +268,7 @@ def render(
     photo, when, stats, layout = parts["photo"], parts["when"], parts["stats"], parts["layout"]
     # Panel provenance rides to the metadata, not to Jinja.
     slot_media_ids = context.pop("slot_media_ids", None)
+    story_roll_meta = context.pop("story_roll", None)
     # and the shape of each photo's frame, for the editor's crop rectangle
     for key in ("reel_panels", "wall_tiles", "story_photos"):
         tiles = context.get(key)
@@ -291,6 +292,9 @@ def render(
         "selected_media_id": str(photo.id) if photo else None,
         "selected_slot_media_ids": slot_media_ids,
         "slot_frame_aspects": context.pop("slot_frame_aspects", None),
+        # the story's photo roll — every day photo, on or off the line, and
+        # how many fit — so the editor can offer ticks without a round trip
+        "story_roll": story_roll_meta,
         "stats": stats.as_metadata(),
         "child": {
             "name": birth.child_name,
@@ -1718,18 +1722,26 @@ def slot_overrides(rendering, slot_count: int) -> dict[int, str]:
 
 
 def _slot_photos(
-    db: Session, birth: Birth, rendering, n: int, *, photo_max_px: int
+    db: Session, birth: Birth, rendering, n: int, *, photo_max_px: int,
+    choices: dict[int, str] | None = None, crop_by_media: bool = False,
 ) -> list[dict]:
     """The photos for an n-panel design: the auto sample across the day, with
     the parent's per-slot choices laid over it. A choice replaces its slot's
     auto pick; the other slots keep theirs. A chosen photo that has since
     been deleted falls back to the auto pick rather than failing — same
     posture as the single-photo designs. Each comes back with its data URI,
-    caption, time and media id."""
+    caption, time and media id.
+
+    `choices` overrides where the choices come from — the book's come off its
+    pages, which carry their own photos so a page keeps them when it moves.
+    `crop_by_media` keys each crop by the photo rather than the slot, for the
+    same reason: the slot a photo sits in is not a fixed thing there."""
     refs = _reel_refs(db, birth)
     chosen = _sample_spaced(refs, n)
     by_id = {r["media_id"]: r for r in refs}
-    for i, media_id in sorted(slot_overrides(rendering, n).items()):
+    if choices is None:
+        choices = slot_overrides(rendering, n)
+    for i, media_id in sorted(choices.items()):
         ref = by_id.get(media_id) or _keepsake_ref(db, birth, media_id)
         if ref is None:
             continue
@@ -1747,7 +1759,7 @@ def _slot_photos(
         photos.append(
             {
                 "uri": uri,
-                "w": w, "h": h, "crop": photo_crop(rendering, i),
+                "w": w, "h": h, "crop": photo_crop(rendering, ref["media_id"] if crop_by_media else i),
                 "caption": ref["caption"],
                 "caption_full": ref.get("caption_full", ""),
                 "event_id": ref.get("event_id"),
@@ -2054,13 +2066,16 @@ def _story_path(W: float, H: float) -> str:
     return "M " + " L ".join(f"{x:.1f},{y:.1f}" for x, y in pts)
 
 
-def story_thin(moments: list[dict], straight: float) -> list[dict]:
+def story_thin(moments: list[dict], straight: float, *, pinned: set | None = None) -> list[dict]:
     """What fits on the line at an inch a photo. Notes are capped first;
     then photos come off one at a time, evenly, until the rest fit. Every
-    milestone stays. Pure, so the choice of *which* photos is testable."""
+    milestone stays, and so does every photo whose media_id is `pinned` —
+    the parent ticked it, so the thinning chooses among the others. Pure,
+    so the choice of *which* photos is testable."""
     def wt(m):
         return STORY_WEIGHT.get(m["kind"], STORY_WEIGHT["milestone"])
 
+    pinned = pinned or set()
     notes = [m for m in moments if m["kind"] == "note"]
     if len(notes) > STORY_MAX_NOTES:
         keep = {id(m) for m in _sample_spaced(notes, STORY_MAX_NOTES)}
@@ -2068,11 +2083,34 @@ def story_thin(moments: list[dict], straight: float) -> list[dict]:
     budget = straight / (STORY_THUMB * 1.25)
     while sum(wt(m) for m in moments) > budget:
         photos = [m for m in moments if m["kind"] == "photo"]
-        if len(photos) <= STORY_MIN_PHOTOS:
+        loose = [m for m in photos if m.get("media_id") not in pinned]
+        if len(photos) <= STORY_MIN_PHOTOS or not loose:
             break
-        keep = {id(m) for m in _sample_spaced(photos, len(photos) - 1)}
-        moments = [m for m in moments if m["kind"] != "photo" or id(m) in keep]
+        keep = {id(m) for m in _sample_spaced(loose, len(loose) - 1)}
+        moments = [
+            m for m in moments
+            if m["kind"] != "photo" or m.get("media_id") in pinned or id(m) in keep
+        ]
     return moments
+
+
+def story_capacity(moments: list[dict], straight: float) -> int:
+    """How many photos the line holds beside these moments' notes and
+    milestones — the number the editor shows as "N of M fit"."""
+    photos = [m for m in moments if m["kind"] == "photo"]
+    others = [m for m in moments if m["kind"] != "photo"]
+    probe = others + [{"kind": "photo", "media_id": f"probe-{i}", "when": m["when"]} for i, m in enumerate(photos)]
+    return sum(1 for m in story_thin(probe, straight) if m["kind"] == "photo")
+
+
+def story_overrides(rendering) -> tuple[set[str], set[str]]:
+    """The parent's ticks on the story's photo roll: (off, on) as media ids.
+    `off` leaves a photo off the frame however much room there is; `on`
+    keeps it however little. Neither, and the thinning decides."""
+    raw = ((getattr(rendering, "layout_overrides", None) or {}).get("story") or {}) if rendering is not None else {}
+    off = {str(x) for x in (raw.get("off") or [])}
+    on = {str(x) for x in (raw.get("on") or [])} - off
+    return off, on
 
 
 def _weeks_label(when: datetime, due_date) -> str | None:
@@ -2263,16 +2301,61 @@ def book_plan_for(db: Session, birth: Birth, rendering, day: list[dict] | None) 
     all_events = list(db.scalars(select(TimelineEvent).where(TimelineEvent.birth_id == birth.id, TimelineEvent.deleted_at.is_(None))).all())
     stats = gift_stats.compute(birth, all_events)
     has_marks = bool(stats.first_contraction_at) and any(has_mark(m["kind"]) for m in _gather_milestones(db, birth, stats))
-    plan = plan_book(n_photos=len(refs), n_notes=n_notes, has_pool=has_pool, has_milestones=has_marks, day=day)
-    return [
-        {"key": p["key"], "kind": p["kind"], "slots": p.get("slots", []), "count": p.get("count"), "editable": bool(p.get("editable"))}
-        for p in plan
-    ]
+    lo = (getattr(rendering, "layout_overrides", None) or {}) if rendering is not None else {}
+    plan = plan_book(n_photos=len(refs), n_notes=n_notes, has_pool=has_pool, has_milestones=has_marks, day=day, pen_pages=lo.get("pen_pages"))
+    total = sum(p.get("count", 0) for p in plan if p["kind"] == "gallery")
+    auto = [r["media_id"] for r in _sample_spaced(refs, total)]
+    auto += [None] * (total - len(auto))
+    for slot, media_id in book_slot_choices(plan, rendering, total).items():
+        if slot < len(auto):
+            auto[slot] = media_id
+    return plan_pages_out(plan, birth, auto)
 
 
-def _story_moments(db: Session, birth: Birth, rendering, straight: float, *, photo_max_px: int) -> list[dict]:
-    """The timeline as moments, thinned to what fits, with the parent's
-    per-slot photo choices laid over the photos that made the cut."""
+def book_slot_choices(plan: list[dict], rendering, n_slots: int) -> dict[int, str]:
+    """Slot → the photo the parent put there, taken off the pages that carry
+    their own. A gallery page holds its photos, so moving the page moves
+    them; the index-keyed choices from before pages did are the base, for
+    books arranged under the old shape."""
+    out = {i: m for i, m in slot_overrides(rendering, n_slots).items()}
+    for page in plan:
+        if page["kind"] != "gallery":
+            continue
+        for slot, media_id in zip(page.get("slots", []), page.get("photos") or []):
+            if media_id:
+                out[slot] = str(media_id)
+    return out
+
+
+def plan_pages_out(plan: list[dict], birth: Birth, slot_media: list | None = None) -> list[dict]:
+    """The plan as the editor sees it: key, kind, slots, count, whether the
+    page is the parent's to move — for a ruled page what it says, and for a
+    gallery page which photos it holds, resolved (the parent's where they
+    chose, the day's own where they didn't) so the editor draws the page
+    without working it out a second time."""
+    first_name = (birth.child_name or "").split()[0] if birth.child_name else ""
+    slot_media = slot_media or []
+    out = []
+    for p in plan:
+        row = {"key": p["key"], "kind": p["kind"], "slots": p.get("slots", []), "count": p.get("count"), "editable": bool(p.get("editable"))}
+        if p["kind"] == "gallery":
+            row["photos"] = [
+                slot_media[i] if i < len(slot_media) else None for i in p.get("slots", [])
+            ]
+        if p["kind"] == "write_in":
+            row["heading"], row["subheading"] = write_in_text(p, first_name)
+            row["custom"] = bool(p.get("words"))
+            if "pen" in p:
+                row["pen"] = p["pen"]
+            if p.get("spare") is not None:
+                row["spare"] = p["spare"]
+        out.append(row)
+    return out
+
+
+def _story_raw(db: Session, birth: Birth) -> list[dict]:
+    """Every moment the story could show, in time order: the day's photos
+    (viewer-visible, unarchived), its notes and its marked milestones."""
     events = list(
         db.scalars(
             select(TimelineEvent)
@@ -2301,33 +2384,50 @@ def _story_moments(db: Session, birth: Birth, rendering, straight: float, *, pho
             kind = pl.get("kind")
             if kind == "born" or has_mark(kind):
                 raw.append({"kind": kind, "when": when})
-    moments = story_thin(raw, straight)
-    # the parent's choices, slot by slot, over the photos that made the cut
-    photo_slots = [m for m in moments if m["kind"] == "photo"]
-    for i, media_id in sorted(slot_overrides(rendering, len(photo_slots)).items()):
-        if i >= len(photo_slots):
-            continue
-        try:
-            asset = db.get(MediaAsset, uuid.UUID(media_id))
-        except (ValueError, TypeError):
-            continue
-        if asset is None or asset.birth_id != birth.id or asset.archived_at is not None:
-            continue
-        photo_slots[i]["asset"] = asset
-        photo_slots[i]["media_id"] = media_id
+    return raw
+
+
+def _story_moments(db: Session, birth: Birth, rendering, straight: float, *, photo_max_px: int) -> list[dict]:
+    """The timeline as moments, thinned to what fits under the parent's
+    ticks, each photo carrying its picture data and crop."""
+    raw = _story_raw(db, birth)
+    # A photo's place on the line is the moment it was taken, so there is no
+    # choosing what goes where — only whether it goes. The parent's ticks:
+    # `off` photos never board; `on` ones are safe from the thinning.
+    off, on = story_overrides(rendering)
+    candidates = [m for m in raw if m["kind"] != "photo" or m["media_id"] not in off]
+    moments = story_thin(candidates, straight, pinned=on)
     out = []
-    slot = 0
     for m in moments:
         if m["kind"] == "photo":
             data = _photo_data(m["asset"], max_px=photo_max_px)
             if data is None:
                 continue
             uri, w, h = data
-            out.append({**m, "uri": uri, "w": w, "h": h, "crop": photo_crop(rendering, slot)})
-            slot += 1
+            # cropped by the photo, not its position — positions shift as
+            # photos come and go; the photo is the same photo
+            out.append({**m, "uri": uri, "w": w, "h": h, "crop": photo_crop(rendering, m["media_id"])})
         else:
             out.append(m)
     return out
+
+
+def story_roll(db: Session, birth: Birth, rendering, straight: float) -> dict:
+    """The day's photos in order, each marked on or off the frame under the
+    parent's ticks, and how many the line holds — what the editor's roll
+    shows. Nothing drawn."""
+    raw = _story_raw(db, birth)
+    off, on = story_overrides(rendering)
+    candidates = [m for m in raw if m["kind"] != "photo" or m["media_id"] not in off]
+    kept = {m["media_id"] for m in story_thin(candidates, straight, pinned=on) if m["kind"] == "photo"}
+    return {
+        "capacity": story_capacity(raw, straight),
+        "photos": [
+            {"media_id": m["media_id"], "when": m["when"].isoformat(), "on": m["media_id"] in kept}
+            for m in raw
+            if m["kind"] == "photo"
+        ],
+    }
 
 
 def _build_frame_story_scene(
@@ -2378,6 +2478,8 @@ def _build_frame_story_scene(
             canvas_w=template.width,
         )
     )
+    # the roll for the editor: every day photo, on or off, and how many fit
+    scene["story_roll"] = story_roll(db, birth, rendering, straight)
     return scene
 
 # ── the book: the whole story, twenty-four pages and a cover ─────────────
@@ -2425,6 +2527,36 @@ BOOK_WRITE_IN = (  # headings for the ruled pages, in the order they're needed
 BOOK_PAGE_KINDS = ("gallery", "notes", "write_in")   # what a parent may add
 
 
+WRITE_IN_HEADING_MAX = 40
+WRITE_IN_SUB_MAX = 90
+
+
+def _write_in_words(pg: dict | None) -> dict:
+    """The parent's own words for a ruled page, if they gave any: {"words":
+    {"heading", "subheading"}} with each trimmed and capped, or nothing."""
+    if not pg:
+        return {}
+    words = {}
+    h = str(pg.get("heading") or "").strip()[:WRITE_IN_HEADING_MAX]
+    sub = str(pg.get("subheading") or "").strip()[:WRITE_IN_SUB_MAX]
+    if h:
+        words["heading"] = h
+    if sub:
+        words["subheading"] = sub
+    return {"words": words} if words else {}
+
+
+def write_in_text(page: dict, first_name: str) -> tuple[str, str]:
+    """What a ruled page says: the parent's words where given, the book's
+    own heading for its position otherwise — either half can be theirs."""
+    heading, sub = BOOK_WRITE_IN[page["heading"] % len(BOOK_WRITE_IN)]
+    words = page.get("words") or {}
+    return (
+        words.get("heading") or heading.format(NAME=first_name.upper()),
+        words.get("subheading") or sub.format(name=first_name),
+    )
+
+
 def plan_book(
     *,
     n_photos: int,
@@ -2432,6 +2564,7 @@ def plan_book(
     has_pool: bool,
     has_milestones: bool,
     day: list[dict] | None = None,
+    pen_pages: list[dict] | None = None,
 ) -> list[dict]:
     """Which page is which, for a story of this size. Pure, so the shape of
     the book is testable without a database.
@@ -2453,24 +2586,45 @@ def plan_book(
     carry "editable": True."""
     head = [{"kind": "title"}, {"kind": "clock"}] + ([{"kind": "pool"}] if has_pool else [])
     tail = ([{"kind": "milestones"}] if has_milestones else [])
-    tail += [{"kind": "write_in", "heading": 0}, {"kind": "write_in", "heading": 1}, {"kind": "closing"}]
+    # the two pages for a pen at the back: the book's own headings, or the
+    # parent's words for them (`pen_pages`, by position — these two never move)
+    pens = list(pen_pages or [])
+    tail += [
+        {"kind": "write_in", "heading": 0, "pen": 0, **_write_in_words(pens[0] if len(pens) > 0 else None)},
+        {"kind": "write_in", "heading": 1, "pen": 1, **_write_in_words(pens[1] if len(pens) > 1 else None)},
+        {"kind": "closing"},
+    ]
     room_all = BOOK_PAGES - len(head) - len(tail)
     if day is not None:
         # the parent's section: only kinds we can draw, gallery counts 1–4,
         # cut to the room, ruled pages to fill what's left
+        # A ruled page the editor marks `spare` is one of the fillers after
+        # the milestones, not a page the parent placed — it stays there, with
+        # any words they wrote on it, so the book keeps its shape.
         mid: list[dict] = []
+        spares_in: dict[int, dict] = {}   # by the filler's own number, not its place in the list
         notes_seen = 0
         for pg in day[:room_all]:
             kind = pg.get("kind")
-            if kind == "gallery":
-                mid.append({"kind": "gallery", "count": max(1, min(BOOK_MAX_PER_GALLERY, int(pg.get("count") or 1)))})
+            if kind == "write_in" and pg.get("spare") is not None and pg.get("spare") is not False:
+                try:
+                    spares_in[int(pg["spare"])] = pg
+                except (TypeError, ValueError):
+                    pass
+            elif kind == "gallery":
+                count = max(1, min(BOOK_MAX_PER_GALLERY, int(pg.get("count") or 1)))
+                photos = [str(m) if m else None for m in (pg.get("photos") or [])][:count]
+                mid.append({"kind": "gallery", "count": count, **({"photos": photos} if any(photos) else {})})
             elif kind == "notes":
                 mid.append({"kind": "notes", "index": notes_seen}); notes_seen += 1
             elif kind == "write_in":
-                mid.append({"kind": "write_in", "heading": 2 + sum(1 for m in mid if m["kind"] == "write_in")})
+                mid.append({"kind": "write_in", "heading": 2 + sum(1 for m in mid if m["kind"] == "write_in"), **_write_in_words(pg)})
         spare = room_all - len(mid)
         n_ruled = sum(1 for m in mid if m["kind"] == "write_in")
-        extra_write = [{"kind": "write_in", "heading": 2 + n_ruled + i} for i in range(spare)]
+        extra_write = [
+            {"kind": "write_in", "heading": 2 + n_ruled + i, "spare": i, **_write_in_words(spares_in.get(i))}
+            for i in range(spare)
+        ]
     else:
         note_pages = min(2, math.ceil(n_notes / BOOK_NOTES_PER_PAGE)) if n_notes else 0
         room = room_all - note_pages
@@ -2489,7 +2643,7 @@ def plan_book(
             at = round((j + 1) * (len(mid) + 1) / (note_pages + 1))
             mid.insert(min(at, len(mid)), {"kind": "notes", "index": j})
         spare = room - galleries
-        extra_write = [{"kind": "write_in", "heading": 2 + i} for i in range(spare)]
+        extra_write = [{"kind": "write_in", "heading": 2 + i, "spare": i} for i in range(spare)]
     for pg in mid + extra_write:
         pg["editable"] = True
 
@@ -2599,10 +2753,13 @@ def render_book(
     milestones = [(m["kind"], first + timedelta(seconds=int(m["offset_seconds"]))) for m in _gather_milestones(db, birth, stats)] if first else []
     marks = [(k, t) for k, t in milestones if has_mark(k)]
 
-    day = ((getattr(rendering, "layout_overrides", None) or {}).get("pages")) if rendering is not None else None
-    plan = plan_book(n_photos=len(refs), n_notes=len(notes), has_pool=has_pool, has_milestones=bool(marks), day=day)
+    lo = (getattr(rendering, "layout_overrides", None) or {}) if rendering is not None else {}
+    plan = plan_book(n_photos=len(refs), n_notes=len(notes), has_pool=has_pool, has_milestones=bool(marks), day=lo.get("pages"), pen_pages=lo.get("pen_pages"))
     total_slots = sum(p.get("count", 0) for p in plan if p["kind"] == "gallery")
-    photos = _slot_photos(db, birth, rendering, total_slots, photo_max_px=photo_max_px or 1000) if total_slots else []
+    photos = _slot_photos(
+        db, birth, rendering, total_slots, photo_max_px=photo_max_px or 1000,
+        choices=book_slot_choices(plan, rendering, total_slots), crop_by_media=True,
+    ) if total_slots else []
     photos += [None] * (total_slots - len(photos))
 
     # notes: which fall in each gallery's stretch of the day, and the pages of them
@@ -2683,10 +2840,10 @@ def render_book(
             rows.append({"mark": {"d": _heart_path(560, y - 14, 20), "transform": None, "stroke": 3.0}, "label": f"{base['child_name']} arrives", "when": _fmt_time(when).upper() if when else "", "y": y, "born": True})
             pages_ctx[page["key"]] = ("book_milestones.svg.j2", {"book_milestones": rows})
         elif k == "write_in":
-            heading, sub = BOOK_WRITE_IN[page["heading"] % len(BOOK_WRITE_IN)]
+            heading, sub = write_in_text(page, first_name)
             rules = list(range(620, BOOK_PAGE - 260, 118))
             pages_ctx[page["key"]] = ("book_write_in.svg.j2", {
-                "book_heading": heading.format(NAME=first_name.upper()), "book_subheading": sub.format(name=first_name),
+                "book_heading": heading, "book_subheading": sub,
                 "book_rules": rules, "book_small_heart": _heart_path(BOOK_PAGE / 2, BOOK_PAGE - 260 + 90, 16),
             })
         elif k == "closing":
@@ -2741,10 +2898,7 @@ def render_book(
         "selected_media_id": None,
         "selected_slot_media_ids": [ph["media_id"] if ph else None for ph in photos],
         "slot_frame_aspects": [(ph or {}).get("frame_aspect") or 1.0 for ph in photos],
-        "book_plan": [
-            {"key": p["key"], "kind": p["kind"], "slots": p.get("slots", []), "count": p.get("count"), "editable": bool(p.get("editable"))}
-            for p in plan
-        ],
+        "book_plan": plan_pages_out(plan, birth, [ph["media_id"] if ph else None for ph in photos]),
         "stats": stats.as_metadata(),
         "child": {"name": birth.child_name, "when": when.isoformat() if when else None},
         "dimensions": {"w": template.width, "h": template.height, "dpi": template.dpi},
