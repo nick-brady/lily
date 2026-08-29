@@ -498,6 +498,11 @@ export default function GiftWizard({
   // where the + tile sits and where a new page goes: after the current day
   // page, else at the end of the day section
   const insertAt = editableIdx >= 0 ? editableIdx + 1 : editablePages.length;
+  // The book is always 24 pages — the partner binds 24 and no other number —
+  // so a page removed doesn't shorten it, it becomes one of these: a ruled
+  // page waiting to be filled. Saying how many are left is the honest way to
+  // show what removing did.
+  const freePages = pages.filter((pg) => pg.spare != null).length;
   const [adding, setAdding] = useState(false);
   const addPageAt = (spec) => {
     const day = arrangement();
@@ -692,7 +697,7 @@ export default function GiftWizard({
                                   type="button"
                                   onClick={(ev) => { ev.stopPropagation(); removePageAt(e); }}
                                   aria-label={`Remove page ${idx}`}
-                                  title="Remove this page"
+                                  title="Remove this page — it becomes a ruled page"
                                   className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-white border text-[10px] leading-none flex items-center justify-center t-muted hover:t-ink"
                                   style={{ borderColor: 'var(--t-soft-ring)' }}
                                 >
@@ -704,10 +709,11 @@ export default function GiftWizard({
                               <button
                                 type="button"
                                 onClick={() => setAdding((v) => !v)}
+                                disabled={freePages === 0}
                                 aria-label="Add a page here"
-                                title="Add a page here"
+                                title={freePages === 0 ? 'The book is full — remove a page to make room' : 'Add a page here'}
                                 aria-expanded={adding}
-                                className="flex-none w-12 h-12 rounded border-2 border-dashed text-lg leading-none t-muted hover:t-ink"
+                                className="flex-none w-12 h-12 rounded border-2 border-dashed text-lg leading-none t-muted hover:t-ink disabled:opacity-30 disabled:hover:t-muted"
                                 style={{ borderColor: adding ? 'var(--t-accent)' : 'var(--t-soft-ring)' }}
                               >
                                 +
@@ -723,8 +729,17 @@ export default function GiftWizard({
                   <p className="text-[11px] t-muted text-center mt-1">
                     {pageIdx === 0 ? 'The cover' : `Page ${pageIdx} of ${pages.length}`}
                     {currentPage?.kind === 'gallery' ? ` — ${currentPage.count} photo${currentPage.count === 1 ? '' : 's'}, pick below to fill` : ''}
-                    {currentPage?.kind === 'write_in' ? ' — ruled, for a pen' : ''}
+                    {currentPage?.kind === 'write_in' ? (currentPage.spare != null ? ' — ruled, free to fill' : ' — ruled, for a pen') : ''}
                     {currentPage?.kind === 'notes' ? " — the family's notes" : ''}
+                  </p>
+                  {/* The book is bound at 24 pages, so removing one leaves a
+                      ruled page rather than a shorter book. This is the count
+                      that moves when you add and remove. */}
+                  <p className="text-[11px] t-faint text-center">
+                    Always 24 pages ·{' '}
+                    {freePages === 0
+                      ? 'every page is filled — remove one to make room'
+                      : `${freePages} still free to fill`}
                   </p>
                   {/* Arranging the middle of the book. The title, clock, pool,
                       milestones, the two pages for a pen and the closing stay
