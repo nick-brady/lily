@@ -244,6 +244,29 @@ class GiftCheckoutIn(BaseModel):
     self_address: Optional[ShippingAddressIn] = None
 
 
+class ShippingQuoteIn(BaseModel):
+    """Where one parcel is going. `address` is unnecessary for a family copy
+    when the parents have saved theirs — it's read on the server and never
+    shown to the buyer."""
+
+    recipient_kind: str = Field(..., pattern="^(family|self)$")
+    address: Optional[ShippingAddressIn] = None
+
+
+class ShippingQuoteOut(BaseModel):
+    """What posting one parcel there costs — the partner's live rate, or our
+    flat stand-in when `estimated`."""
+
+    shipping_cents: int
+    estimated: bool
+    service: str
+    # The item's own price for this design — catalog price plus the chosen
+    # product's surcharge — so the sheet's total is the checkout's, not a guess.
+    item_cents: int
+    min_days: Optional[int] = None
+    max_days: Optional[int] = None
+
+
 class AddressReviewIn(BaseModel):
     address: ShippingAddressIn
 
@@ -296,6 +319,7 @@ class GiftOrderAdminOut(BaseModel):
     recipient_kind: str
     gift_message: Optional[str] = None
     amount_cents: int
+    shipping_cents: int = 0
     purchased_by: Optional[str] = None
     item_display_name: str
     fulfillment_status: str = "none"

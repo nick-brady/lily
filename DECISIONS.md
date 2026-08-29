@@ -960,3 +960,33 @@ Nothing about the printed book changed — `plan_book` fills to twenty-four
 exactly as before. The fillers simply stop pretending to be the parent's
 pages before they've agreed to them, which is why the arrangement the editor
 sends no longer carries them.
+## Postage is charged, per parcel, at the partner's rate
+
+*2026-08-27.* Printful bills us shipping on every order — $5–$10.50 inside
+the US, per parcel — and nobody was paying it. The prices carried roughly one
+parcel's worth, and a "both" purchase (a copy to the family and one to the
+buyer) was two parcels for zero postage; the sheet even said *Shipping
+included*.
+
+Postage is now its own line. At checkout each order's destination is quoted
+against Printful's `POST /shipping/rates` (`gift_shipping.quote`), the
+cheapest service they offer is what's charged, and the number is written onto
+the order (`gift_orders.shipping_cents`, migration 0040) beside the address
+it was quoted for. Stripe shows the item and a *Shipping* line (two parcels
+→ *Shipping (2 parcels)*); the order records the total for its own copy, so
+a two-address purchase can carry two different postages and the refund of a
+lost family claim is still exact. The sheet asks for the same quote as the
+address is typed (`/gifts/{rendering}/shipping-quote`) and the pay button
+carries the total, so Stripe's page never shows a number the buyer hasn't
+seen.
+
+When the partner can't be asked — their rates call fails, or no partner is
+configured — the product's flat stand-in (`shipping_estimate_cents`, their
+Aug 2026 flat rates) is charged instead and the order says so
+(`shipping_estimated`). A partner outage at the moment of paying is not the
+buyer's problem, and a guess should admit it is one.
+
+The catalog prices were **not** lowered to match. They were set with one
+parcel's postage inside them; with postage broken out they carry it twice.
+Whether to take it back out of the base prices is a pricing decision still
+to be made — noted here so it isn't mistaken for an oversight.

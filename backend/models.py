@@ -880,7 +880,18 @@ class GiftOrder(Base):
     # read the same a year later whether or not the family has moved since.
     # Null only on orders from before the destination lived here.
     shipping_address: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    # The whole charge for this copy: item, product surcharge and postage.
     amount_cents: Mapped[int] = mapped_column(sa.Integer, nullable=False)
+    # The postage inside that amount, as quoted for shipping_address when the
+    # order was made — the partner's live rate, or the product's flat
+    # stand-in when they couldn't be asked (`shipping_estimated`). Zero on
+    # orders from before postage was charged at all.
+    shipping_cents: Mapped[int] = mapped_column(
+        sa.Integer, nullable=False, server_default="0"
+    )
+    shipping_estimated: Mapped[bool] = mapped_column(
+        sa.Boolean, nullable=False, server_default=sa.false()
+    )
     currency: Mapped[str] = mapped_column(
         sa.Text, nullable=False, server_default="usd"
     )

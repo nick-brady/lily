@@ -15,6 +15,10 @@ class MockupError(Exception):
     """Mockup generation failed for a reason worth recording on the row."""
 
 
+class RateError(Exception):
+    """The partner couldn't price a parcel to this address."""
+
+
 class OrderError(Exception):
     """Order submission failed for a reason worth recording on the shipment."""
 
@@ -43,6 +47,17 @@ class OrderResult:
     status: str
 
 
+@dataclass
+class ShippingRate:
+    """What the partner will charge to post one parcel: the cheapest service
+    they offer to that address, and how long they say it takes."""
+
+    cents: int
+    name: str
+    min_days: int | None = None
+    max_days: int | None = None
+
+
 class FulfillmentAdapter(ABC):
     name: str
 
@@ -61,6 +76,12 @@ class FulfillmentAdapter(ABC):
         address shape; `items` carry variant ids + artwork file URLs, which
         must stay publicly reachable long enough for a draft to be confirmed.
         Raises OrderError on failure."""
+
+    @abstractmethod
+    def shipping_rate(self, *, recipient: dict, items: list[dict]) -> ShippingRate:
+        """The cheapest way to post `items` to `recipient` (same shapes as
+        create_order, minus the artwork). Raises RateError when the partner
+        can't say — an address they don't serve, or the service being down."""
 
     @abstractmethod
     def generate_mockup(

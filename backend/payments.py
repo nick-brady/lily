@@ -54,8 +54,14 @@ class StripeClient:
         allowed_countries: list[str],
         quantity: int = 1,
         extra_order_id: str | None = None,
+        shipping_cents: int = 0,
+        shipping_label: str = "Shipping",
     ) -> dict:
-        """Hosted Checkout for a gift order. When `collect_shipping`, Stripe
+        """Hosted Checkout for a gift order. `shipping_cents` — the postage
+        for every parcel in the session, already summed — is its own line so
+        the buyer sees what the item costs and what posting it costs.
+
+        Hosted Checkout for a gift order. When `collect_shipping`, Stripe
         gathers the shipping address (the buyer's own, or the family's when
         the parents haven't saved one); otherwise the parent-saved address is
         resolved at fulfillment time.
@@ -81,6 +87,11 @@ class StripeClient:
             "payment_intent_data[metadata][kind]": "gift_order",
             "payment_intent_data[metadata][order_id]": str(order_id),
         }
+        if shipping_cents > 0:
+            data["line_items[1][quantity]"] = "1"
+            data["line_items[1][price_data][currency]"] = "usd"
+            data["line_items[1][price_data][unit_amount]"] = str(shipping_cents)
+            data["line_items[1][price_data][product_data][name]"] = shipping_label
         if extra_order_id:
             data["metadata[order_id_2]"] = str(extra_order_id)
             data["payment_intent_data[metadata][order_id_2]"] = str(extra_order_id)

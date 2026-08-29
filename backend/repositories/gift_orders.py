@@ -27,6 +27,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 import fulfillment
+import gift_shipping
 from db import SessionLocal
 from fulfillment import products as fulfillment_products
 from models import (
@@ -62,7 +63,13 @@ def create_pending_order(
     recipient_kind: str,
     gift_message: str | None,
     shipping_address: dict | None = None,
+    item_cents: int | None = None,
+    shipping_cents: int = 0,
+    shipping_estimated: bool = False,
 ) -> GiftOrder:
+    """A pending order priced in full: the item (with any product surcharge,
+    `item_cents`; the catalog price when unsaid) plus the postage quoted for
+    its address. What Stripe charges is built from these same numbers."""
     order = GiftOrder(
         birth_id=birth.id,
         gift_catalog_item_id=item.id,
@@ -71,7 +78,10 @@ def create_pending_order(
         recipient_kind=recipient_kind,
         gift_message=gift_message,
         shipping_address=shipping_address,
-        amount_cents=item.base_price_cents,
+        amount_cents=(item.base_price_cents if item_cents is None else item_cents)
+        + shipping_cents,
+        shipping_cents=shipping_cents,
+        shipping_estimated=shipping_estimated,
     )
     db.add(order)
     db.commit()
@@ -102,11 +112,14 @@ def mark_paid(
     order_id: uuid.UUID,
     session_obj: dict,
     charged_cents: int | None = None,
+    orders_in_session: int = 1,
 ) -> tuple[MarkPaidOutcome, GiftOrder | None]:
     """CAS the order pending→paid, recording the payment identifiers and the
     amount Stripe actually charged. `charged_cents` overrides the session's
-    amount_total when the session covers more than this one order (a "both"
-    purchase records each copy's share, not the doubled total). Outcomes:
+    amount_total. So does `orders_in_session` > 1: a "both" purchase records
+    each copy's own price — the session was built from exactly those pending
+    amounts, and two parcels to two places can carry different postage — with
+    an even split of the total only for a row that was never priced. Outcomes:
 
     - "paid": this caller won — it (alone) creates the shipment and
       schedules fulfillment.
@@ -118,6 +131,11 @@ def mark_paid(
     order = db.get(GiftOrder, order_id)
     if order is None:
         raise LookupError(f"no gift order {order_id}")
+
+    if charged_cents is None and orders_in_session > 1:
+        charged_cents = order.amount_cents or (
+            (session_obj.get("amount_total") or 0) // orders_in_session or None
+        )
 
     session_id = session_obj.get("id")
     # NULL-session window: if the write-back after session creation failed,
@@ -241,6 +259,7 @@ def list_orders_for_birth(db: Session, *, birth_id: uuid.UUID) -> list[dict]:
                 "recipient_kind": order.recipient_kind,
                 "gift_message": order.gift_message,
                 "amount_cents": order.amount_cents,
+                "shipping_cents": order.shipping_cents,
                 "purchased_by": user.display_name if user else None,
                 "item_display_name": item.display_name,
                 "fulfillment_status": shipment.fulfillment_status
@@ -306,16 +325,7 @@ def submit_shipment(shipment_id: uuid.UUID) -> None:
             fail("missing artwork")
             return
 
-        addr = shipment.address
-        recipient = {
-            "name": addr.get("name") or "Gift recipient",
-            "address1": addr.get("line1"),
-            "address2": addr.get("line2") or "",
-            "city": addr.get("city"),
-            "state_code": addr.get("state") or "",
-            "country_code": addr.get("country") or "US",
-            "zip": addr.get("postal_code"),
-        }
+        recipient = gift_shipping.to_recipient(shipment.address)
         try:
             pages = gifts_repo.print_pages(rendering)
             if pages:
