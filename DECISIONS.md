@@ -936,3 +936,26 @@ the filmstrips keep index-keyed crops: their slots are fixed positions.
 The first rearrange pins every gallery page to the photo it was showing.
 That's the point — from then on the order is the parent's, not the day's —
 and *Reset to default* hands it back.
+
+## The book's editor shows the parent's pages, not the printer's twenty-four
+
+*2026-08-28.* The strip padded itself to twenty-four with ruled filler pages,
+so removing a page appeared to do nothing: the count never moved, and a
+filler quietly took the removed page's place. Telling the parent how many
+were "still free to fill" made the arithmetic visible but kept the padding in
+their book, which isn't theirs.
+
+The strip now shows only the pages the parent has made — remove one and it
+says *Page 19 of 19*. The partner still binds twenty-four and no other
+number, so at **Next** a shorter book is told what will happen: *"Your book
+has 19 pages. It's bound with twenty-four, so we'll add 5 ruled pages at the
+back — lined, for writing in."* **Add them and continue**, or **Go back** and
+fill them yourself. The + is refused only at twenty-four.
+
+> "have a warning where it actually does decrease the pages … they can either
+> continue, hit go back, or cancel, so they can add the pages themselves"
+
+Nothing about the printed book changed — `plan_book` fills to twenty-four
+exactly as before. The fillers simply stop pretending to be the parent's
+pages before they've agreed to them, which is why the arrangement the editor
+sends no longer carries them.

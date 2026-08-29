@@ -315,7 +315,16 @@ export default function GiftWizard({
   // Next commits the draft and re-renders at print resolution. Only then does
   // the mockup question arise — and only if something actually changed, so
   // someone who liked what they saw spends none of the partner's budget.
-  const goToProduct = async () => {
+  // The partner binds twenty-four pages. A book left shorter isn't refused —
+  // it's filled with ruled pages at the back — but that's the parent's to
+  // know before they see it on the product, not a surprise in the preview.
+  const [fillAsk, setFillAsk] = useState(false);
+  const goToProduct = async (confirmed) => {
+    if (isBook && roomLeft > 0 && confirmed !== true) {
+      setFillAsk(true);
+      return;
+    }
+    setFillAsk(false);
     if (!dirty) {
       setStep(1);
       return;
@@ -345,9 +354,14 @@ export default function GiftWizard({
     }
   };
 
-  // The book: its pages, and which one is on screen. `pages` is the saved
-  // plan — kind and slots per page — with a URL once each has been drawn.
-  const pages = isBook ? planPages || rendering.pages || [] : [];
+  // The book: its pages, and which one is on screen. `allPages` is the plan
+  // the server drew up — always the twenty-four the partner binds. The ruled
+  // fillers at the back aren't the parent's pages, though: they're what we'd
+  // add to reach twenty-four, and they're kept out of the strip until the
+  // parent has seen the offer. `pages` is the book as they've made it.
+  const allPages = isBook ? planPages || rendering.pages || [] : [];
+  const pages = allPages.filter((pg) => pg.spare == null);
+  const filling = allPages.length - pages.length;
   const pageKeys = isBook ? ['cover_front', ...pages.map((pg) => pg.key)] : [];
   const currentPage = isBook && pageIdx > 0 ? pages[pageIdx - 1] : null;
   const savedPageUrl = isBook
@@ -377,8 +391,6 @@ export default function GiftWizard({
     pages.filter((pg) => pg.editable).map((pg) => ({
       kind: pg.kind,
       count: pg.count,
-      // a filler ruled page stays a filler — after the milestones — not a day page
-      ...(pg.spare != null ? { spare: pg.spare } : {}),
       // a ruled page's own words ride along; the book's defaults don't
       ...(pg.kind === 'write_in' && pg.custom ? { heading: pg.heading, subheading: pg.subheading } : {}),
       // and a gallery page carries its photos, so moving the page moves them
@@ -425,11 +437,11 @@ export default function GiftWizard({
           return { ...pg, url: same ? was.url : null };
         }),
       );
-      const keys = ['cover_front', ...fresh.map((pg) => pg.key)];
+      const keys = ['cover_front', ...fresh.filter((pg) => pg.spare == null).map((pg) => pg.key)];
       const idx = focusKeyIdx == null ? Math.min(pageIdx, keys.length - 1) : Math.max(0, Math.min(keys.length - 1, focusKeyIdx));
       setPageIdx(idx);
       pageKeyRef.current = keys[idx];
-      const pg = idx > 0 ? fresh[idx - 1] : null;
+      const pg = idx > 0 ? fresh.filter((q) => q.spare == null)[idx - 1] : null;
       if (pg?.slots?.length) setActiveSlot(pg.slots[0]);
       schedulePreview(draftNext);
     } catch (err) {
@@ -498,11 +510,9 @@ export default function GiftWizard({
   // where the + tile sits and where a new page goes: after the current day
   // page, else at the end of the day section
   const insertAt = editableIdx >= 0 ? editableIdx + 1 : editablePages.length;
-  // The book is always 24 pages — the partner binds 24 and no other number —
-  // so a page removed doesn't shorten it, it becomes one of these: a ruled
-  // page waiting to be filled. Saying how many are left is the honest way to
-  // show what removing did.
-  const freePages = pages.filter((pg) => pg.spare != null).length;
+  // How many pages the partner would add to reach the twenty-four it binds.
+  // Not shown while arranging — it's the question asked at Next.
+  const roomLeft = filling;
   const [adding, setAdding] = useState(false);
   const addPageAt = (spec) => {
     const day = arrangement();
@@ -548,7 +558,7 @@ export default function GiftWizard({
     >
       <div
         className="animate-slide-up w-full sm:max-w-6xl bg-white dark:bg-gray-900
-                   rounded-t-2xl sm:rounded-2xl shadow-xl max-h-[94vh] sm:h-[94vh] flex flex-col"
+                   rounded-t-2xl sm:rounded-2xl shadow-xl max-h-[94vh] sm:h-[94vh] flex flex-col relative"
         onClick={(e) => e.stopPropagation()}
       >
         <header
@@ -582,6 +592,39 @@ export default function GiftWizard({
         {error && (
           <div className="mx-5 mt-4 p-3 rounded-lg bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-300 text-sm">
             {error}
+          </div>
+        )}
+
+        {fillAsk && (
+          <div className="absolute inset-0 z-10 bg-black/30 flex items-center justify-center p-6 rounded-2xl">
+            <div
+              className="w-full sm:max-w-sm bg-white dark:bg-gray-900 rounded-2xl shadow-xl p-5 space-y-3"
+              role="dialog"
+              aria-modal="true"
+            >
+              <h3 className="text-base font-semibold t-ink">
+                Your book has {pages.length} page{pages.length === 1 ? '' : 's'}
+              </h3>
+              <p className="text-sm t-muted">
+                It&rsquo;s bound with twenty-four, so we&rsquo;ll add {roomLeft} ruled{' '}
+                page{roomLeft === 1 ? '' : 's'} at the back — lined, for writing in. Or go
+                back and fill {roomLeft === 1 ? 'it' : 'them'} yourself.
+              </p>
+              <button
+                type="button"
+                onClick={() => goToProduct(true)}
+                className="w-full py-3 rounded-xl text-sm font-medium t-btn-accent"
+              >
+                Add {roomLeft === 1 ? 'it' : 'them'} and continue
+              </button>
+              <button
+                type="button"
+                onClick={() => setFillAsk(false)}
+                className="w-full py-2 rounded-xl text-sm text-gray-600 dark:text-gray-300"
+              >
+                Go back
+              </button>
+            </div>
           </div>
         )}
 
@@ -697,7 +740,7 @@ export default function GiftWizard({
                                   type="button"
                                   onClick={(ev) => { ev.stopPropagation(); removePageAt(e); }}
                                   aria-label={`Remove page ${idx}`}
-                                  title="Remove this page — it becomes a ruled page"
+                                  title="Remove this page"
                                   className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-white border text-[10px] leading-none flex items-center justify-center t-muted hover:t-ink"
                                   style={{ borderColor: 'var(--t-soft-ring)' }}
                                 >
@@ -709,9 +752,9 @@ export default function GiftWizard({
                               <button
                                 type="button"
                                 onClick={() => setAdding((v) => !v)}
-                                disabled={freePages === 0}
+                                disabled={roomLeft === 0}
                                 aria-label="Add a page here"
-                                title={freePages === 0 ? 'The book is full — remove a page to make room' : 'Add a page here'}
+                                title={roomLeft === 0 ? 'The book is full at twenty-four pages — remove one to make room' : 'Add a page here'}
                                 aria-expanded={adding}
                                 className="flex-none w-12 h-12 rounded border-2 border-dashed text-lg leading-none t-muted hover:t-ink disabled:opacity-30 disabled:hover:t-muted"
                                 style={{ borderColor: adding ? 'var(--t-accent)' : 'var(--t-soft-ring)' }}
@@ -729,24 +772,16 @@ export default function GiftWizard({
                   <p className="text-[11px] t-muted text-center mt-1">
                     {pageIdx === 0 ? 'The cover' : `Page ${pageIdx} of ${pages.length}`}
                     {currentPage?.kind === 'gallery' ? ` — ${currentPage.count} photo${currentPage.count === 1 ? '' : 's'}, pick below to fill` : ''}
-                    {currentPage?.kind === 'write_in' ? (currentPage.spare != null ? ' — ruled, free to fill' : ' — ruled, for a pen') : ''}
+                    {currentPage?.kind === 'write_in' ? ' — ruled, for a pen' : ''}
                     {currentPage?.kind === 'notes' ? " — the family's notes" : ''}
                   </p>
-                  {/* The book is bound at 24 pages, so removing one leaves a
-                      ruled page rather than a shorter book. This is the count
-                      that moves when you add and remove. */}
-                  <p className="text-[11px] t-faint text-center">
-                    Always 24 pages ·{' '}
-                    {freePages === 0
-                      ? 'every page is filled — remove one to make room'
-                      : `${freePages} still free to fill`}
-                  </p>
+
                   {/* Arranging the middle of the book. The title, clock, pool,
                       milestones, the two pages for a pen and the closing stay
                       where they are; everything between is the parent's — the
-                      × removes, ‹ › move, the + adds. The book is always
-                      24 pages: a page added takes the place of a ruled one, a
-                      page removed becomes one. */}
+                      × removes, ‹ › move, the + adds. The partner binds
+                      twenty-four pages and no other number, so a book left
+                      shorter is offered the rest as ruled pages at Next. */}
                   {adding && (
                     <div className="flex flex-wrap items-center justify-center gap-2 mt-2 text-[11px]">
                       <span className="t-faint">Add a page of:</span>
