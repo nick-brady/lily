@@ -19,6 +19,7 @@ Two rules keep the artwork honest about a story that is still settling:
 """
 from __future__ import annotations
 
+import io
 import logging
 import threading
 import time
@@ -279,6 +280,41 @@ def reset_to_pending(
     return [r.id for r in rows]
 
 
+# What the editor shows is not what the printer gets. A book page is a
+# 2325px print file — up to 2.4MB, and 31MB for the twenty-five of them —
+# which the browser was downloading in full to draw a 48px tile. A screen
+# copy at 900px in WebP is around 50KB, so the whole book is under a
+# megabyte. The print files are untouched; they're what the order ships.
+SCREEN_WIDTH = 900
+SCREEN_QUALITY = 82
+
+
+def _screen_copy(png: bytes) -> bytes | None:
+    """A page as the editor should see it. None if it can't be made — a
+    screen copy is a convenience, never a reason to fail a render."""
+    try:
+        from PIL import Image
+
+        im = Image.open(io.BytesIO(png)).convert("RGB")
+        if im.width > SCREEN_WIDTH:
+            im = im.resize(
+                (SCREEN_WIDTH, round(im.height * SCREEN_WIDTH / im.width)),
+                Image.LANCZOS,
+            )
+        buf = io.BytesIO()
+        im.save(buf, "WEBP", quality=SCREEN_QUALITY, method=4)
+        return buf.getvalue()
+    except Exception:  # noqa: BLE001 - never fail a render for a thumbnail
+        logger.warning("screen copy failed", exc_info=True)
+        return None
+
+
+def screen_pages(rendering: GiftRendering) -> dict[str, str]:
+    """The screen copies of a many-file design, key → s3 key. Empty for a
+    book rendered before they existed, which then shows its print files."""
+    return dict((rendering.rendering_metadata or {}).get("page_screens") or {})
+
+
 def print_pages(rendering: GiftRendering) -> dict[str, str]:
     """The print files of a many-file design, key → s3 key — the book's cover
     wrap and its pages. Empty for a one-file design."""
@@ -289,7 +325,9 @@ def book_pages(rendering: GiftRendering) -> list[dict]:
     """The book's pages for the editor: in order, with kind, photo slots and a
     presigned URL once rendered. Empty for anything that isn't a book."""
     plan = (rendering.rendering_metadata or {}).get("book_plan") or []
-    keys = print_pages(rendering)
+    # the screen copy where there is one; the print file for books drawn
+    # before there were, so an old book still shows its pages
+    keys = {**print_pages(rendering), **screen_pages(rendering)}
     return [
         {**p, "url": presigned_get_url(keys[p["key"]]) if p["key"] in keys else None}
         for p in plan
@@ -432,7 +470,7 @@ def render_rendering(rendering_id: uuid.UUID) -> None:
         put_object(key=key, body=png, content_type="image/png")
         # a many-file design keeps its print files beside the one it shows
         if files:
-            pages = {}
+            pages, screens = {}, {}
             for page_key, body in files.items():
                 pk = object_key(
                     family_id=birth.family_id,
@@ -441,7 +479,17 @@ def render_rendering(rendering_id: uuid.UUID) -> None:
                 )
                 put_object(key=pk, body=body, content_type="image/png")
                 pages[page_key] = pk
+                small = _screen_copy(body)
+                if small is not None:
+                    sk = object_key(
+                        family_id=birth.family_id,
+                        birth_id=birth.id,
+                        filename=f"gifts/{rendering.id}-{page_key}-screen.webp",
+                    )
+                    put_object(key=sk, body=small, content_type="image/webp")
+                    screens[page_key] = sk
             metadata["pages"] = pages
+            metadata["page_screens"] = screens
         rendering.artwork_s3_key = key
         rendering.rendering_metadata = metadata
         rendering.status = GiftRenderingStatus.ready

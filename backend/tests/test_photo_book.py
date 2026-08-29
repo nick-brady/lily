@@ -206,3 +206,37 @@ def test_choices_from_before_pages_carried_photos_still_apply():
 
     plan = ga.plan_book(n_photos=6, n_notes=0, has_pool=False, has_milestones=False, day=[{"kind": "gallery", "count": 2, "photos": [None, "new-1"]}])
     assert ga.book_slot_choices(plan, R(), 2) == {0: "old-0", 1: "new-1"}
+
+
+# ── what the editor is served ──────────────────────────────────────────────
+
+
+def test_the_editor_gets_the_screen_copy_and_the_order_the_print_file():
+    from repositories import gifts as repo
+
+    class R:
+        rendering_metadata = {
+            "book_plan": [{"key": "page_1", "kind": "title"}, {"key": "page_2", "kind": "notes"}],
+            "pages": {"page_1": "print/1.png", "page_2": "print/2.png", "cover": "print/c.png"},
+            "page_screens": {"page_1": "screen/1.webp"},
+        }
+
+    assert repo.print_pages(R())["page_1"] == "print/1.png"
+    urls = {p["key"]: p["url"] for p in repo.book_pages(R())}
+    # the screen copy where there is one; the print file where there isn't yet
+    assert "screen/1.webp" in urls["page_1"]
+    assert "print/2.png" in urls["page_2"]
+
+
+def test_a_screen_copy_is_small_and_never_fails_a_render():
+    import io
+    from PIL import Image
+    from repositories import gifts as repo
+
+    buf = io.BytesIO()
+    Image.new("RGB", (2325, 2325), "white").save(buf, "PNG")
+    small = repo._screen_copy(buf.getvalue())
+    assert small and len(small) < len(buf.getvalue())
+    assert Image.open(io.BytesIO(small)).width == repo.SCREEN_WIDTH
+    # a body that isn't an image doesn't take the render down with it
+    assert repo._screen_copy(b"not a png") is None

@@ -990,3 +990,26 @@ The catalog prices were **not** lowered to match. They were set with one
 parcel's postage inside them; with postage broken out they carry it twice.
 Whether to take it back out of the base prices is a pricing decision still
 to be made — noted here so it isn't mistaken for an oversight.
+
+## The editor is served screen copies, the printer the print files
+
+*2026-08-28.* Clicking a page in the book editor left it blank for seconds.
+The pages weren't thumbnails: `book_pages` handed the editor the print files
+— 2325px PNGs, up to 2.4MB a page, **31.6MB for the twenty-five of them** —
+so the browser downloaded a multi-megabyte file to draw a 48px tile, and
+twenty-five of them to open the strip.
+
+Each page now gets a screen copy beside its print file: 900px WebP, about
+50KB, **0.78MB for the whole book** — forty times less over the wire, and
+2.3s to make all twenty-five at render time. `book_pages` serves those;
+`print_pages` is untouched, so the order still ships the real thing. A book
+rendered before this shows its print files rather than nothing
+(`{**print_pages, **screen_pages}`), and a screen copy that can't be made is
+logged and skipped — a thumbnail is never a reason to fail a render.
+
+And the wait itself is now visible: the page dims under a spinner until its
+image has arrived, rather than sitting blank as if broken. The strip's tiles
+fade in and load lazily.
+
+> "I was confused why the page wasn't loading … I think it'd be a good idea
+> to show a loading of some sort"
