@@ -2,6 +2,7 @@ import { Fragment, useCallback, useEffect, useRef, useState } from 'react';
 import { api } from '../api/client';
 import { formatPrice } from '../utils/money';
 import { PRODUCT_NOUN } from '../utils/products';
+import { createLatestBlob } from '../utils/latestBlob';
 import Lightbox from './Lightbox';
 
 // Customise → see it on the product → send.
@@ -123,7 +124,10 @@ export default function GiftWizard({
   const abortRef = useRef(null);
   const timerRef = useRef(null);
   const pollRef = useRef(null);
-  const urlRef = useRef(null);
+  // The preview blob currently on screen, and the rule for what happens to
+  // one that arrives late. See utils/latestBlob.js.
+  const previewSlot = useRef(null);
+  if (previewSlot.current === null) previewSlot.current = createLatestBlob();
 
   const angles = rendering.mockup_url
     ? [
@@ -160,7 +164,7 @@ export default function GiftWizard({
       clearTimeout(timerRef.current);
       clearTimeout(pollRef.current);
       abortRef.current?.abort();
-      if (urlRef.current) URL.revokeObjectURL(urlRef.current);
+      previewSlot.current.clear();
       if (hiResRef.current) URL.revokeObjectURL(hiResRef.current);
     },
     [],
@@ -176,6 +180,7 @@ export default function GiftWizard({
         abortRef.current?.abort();
         const controller = new AbortController();
         abortRef.current = controller;
+        const token = previewSlot.current.start();
         setPreviewing(true);
         try {
           const { url, fit: nextFit } = await api.previewGiftDesign(
@@ -184,8 +189,13 @@ export default function GiftWizard({
             next,
             { signal: controller.signal, page: isBook ? pageKeyRef.current : undefined },
           );
-          if (urlRef.current) URL.revokeObjectURL(urlRef.current);
-          urlRef.current = url;
+          // A superseded preview throws its own blob away and touches
+          // nothing. Without this, a slow render finishing after a newer one
+          // revoked the URL that was already on screen — a broken-image
+          // icon, with "updating…" stuck up because this call is no longer
+          // the current one. Aborting the fetch doesn't cover it: the
+          // response can already be read by the time the abort lands.
+          if (previewSlot.current.settle(token, url) === null) return;
           setPreviewUrl(url);
           if (nextFit) setFit(nextFit);
           setError('');
@@ -375,8 +385,12 @@ export default function GiftWizard({
       hiResRef.current = null;
     }
     setHiResUrl(null);
-    if (dirty) schedulePreview(draft);   // the draft, on the new page
-    else setPreviewUrl(null);            // the saved page as drawn
+    if (dirty) {
+      schedulePreview(draft);            // the draft, on the new page
+    } else {
+      previewSlot.current.clear();
+      setPreviewUrl(null);               // the saved page as drawn
+    }
   };
   // The book's middle section as the parent arranges it. Starting from the
   // plan on screen (its editable pages), each change is sent for a fresh
