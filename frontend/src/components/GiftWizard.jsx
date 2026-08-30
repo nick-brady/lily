@@ -385,12 +385,13 @@ export default function GiftWizard({
       hiResRef.current = null;
     }
     setHiResUrl(null);
-    if (dirty) {
-      schedulePreview(draft);            // the draft, on the new page
-    } else {
-      previewSlot.current.clear();
-      setPreviewUrl(null);               // the saved page as drawn
-    }
+    // Either way the picture on screen belongs to the page we just left, so
+    // it goes now rather than lingering under the new page's number. What
+    // replaces it is the saved render of the new page, or — when there are
+    // unsaved edits — the preview being drawn for it.
+    previewSlot.current.clear();
+    setPreviewUrl(null);
+    if (dirty) schedulePreview(draft);
   };
   // The book's middle section as the parent arranges it. Starting from the
   // plan on screen (its editable pages), each change is sent for a fresh
@@ -562,7 +563,12 @@ export default function GiftWizard({
   // that's twenty-five of them. Nothing said so: the page simply sat blank
   // until it arrived, which reads as broken rather than busy.
   const [loadedSrc, setLoadedSrc] = useState(null);
-  const imageWaiting = Boolean(shown) && loadedSrc !== shown;
+  // Nothing to show yet, or something to show that hasn't arrived. Both are
+  // the same thing to a reader: the design is being drawn. `shown` is null
+  // for a day page whose saved render was blanked by a rearrange and whose
+  // preview is still in flight — and an <img> with no src is drawn by the
+  // browser as a broken-image icon and its alt text, which reads as a fault.
+  const imageWaiting = !shown || loadedSrc !== shown;
   const slots = rendering.editable_text || [];
 
   return (
@@ -661,22 +667,35 @@ export default function GiftWizard({
               style={{ backgroundColor: 'var(--t-soft-bg)' }}
             >
               <div className="relative w-full sm:flex-1 sm:min-h-0 flex items-center justify-center">
-                <button
-                  type="button"
-                  onClick={() => openGallery(0)}
-                  className="block w-full sm:w-auto sm:h-full sm:max-w-full"
-                  style={{ cursor: 'zoom-in' }}
-                  aria-label="See your design full screen"
-                >
-                  <img
-                    src={shown}
-                    alt="Your design"
-                    onLoad={() => setLoadedSrc(shown)}
-                    onError={() => setLoadedSrc(shown)}
-                    className="w-full sm:w-auto sm:h-full sm:max-w-full object-contain rounded-lg block shadow-sm bg-white transition-opacity duration-200"
-                    style={{ opacity: imageWaiting ? 0.35 : 1 }}
+                {/* No src, no <img>: an image element without one renders as
+                    a broken icon, which says "this failed" about a page that
+                    is merely still being drawn. */}
+                {shown ? (
+                  <button
+                    type="button"
+                    onClick={() => openGallery(0)}
+                    className="block w-full sm:w-auto sm:h-full sm:max-w-full"
+                    style={{ cursor: 'zoom-in' }}
+                    aria-label="See your design full screen"
+                  >
+                    <img
+                      src={shown}
+                      alt="Your design"
+                      onLoad={() => setLoadedSrc(shown)}
+                      onError={() => setLoadedSrc(shown)}
+                      className="w-full sm:w-auto sm:h-full sm:max-w-full object-contain rounded-lg block shadow-sm bg-white transition-opacity duration-200"
+                      style={{ opacity: imageWaiting ? 0.35 : 1 }}
+                    />
+                  </button>
+                ) : (
+                  <div
+                    role="img"
+                    aria-label="Your design is being drawn"
+                    aria-busy="true"
+                    className="w-full sm:h-full aspect-square sm:aspect-auto max-w-full rounded-lg bg-white shadow-sm"
+                    style={{ minHeight: '12rem' }}
                   />
-                </button>
+                )}
                 {imageWaiting && (
                   <span className="absolute inset-0 flex items-center justify-center pointer-events-none">
                     <Spinner />
