@@ -1,6 +1,8 @@
 """The photo book: what fills twenty-four pages, for stories of every size."""
 from __future__ import annotations
 
+import uuid
+
 import gift_artwork as ga
 import gift_templates
 from fulfillment import products as fp
@@ -251,3 +253,95 @@ def test_each_variant_is_smaller_than_the_last_and_never_fails_a_render():
     assert sizes["thumbnail"] < sizes["display"]
     # a body that isn't an image doesn't take the render down with it
     assert repo._variant_bytes(b"not a png", 300, 85) is None
+
+
+# ── what gets drawn, and when ──────────────────────────────────────────────
+
+
+def test_pages_can_be_drawn_for_the_screen_while_the_cover_keeps_its_size():
+    """The editor looks at pages on a screen; only the press wants 2325px.
+    The cover is exempt — it's what the partner photographs."""
+    import gift_artwork as ga
+
+    spec = {
+        "cover": ("book_cover.svg.j2", {}, ga.BOOK_COVER_W, ga.BOOK_COVER_H),
+        "page_1": ("book_title.svg.j2", {}, ga.BOOK_PAGE, ga.BOOK_PAGE),
+    }
+    def width_for(key, w, page_width, output_width=None):
+        # the rule render_book applies, stated once so a change to it is seen
+        return output_width or (page_width if page_width and key.startswith("page_") else w)
+
+    assert width_for("page_1", ga.BOOK_PAGE, 900) == 900
+    assert width_for("cover", ga.BOOK_COVER_W, 900) == ga.BOOK_COVER_W
+    assert width_for("page_1", ga.BOOK_PAGE, None) == ga.BOOK_PAGE
+    # an explicit output_width (the editor's preview) still wins over both
+    assert width_for("cover", ga.BOOK_COVER_W, 900, output_width=520) == 520
+    assert set(spec) == {"cover", "page_1"}
+
+
+def test_a_book_only_stores_the_cover_as_a_print_file_until_it_is_ordered():
+    """`print_pages` is what the order ships. After a save it holds the cover
+    alone; the pages are made by `ensure_print_pages` on the way out."""
+    from repositories import gifts as repo
+
+    class Saved:
+        rendering_metadata = {
+            "book_plan": [{"key": "page_1", "kind": "title"}, {"key": "page_2", "kind": "clock"}],
+            "pages": {"cover": "print/cover.png"},
+            "page_variants": {"display": {"page_1": "d/1.webp", "page_2": "d/2.webp"}},
+        }
+
+    assert set(repo.print_pages(Saved())) == {"cover"}
+    # the editor is unaffected: it was never looking at the print files
+    assert all(p["url"] for p in repo.book_pages(Saved()))
+
+
+def test_ensure_print_pages_makes_only_what_is_missing(monkeypatch):
+    from repositories import gifts as repo
+
+    class R:
+        id = uuid.uuid4()
+        birth_id = uuid.uuid4()
+        template_id = "book_8x8"
+        rendering_metadata = {
+            "book_plan": [{"key": "page_1", "kind": "title"}, {"key": "page_2", "kind": "clock"}],
+            "pages": {"cover": "print/cover.png", "page_1": "print/1.png"},
+        }
+
+    asked = {}
+
+    def fake_render_book(birth, template, db, rendering, *, keys=None, sink=None, **kw):
+        asked["keys"] = set(keys or [])
+        for k in sorted(asked["keys"]):
+            sink(k, b"png")
+        return {}, {}
+
+    monkeypatch.setattr(repo.gift_artwork, "render_book", fake_render_book)
+    monkeypatch.setattr(repo, "_put_page", lambda birth, rid, key, body: f"made/{key}.png")
+
+    class DB:
+        def get(self, model, pk):
+            return object()
+
+        def commit(self):
+            pass
+
+    r = R()
+    monkeypatch.setattr(repo.gift_templates, "get", lambda t: object())
+    made = repo.ensure_print_pages(DB(), r)
+    # only page_2 was missing; the cover and page_1 were left alone
+    assert asked["keys"] == {"page_2"}
+    assert made["page_2"] == "made/page_2.png"
+    assert made["cover"] == "print/cover.png" and made["page_1"] == "print/1.png"
+    # and asking again renders nothing at all
+    asked.clear()
+    assert repo.ensure_print_pages(DB(), r) == made and "keys" not in asked
+
+
+def test_a_design_that_is_not_a_book_has_no_print_pages_to_make():
+    from repositories import gifts as repo
+
+    class Mug:
+        rendering_metadata = {"template_id": "mug_hours"}
+
+    assert repo.ensure_print_pages(None, Mug()) == {}

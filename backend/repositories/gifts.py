@@ -308,6 +308,50 @@ def _variant_bytes(png: bytes, size: int, quality: int) -> bytes | None:
         return None
 
 
+def _put_page(birth: Birth, rendering_id: uuid.UUID, page_key: str, body: bytes) -> str:
+    """One print file of a many-file design, stored. Returns its s3 key."""
+    key = object_key(
+        family_id=birth.family_id,
+        birth_id=birth.id,
+        filename=f"gifts/{rendering_id}-{page_key}.png",
+    )
+    put_object(key=key, body=body, content_type="image/png")
+    return key
+
+
+def ensure_print_pages(db: Session, rendering: GiftRendering) -> dict[str, str]:
+    """The print files of a many-file design, making any that don't exist yet.
+
+    The editor is drawn 900px pages; the press wants 2325px ones, and only
+    ever for a book somebody bought. So they're made here, once, on the way
+    to the partner — rather than twenty-four of them on every save of a
+    design that may never be ordered. Returns key → s3 key, empty for a
+    one-file design."""
+    have = print_pages(rendering)
+    plan = (rendering.rendering_metadata or {}).get("book_plan") or []
+    if not plan:
+        return have
+    missing = {k for k in ["cover"] + [p["key"] for p in plan] if k not in have}
+    if not missing:
+        return have
+
+    birth = db.get(Birth, rendering.birth_id)
+    template = gift_templates.get(rendering.template_id)
+    if birth is None or template is None:
+        return have
+    made = dict(have)
+
+    def _store(page_key: str, body: bytes) -> None:
+        made[page_key] = _put_page(birth, rendering.id, page_key, body)
+
+    gift_artwork.render_book(birth, template, db, rendering, keys=missing, sink=_store)
+    metadata = dict(rendering.rendering_metadata or {})
+    metadata["pages"] = made
+    rendering.rendering_metadata = metadata
+    db.commit()
+    return made
+
+
 def page_variants(rendering: GiftRendering, variant: str) -> dict[str, str]:
     """The pages of a many-file design at one size, key → s3 key. Empty for a
     book rendered before that size existed, which then shows its print
@@ -459,13 +503,43 @@ def render_rendering(rendering_id: uuid.UUID) -> None:
         if birth is None or template is None:
             _fail(db, rendering, "missing-birth-or-template")
             return
+        # A book's pages are drawn for the screen here, not for the press.
+        # Nobody looks at a page at print size in the editor, and the print
+        # files are only wanted if somebody actually orders — `ensure_print_
+        # pages` makes them then. Each file is handed off as it's made rather
+        # than collected, so a book costs one page of memory, not twenty-five.
+        pages: dict[str, str] = {}
+        variants: dict[str, dict[str, str]] = {v: {} for v in VARIANTS}
+        front: dict[str, bytes] = {}
+
+        def _store(page_key: str, body: bytes) -> None:
+            if page_key == "cover_front":
+                front["png"] = body
+                return
+            if page_key == "cover":
+                # the print wrap: what the partner photographs, and prints
+                pages["cover"] = _put_page(birth, rendering.id, "cover", body)
+            for variant, (size, quality) in VARIANTS.items():
+                small = _variant_bytes(body, size, quality)
+                if small is None:
+                    continue
+                vk = object_key(
+                    family_id=birth.family_id,
+                    birth_id=birth.id,
+                    filename=f"gifts/{rendering.id}-{page_key}-{variant}.webp",
+                )
+                put_object(key=vk, body=small, content_type="image/webp")
+                variants[variant][page_key] = vk
+
         try:
             if template.scene == "book":
-                files, metadata = gift_artwork.render_book(birth, template, db, rendering)
-                png = files.pop("cover_front")
+                _, metadata = gift_artwork.render_book(
+                    birth, template, db, rendering,
+                    page_width=VARIANTS["display"][0], sink=_store,
+                )
+                png = front["png"]
             else:
                 png, metadata = gift_artwork.render(birth, template, db, rendering)
-                files = {}
         except gift_artwork.ArtworkError as exc:
             _fail(db, rendering, str(exc))
             return
@@ -476,29 +550,7 @@ def render_rendering(rendering_id: uuid.UUID) -> None:
             filename=f"gifts/{rendering.id}.png",
         )
         put_object(key=key, body=png, content_type="image/png")
-        # a many-file design keeps its print files beside the one it shows
-        if files:
-            pages: dict[str, str] = {}
-            variants: dict[str, dict[str, str]] = {v: {} for v in VARIANTS}
-            for page_key, body in files.items():
-                pk = object_key(
-                    family_id=birth.family_id,
-                    birth_id=birth.id,
-                    filename=f"gifts/{rendering.id}-{page_key}.png",
-                )
-                put_object(key=pk, body=body, content_type="image/png")
-                pages[page_key] = pk
-                for variant, (size, quality) in VARIANTS.items():
-                    small = _variant_bytes(body, size, quality)
-                    if small is None:
-                        continue
-                    vk = object_key(
-                        family_id=birth.family_id,
-                        birth_id=birth.id,
-                        filename=f"gifts/{rendering.id}-{page_key}-{variant}.webp",
-                    )
-                    put_object(key=vk, body=small, content_type="image/webp")
-                    variants[variant][page_key] = vk
+        if pages or variants["display"]:
             metadata["pages"] = pages
             metadata["page_variants"] = variants
         rendering.artwork_s3_key = key

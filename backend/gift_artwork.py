@@ -2723,13 +2723,25 @@ def render_book(
     rendering=None,
     *,
     only: str | None = None,
+    keys: set[str] | None = None,
     photo_max_px: int | None = None,
     output_width: int | None = None,
+    page_width: int | None = None,
+    sink=None,
 ) -> tuple[dict[str, bytes], dict]:
     """Every file of the book — "cover" (the print wrap), "cover_front" (the
     square face the gallery shows; not printed) and "page_1".."page_24" — as
     PNGs, plus the rendering metadata. `only` renders a single one, which is
-    what the editor's per-page preview asks for."""
+    what the editor's per-page preview asks for; `keys` a named few.
+
+    `page_width` rasterizes the pages at something other than print size —
+    the editor only ever looks at them on a screen, and a print page is a
+    2325px file. The cover keeps its own size whatever this says: it's what
+    the partner photographs.
+
+    `sink(key, png)` takes each file as it's made instead of collecting them.
+    Twenty-five print pages held at once is ~195MB; handed off one at a time
+    it's one page."""
     base, parts = build_context(birth, template, db, rendering, photo_max_px)
     stats = parts["stats"]
     first = _localize(stats.first_contraction_at)
@@ -2881,14 +2893,20 @@ def render_book(
     for key, (svg_name, extra, w, h) in files_spec.items():
         if only and key != only:
             continue
+        if keys is not None and key not in keys:
+            continue
         ctx = {**base, **extra, "w": w, "h": h, "book_first_name": first_name}
         svg = _env.get_template(svg_name).render(**ctx)
-        width = output_width or w
+        width = output_width or (page_width if page_width and key.startswith("page_") else w)
         height = max(1, round(h * (width / w)))
         try:
-            out[key] = cairosvg.svg2png(bytestring=svg.encode("utf-8"), output_width=width, output_height=height)
+            png = cairosvg.svg2png(bytestring=svg.encode("utf-8"), output_width=width, output_height=height)
         except Exception as exc:  # cairosvg raises a grab-bag of errors
             raise ArtworkError(f"rasterize {key}: {exc}") from exc
+        if sink is not None:
+            sink(key, png)
+        else:
+            out[key] = png
 
     metadata = {
         "template_id": template.template_id,
