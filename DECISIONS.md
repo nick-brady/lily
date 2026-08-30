@@ -1034,3 +1034,36 @@ fade in and load lazily.
 
 > "I was confused why the page wasn't loading … generate thumbnails, raw, and
 > display … don't we need to have a worker of some sort?"
+
+## The book's print files are made when it's ordered, not when it's saved
+
+*2026-08-29.* Every save of a book design rasterized all twenty-four pages
+**at print resolution** — 2325px files nobody was going to look at, since the
+editor draws them 900px wide, and that only a buyer would ever need. It cost
+14.3s, a **+195MB** memory spike, and 31.6MB written to S3 on every save of a
+design that may never be ordered.
+
+A save now draws the pages for the screen (`page_width`), and the print files
+are made once, on the way to the partner (`ensure_print_pages`, called from
+`submit_shipment`). Files are handed to a sink as they're rasterized rather
+than collected, so a book costs one page of memory instead of twenty-five.
+
+| | before | after |
+| --- | --- | --- |
+| save | 14.3s, +195MB, 31.6MB stored | **6.1s, +144MB, 1.2MB stored** |
+| order | — | 11.0s, +123MB, once per book sold |
+
+The cover keeps its print size at save: it's what the partner photographs for
+the mockup, and it's one file. The remaining memory at save is rasterization
+surfaces (the cover alone is a 5370×2850 cairo surface) and the photos
+embedded in the SVG as data URIs — not the page files, which is what the
+earlier +195MB was mostly made of.
+
+> "I don't think we need to render all of the pages … we're doing needless
+> work"
+
+**Printful was never part of this.** A book has only ever been photographed
+by its cover — one mockup call, Front and Back. The waste was all ours.
+
+`ensure_print_pages` is idempotent and makes only what's missing, so a retried
+shipment costs nothing, and a book ordered twice renders its pages once.

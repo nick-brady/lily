@@ -327,7 +327,8 @@ def submit_shipment(shipment_id: uuid.UUID) -> None:
 
         recipient = gift_shipping.to_recipient(shipment.address)
         try:
-            pages = gifts_repo.print_pages(rendering)
+            # a book's print files are made now, not on every design save
+            pages = gifts_repo.ensure_print_pages(db, rendering)
             if pages:
                 # a many-file design: the cover and every page, each to its
                 # placement — the partner assembles the book from them
