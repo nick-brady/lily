@@ -252,3 +252,5 @@
 .thin-scrollbar::-webkit-scrollbar-track { background: transparent; }
 .thin-scrollbar::-webkit-scrollbar-thumb { background: var(--t-soft-ring); border-radius: 9999px; }
 .thin-scrollbar:hover::-webkit-scrollbar-thumb { background: var(--t-accent); opacity: 0.6; }
+
+@keyframes fade-in { from { opacity: 0 } to { opacity: 1 } }

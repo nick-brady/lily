@@ -549,6 +549,11 @@ export default function GiftWizard({
     : Array.from({ length: slotCount }, (_, i) => i);
 
   const shown = previewUrl || savedPageUrl;
+  // A page is a file the browser has to fetch, and on a first look at a book
+  // that's twenty-five of them. Nothing said so: the page simply sat blank
+  // until it arrived, which reads as broken rather than busy.
+  const [loadedSrc, setLoadedSrc] = useState(null);
+  const imageWaiting = Boolean(shown) && loadedSrc !== shown;
   const slots = rendering.editable_text || [];
 
   return (
@@ -657,10 +662,18 @@ export default function GiftWizard({
                   <img
                     src={shown}
                     alt="Your design"
-                    className="w-full sm:w-auto sm:h-full sm:max-w-full object-contain rounded-lg block shadow-sm bg-white"
+                    onLoad={() => setLoadedSrc(shown)}
+                    onError={() => setLoadedSrc(shown)}
+                    className="w-full sm:w-auto sm:h-full sm:max-w-full object-contain rounded-lg block shadow-sm bg-white transition-opacity duration-200"
+                    style={{ opacity: imageWaiting ? 0.35 : 1 }}
                   />
                 </button>
-                {previewing && (
+                {imageWaiting && (
+                  <span className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                    <Spinner />
+                  </span>
+                )}
+                {previewing && !imageWaiting && (
                   <span className="absolute top-3 right-3 text-[11px] px-2 py-1 rounded-full bg-black/60 text-white">
                     updating…
                   </span>
@@ -676,7 +689,8 @@ export default function GiftWizard({
                     <div ref={stripRef} className="flex-1 min-w-0 flex gap-1.5 overflow-x-auto pt-1 pb-2 px-0.5 thin-scrollbar">
                       {pageKeys.map((key, idx) => {
                         const pg = idx > 0 ? pages[idx - 1] : null;
-                        const url = idx === 0 ? rendering.artwork_url : pg?.url;
+                        // the strip is a thumbnail's job — 7KB a page, not 32
+                        const url = idx === 0 ? rendering.artwork_url : (pg?.thumb_url || pg?.url);
                         const e = pg?.editable ? editableIdxOf(pg) : -1;
                         const plusHere = e >= 0 ? e === insertAt - 1 : idx === firstEditableStrip - 1 && insertAt === 0;
                         return (
@@ -695,7 +709,12 @@ export default function GiftWizard({
                                 style={{ borderColor: idx === pageIdx ? 'var(--t-accent)' : 'var(--t-soft-ring)' }}
                               >
                                 {url ? (
-                                  <img src={url} alt="" className="w-full h-full object-cover pointer-events-none" />
+                                  <img
+                                    src={url}
+                                    alt=""
+                                    loading="lazy"
+                                    className="w-full h-full object-cover pointer-events-none animate-[fade-in_200ms_ease-out]"
+                                  />
                                 ) : (
                                   <PageGlyph page={pg} idx={idx} photoFor={photoFor} />
                                 )}
@@ -1493,4 +1512,14 @@ function PageGlyph({ page, idx, photoFor }) {
   }
   const word = { notes: 'notes', write_in: 'ruled', title: 'title', clock: 'clock', pool: 'pool', milestones: 'marks', closing: 'end' }[page.kind] || idx;
   return <span className="pointer-events-none">{word}</span>;
+}
+
+// A quiet turning circle, for the moment a page is on its way.
+function Spinner() {
+  return (
+    <svg className="w-7 h-7 animate-spin" viewBox="0 0 24 24" fill="none" aria-label="Loading">
+      <circle cx="12" cy="12" r="10" stroke="var(--t-soft-ring)" strokeWidth="3" />
+      <path d="M22 12a10 10 0 0 0-10-10" stroke="var(--t-accent)" strokeWidth="3" strokeLinecap="round" />
+    </svg>
+  );
 }

@@ -990,3 +990,47 @@ The catalog prices were **not** lowered to match. They were set with one
 parcel's postage inside them; with postage broken out they carry it twice.
 Whether to take it back out of the base prices is a pricing decision still
 to be made — noted here so it isn't mistaken for an oversight.
+
+## A book page is stored three ways: raw, display, thumbnail
+
+*2026-08-28.* Clicking a page in the book editor left it blank for seconds.
+The pages weren't thumbnails: `book_pages` handed the editor the print files
+— 2325px PNGs, up to 2.4MB a page — so the browser downloaded a
+multi-megabyte file to draw a 48px tile, and twenty-five of them to open the
+strip.
+
+A page is now stored at three sizes, the shape Pearl settled on
+(`services/image_processor.py`, `?variant=thumbnail|display|raw`):
+
+| variant | what it is | size | for |
+| --- | --- | --- | --- |
+| raw | the 2325px print PNG | 31.58 MB a book | the order; untouched |
+| display | 900px WebP q82 | 0.78 MB (32KB a page) | the page on screen |
+| thumbnail | 300px WebP q85 | 0.17 MB (7KB a page) | the page strip |
+
+Measured, not estimated: every object read back and summed. Opening a book
+went from ~31.6MB to 0.17MB for the strip plus 32KB for the page you're on.
+
+**Made at render time, not on request, and not by a new worker.** The
+derivatives ride along with the render that already happens off-request (a
+book's render is scheduled as a background task from `save_gift_design`),
+which is where the print files are written too — one pass, one place. The
+whole render, twenty-five pages and their fifty derivatives including every
+upload, is ~14s. Pearl makes its derivatives inline in the upload request
+and reserves Celery for embeddings; ours are further off the request path
+than that, so a queue would buy nothing yet. It would start to matter if
+renders got long enough to outlive a deploy restart, since a background task
+lost that way leaves the rendering `pending` until something re-renders it.
+
+A book rendered before a variant existed falls back to the next size up and
+ultimately to the print file (`{**raw, **display}`, `{**display, **thumb}`),
+so nothing needs re-rendering to keep working — it gets fast when it next
+renders. A derivative that can't be made is logged and skipped; a thumbnail
+is never a reason to fail a render.
+
+And the wait itself is now visible: the page dims under a spinner until its
+image has arrived, rather than sitting blank as if broken. The strip's tiles
+fade in and load lazily.
+
+> "I was confused why the page wasn't loading … generate thumbnails, raw, and
+> display … don't we need to have a worker of some sort?"

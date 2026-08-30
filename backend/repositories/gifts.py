@@ -19,6 +19,7 @@ Two rules keep the artwork honest about a story that is still settling:
 """
 from __future__ import annotations
 
+import io
 import logging
 import threading
 import time
@@ -279,6 +280,42 @@ def reset_to_pending(
     return [r.id for r in rows]
 
 
+# What the editor shows is not what the printer gets. A book page is a
+# 2325px print file — up to 2.4MB, and 31.6MB for the twenty-five of them —
+# which the browser was downloading in full to draw a 48px tile. So a page is
+# stored three ways, the shape Pearl settled on: `raw` is the print file and
+# what the order ships; `display` is what the editor shows on screen;
+# `thumbnail` is what the page strip draws. Measured over this book:
+# raw 31.58MB · display 0.78MB (32KB a page) · thumbnail 0.17MB (7KB a page).
+#
+# Made once, at render time, beside the print files — never on request.
+VARIANTS = {"display": (900, 82), "thumbnail": (300, 85)}
+
+
+def _variant_bytes(png: bytes, size: int, quality: int) -> bytes | None:
+    """One derivative of a page. None if it can't be made — a smaller copy is
+    a convenience, never a reason to fail a render."""
+    try:
+        from PIL import Image
+
+        im = Image.open(io.BytesIO(png)).convert("RGB")
+        im.thumbnail((size, size), Image.LANCZOS)
+        buf = io.BytesIO()
+        im.save(buf, "WEBP", quality=quality, method=4)
+        return buf.getvalue()
+    except Exception:  # noqa: BLE001 - never fail a render for a thumbnail
+        logger.warning("page variant failed", exc_info=True)
+        return None
+
+
+def page_variants(rendering: GiftRendering, variant: str) -> dict[str, str]:
+    """The pages of a many-file design at one size, key → s3 key. Empty for a
+    book rendered before that size existed, which then shows its print
+    files."""
+    store = (rendering.rendering_metadata or {}).get("page_variants") or {}
+    return dict(store.get(variant) or {})
+
+
 def print_pages(rendering: GiftRendering) -> dict[str, str]:
     """The print files of a many-file design, key → s3 key — the book's cover
     wrap and its pages. Empty for a one-file design."""
@@ -286,12 +323,21 @@ def print_pages(rendering: GiftRendering) -> dict[str, str]:
 
 
 def book_pages(rendering: GiftRendering) -> list[dict]:
-    """The book's pages for the editor: in order, with kind, photo slots and a
-    presigned URL once rendered. Empty for anything that isn't a book."""
+    """The book's pages for the editor: in order, with kind, photo slots, a
+    presigned URL for the page on screen and one for its strip thumbnail.
+    Empty for anything that isn't a book."""
     plan = (rendering.rendering_metadata or {}).get("book_plan") or []
-    keys = print_pages(rendering)
+    # each size where there is one; the print file for books drawn before
+    # there were, so an old book still shows its pages
+    raw = print_pages(rendering)
+    display = {**raw, **page_variants(rendering, "display")}
+    thumb = {**display, **page_variants(rendering, "thumbnail")}
     return [
-        {**p, "url": presigned_get_url(keys[p["key"]]) if p["key"] in keys else None}
+        {
+            **p,
+            "url": presigned_get_url(display[p["key"]]) if p["key"] in display else None,
+            "thumb_url": presigned_get_url(thumb[p["key"]]) if p["key"] in thumb else None,
+        }
         for p in plan
     ]
 
@@ -432,7 +478,8 @@ def render_rendering(rendering_id: uuid.UUID) -> None:
         put_object(key=key, body=png, content_type="image/png")
         # a many-file design keeps its print files beside the one it shows
         if files:
-            pages = {}
+            pages: dict[str, str] = {}
+            variants: dict[str, dict[str, str]] = {v: {} for v in VARIANTS}
             for page_key, body in files.items():
                 pk = object_key(
                     family_id=birth.family_id,
@@ -441,7 +488,19 @@ def render_rendering(rendering_id: uuid.UUID) -> None:
                 )
                 put_object(key=pk, body=body, content_type="image/png")
                 pages[page_key] = pk
+                for variant, (size, quality) in VARIANTS.items():
+                    small = _variant_bytes(body, size, quality)
+                    if small is None:
+                        continue
+                    vk = object_key(
+                        family_id=birth.family_id,
+                        birth_id=birth.id,
+                        filename=f"gifts/{rendering.id}-{page_key}-{variant}.webp",
+                    )
+                    put_object(key=vk, body=small, content_type="image/webp")
+                    variants[variant][page_key] = vk
             metadata["pages"] = pages
+            metadata["page_variants"] = variants
         rendering.artwork_s3_key = key
         rendering.rendering_metadata = metadata
         rendering.status = GiftRenderingStatus.ready

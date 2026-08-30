@@ -206,3 +206,48 @@ def test_choices_from_before_pages_carried_photos_still_apply():
 
     plan = ga.plan_book(n_photos=6, n_notes=0, has_pool=False, has_milestones=False, day=[{"kind": "gallery", "count": 2, "photos": [None, "new-1"]}])
     assert ga.book_slot_choices(plan, R(), 2) == {0: "old-0", 1: "new-1"}
+
+
+# ── what the editor is served ──────────────────────────────────────────────
+
+
+def test_the_editor_gets_the_small_copies_and_the_order_the_print_file():
+    from repositories import gifts as repo
+
+    class R:
+        rendering_metadata = {
+            "book_plan": [{"key": "page_1", "kind": "title"}, {"key": "page_2", "kind": "notes"}],
+            "pages": {"page_1": "print/1.png", "page_2": "print/2.png", "cover": "print/c.png"},
+            "page_variants": {
+                "display": {"page_1": "display/1.webp"},
+                "thumbnail": {"page_1": "thumb/1.webp"},
+            },
+        }
+
+    # the order ships the print file whatever the editor is shown
+    assert repo.print_pages(R())["page_1"] == "print/1.png"
+    by_key = {p["key"]: p for p in repo.book_pages(R())}
+    assert "display/1.webp" in by_key["page_1"]["url"]
+    assert "thumb/1.webp" in by_key["page_1"]["thumb_url"]
+    # a page drawn before the small copies existed still shows, at print size
+    assert "print/2.png" in by_key["page_2"]["url"]
+    assert "print/2.png" in by_key["page_2"]["thumb_url"]
+
+
+def test_each_variant_is_smaller_than_the_last_and_never_fails_a_render():
+    import io
+    from PIL import Image
+    from repositories import gifts as repo
+
+    buf = io.BytesIO()
+    Image.new("RGB", (2325, 2325), "white").save(buf, "PNG")
+    page = buf.getvalue()
+    sizes = {}
+    for variant, (size, quality) in repo.VARIANTS.items():
+        out = repo._variant_bytes(page, size, quality)
+        assert out and len(out) < len(page)
+        assert Image.open(io.BytesIO(out)).width == size
+        sizes[variant] = size
+    assert sizes["thumbnail"] < sizes["display"]
+    # a body that isn't an image doesn't take the render down with it
+    assert repo._variant_bytes(b"not a png", 300, 85) is None
