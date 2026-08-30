@@ -4,3 +4,9 @@
     name: lily
     state: restarted
     daemon_reload: yes
+
+- name: restart lily worker
+  systemd:
+    name: lily-worker
+    state: restarted
+    daemon_reload: yes

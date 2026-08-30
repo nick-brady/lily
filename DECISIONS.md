@@ -1067,3 +1067,60 @@ by its cover — one mockup call, Front and Back. The waste was all ours.
 
 `ensure_print_pages` is idempotent and makes only what's missing, so a retried
 shipment costs nothing, and a book ordered twice renders its pages once.
+
+## Photos are stored three ways, and a worker makes the two small ones
+
+*2026-08-29.* Every image was served at upload resolution, to every surface,
+however small it was drawn. `GET /media/{id}` presigned `original_s3_key`
+and redirected — the only thing it could serve — and `api.mediaUrl(id)` was
+the only way the client could ask. Measured locally: fifteen photos, **42.0
+MB, 2,867 KB each**. The gift editor's picker mounts one `<img>` per photo in
+the whole birth at ~57px, none lazy; the book strip's `PageGlyph` draws them
+at **22px**. `width`/`height` were NULL on every row because nothing had ever
+decoded one.
+
+A photo now has three forms, the shape Pearl settled on:
+
+| variant | what | measured |
+| --- | --- | --- |
+| `raw` | the original, untouched | 2,867 KB |
+| `display` | 1600px WebP q82 | **186 KB** |
+| `thumbnail` | 320px WebP q85 | **14 KB** |
+
+That picker: **42.0 MB → 0.20 MB, 211× lighter.** A timeline photo: 2,867 KB
+→ 186 KB. A gift render pulls 1.39 MB where it pulled ~20 MB of originals.
+
+**1600, not 2048.** The timeline photo is 736×384 CSS — 1472 device px on a
+2× screen — and `gift_artwork._photo_data` already capped at 1600. The only
+surface that wants more is a full-screen lightbox on a big retina display,
+and that is better served by the original on demand than by making every
+timeline photo 60% heavier. So the lightbox loads `raw`, showing the display
+copy it already has cached until the original arrives.
+
+**A worker makes them, not the request.** `scripts/media_worker.py`, its own
+process — `lily-worker.service` in prod, a compose service in dev. An upload
+writes the original and returns; the worker claims a photo a moment later
+with `FOR UPDATE SKIP LOCKED`, in one statement, committing *before* it
+touches S3 — holding a row lock across a network round trip is the
+idle-in-transaction pattern that blocked a migration here in July. A claim
+older than ten minutes is taken as abandoned and retried; a file Pillow
+can't read records `variants_error` and is retired rather than retried
+forever.
+
+**Missing means fall back to the original.** That is what made this safe to
+ship ahead of the worker and why there was no backfill to write: every
+reader keeps working and the app simply gets lighter as copies appear. It
+also means the worker can be stopped at any time without breaking anything.
+
+`hot_s3_key` / `cold_s3_key` were left alone. They are for the storage-tier
+lifecycle — moving a birth's media to cold storage when a family stops
+paying for the page to stay live — which is a different axis from
+resolution.
+
+> "the client is trying to work with full sized images when it needs
+> thumbnails"
+
+The worker deliberately does **not** take gift renders yet. It can't push SSE
+either (`events.py` is an in-process broker) — nothing here needs it, since
+a client that loaded the original before a variant existed just gets the
+variant next time.

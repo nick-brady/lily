@@ -98,6 +98,59 @@ services:
     # after 1s so code edits actually restart the server.
     command: sh -c "uvicorn main:app --host 0.0.0.0 --port 8000 --reload --timeout-graceful-shutdown 1"
 
+
+  # The media worker: makes the smaller copies of uploaded photos, so the
+  # browser never downloads a 4000px original to draw a 57px tile. Its own
+  # process on purpose — an upload should not wait on Pillow. Shares the
+  # backend's image and bind mount, so code edits land here too (no reload,
+  # so restart it: docker compose restart worker).
+  worker:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.dev
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+      minio-init:
+        condition: service_completed_successfully
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-lily}:${POSTGRES_PASSWORD:-lily}@db:5432/${POSTGRES_DB:-lily}
+      JWT_SECRET_KEY: ${JWT_SECRET_KEY:?set JWT_SECRET_KEY in .env}
+      FRONTEND_URL: ${FRONTEND_URL:-http://localhost:3000}
+      # set by scripts/dev-tunnel.sh so Printful can fetch artwork for mockups
+      ARTWORK_PUBLIC_URL: ${ARTWORK_PUBLIC_URL:-}
+      SEED_OWNER_EMAIL: ${SEED_OWNER_EMAIL:-}
+      SEED_OWNER_PHONE: ${SEED_OWNER_PHONE:-}
+      SEED_OWNER_NAME: ${SEED_OWNER_NAME:-}
+      SEED_COPARENT_EMAIL: ${SEED_COPARENT_EMAIL:-}
+      SEED_COPARENT_PHONE: ${SEED_COPARENT_PHONE:-}
+      SEED_COPARENT_NAME: ${SEED_COPARENT_NAME:-}
+      S3_BUCKET: ${S3_BUCKET:-lily-media}
+      AWS_REGION: ${AWS_REGION:-us-east-1}
+      AWS_ACCESS_KEY_ID: ${MINIO_ROOT_USER:-minioadmin}
+      AWS_SECRET_ACCESS_KEY: ${MINIO_ROOT_PASSWORD:-minioadmin}
+      AWS_ENDPOINT_URL: http://minio:9000
+      AWS_PUBLIC_ENDPOINT_URL: ${AWS_PUBLIC_ENDPOINT_URL:-http://localhost:9000}
+      PRINTFUL_API_KEY: ${PRINTFUL_API_KEY:-}
+      PRINTFUL_STORE_ID: ${PRINTFUL_STORE_ID:-}
+      RESEND_API_KEY: ${RESEND_API_KEY:-}
+      RESEND_FROM: ${RESEND_FROM:-}
+      TWILIO_ACCOUNT_SID: ${TWILIO_ACCOUNT_SID:-}
+      TWILIO_AUTH_TOKEN: ${TWILIO_AUTH_TOKEN:-}
+      TWILIO_FROM: ${TWILIO_FROM:-}
+      # "Continue with Google" — empty keeps the button hidden.
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
+      STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY:-}
+      STRIPE_WEBHOOK_SECRET: ${STRIPE_WEBHOOK_SECRET:-}
+      PRINTFUL_CONFIRM_ORDERS: ${PRINTFUL_CONFIRM_ORDERS:-}
+      GIFT_SHIPPING_COUNTRIES: ${GIFT_SHIPPING_COUNTRIES:-US}
+      ADMIN_EMAILS: ${ADMIN_EMAILS:-}
+    volumes:
+      - ./backend:/app
+      - uploads:/app/uploads
+    command: sh -c "python scripts/media_worker.py"
+
   frontend:
     build:
       context: ./frontend

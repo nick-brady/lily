@@ -93,20 +93,40 @@ def test_sentinel_email_is_per_user_and_nonempty():
 # ---- media/rendering key planning ----
 
 
+def _asset(**kw):
+    return SimpleNamespace(
+        **{
+            "original_s3_key": None, "hot_s3_key": None, "cold_s3_key": None,
+            "display_s3_key": None, "thumbnail_s3_key": None, **kw,
+        }
+    )
+
+
 def test_collect_media_keys_skips_nulls_and_local():
     assets = [
-        SimpleNamespace(
-            original_s3_key="f/x/b/y/a.jpg", hot_s3_key="f/x/b/y/a-hot.jpg",
-            cold_s3_key=None,
-        ),
-        SimpleNamespace(
-            original_s3_key="local:uploads/old.jpg", hot_s3_key=None,
-            cold_s3_key=None,
-        ),
+        _asset(original_s3_key="f/x/b/y/a.jpg", hot_s3_key="f/x/b/y/a-hot.jpg"),
+        _asset(original_s3_key="local:uploads/old.jpg"),
     ]
     assert account_deletion.collect_media_keys(assets) == [
         "f/x/b/y/a.jpg",
         "f/x/b/y/a-hot.jpg",
+    ]
+
+
+def test_collect_media_keys_takes_the_smaller_copies_too():
+    """Erasure has to remove the display and thumbnail copies as well — a
+    deleted photo that survives at 320px is still a surviving photo."""
+    assets = [
+        _asset(
+            original_s3_key="f/x/b/y/a.jpg",
+            display_s3_key="f/x/b/y/variants/a-display.webp",
+            thumbnail_s3_key="f/x/b/y/variants/a-thumbnail.webp",
+        )
+    ]
+    assert account_deletion.collect_media_keys(assets) == [
+        "f/x/b/y/a.jpg",
+        "f/x/b/y/variants/a-display.webp",
+        "f/x/b/y/variants/a-thumbnail.webp",
     ]
 
 

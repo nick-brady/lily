@@ -729,8 +729,14 @@ export const api = {
     return jsonOrThrow(res);
   },
 
-  mediaUrl(mediaId) {
-    return `${API_URL}/media/${mediaId}`;
+  // A photo at the size the surface actually draws it. `thumbnail` (320px)
+  // for grids, pickers and strips; `display` (1600px) for the timeline and
+  // the crop box; the original for the lightbox and anything downloaded.
+  // A variant the worker hasn't made yet serves the original, so asking for
+  // one is always safe.
+  mediaUrl(mediaId, variant) {
+    const base = `${API_URL}/media/${mediaId}`;
+    return variant && variant !== 'raw' ? `${base}?variant=${variant}` : base;
   },
 
   // Browser-navigated download; the session cookie rides along, so no

@@ -15,9 +15,17 @@ export default function Lightbox({
   images,
   startIndex = 0,
   onClose,
+  // A smaller copy of the same picture, already in the browser's cache from
+  // whatever the viewer clicked. Shown immediately so the screen is never
+  // blank, and replaced by `url` — the full original — when that arrives.
+  // Full screen is the one place the original earns its size.
+  preview,
 }) {
   const slides = images?.length ? images : url ? [{ url, caption }] : [];
   const [i, setI] = useState(() => Math.min(Math.max(startIndex, 0), Math.max(slides.length - 1, 0)));
+  // whether the full-size image for the current slide has arrived
+  const [loaded, setLoaded] = useState(false);
+  useEffect(() => setLoaded(false), [i, url]);
 
   const many = slides.length > 1;
 
@@ -105,7 +113,17 @@ export default function Lightbox({
         alt={slide.caption || 'Full size'}
         className="max-w-full max-h-[90vh] object-contain"
         onClick={stop}
+        style={preview && !loaded ? { display: 'none' } : undefined}
+        onLoad={() => setLoaded(true)}
       />
+      {preview && !loaded && (
+        <img
+          src={preview}
+          alt={slide.caption || 'Full size'}
+          className="max-w-full max-h-[90vh] object-contain"
+          onClick={stop}
+        />
+      )}
 
       {(slide.caption || many) && (
         <p className="absolute bottom-4 left-0 right-0 text-center text-white/80 text-sm px-4">

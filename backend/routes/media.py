@@ -169,9 +169,19 @@ def _media_visible_to(
 @router.get("/media/{media_id}", response_model=None)
 def get_media(
     media_id: uuid.UUID,
+    variant: str = "raw",
     current_user: User | None = Depends(get_optional_current_user),
     db: Session = Depends(get_db),
 ) -> FileResponse | RedirectResponse:
+    """One media file, at the size the caller asks for.
+
+    `variant` is raw | display | thumbnail. It changes *which object* is
+    served and nothing else — the auth below is identical for all three,
+    because a smaller copy of a private photo is still a private photo.
+
+    A variant that hasn't been made yet falls back to the original, so this
+    is safe whether or not the media worker is running or has caught up.
+    """
     # Viewing is auth-gated: family photos never serve to anonymous
     # requests, whatever their audience scope. `<img>` tags send the
     # same-origin session cookie, so signed-in viewers are unaffected.
@@ -183,8 +193,14 @@ def get_media(
     if not _media_visible_to(db, asset, current_user):
         raise HTTPException(status_code=404, detail="Media not found")
 
-    if media_repo.is_local_key(asset.original_s3_key):
-        rel = media_repo.local_path(asset.original_s3_key)
+    if variant != "raw" and variant not in media_repo.VARIANT_COLUMNS:
+        raise HTTPException(status_code=400, detail=f"Unknown variant '{variant}'")
+    key = media_repo.variant_key(asset, variant)
+
+    # Only originals were ever written to the filesystem (legacy PR-1 rows);
+    # variants are always S3 objects, so the fallback is what lands here.
+    if media_repo.is_local_key(key):
+        rel = media_repo.local_path(key)
         path = (UPLOAD_DIR.parent / rel).resolve()
         upload_root = UPLOAD_DIR.resolve()
         if not path.is_file() or upload_root not in path.parents:
@@ -196,7 +212,7 @@ def get_media(
         )
         return FileResponse(path, media_type=media_type)
 
-    url = presigned_get_url(asset.original_s3_key)
+    url = presigned_get_url(key)
     return RedirectResponse(url, status_code=307)
 
 

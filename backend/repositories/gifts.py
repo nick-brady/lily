@@ -33,6 +33,7 @@ from sqlalchemy.orm import Session
 import fulfillment
 import gift_artwork
 import gift_templates
+import image_variants
 from db import SessionLocal
 from fulfillment import products as fulfillment_products
 from models import (
@@ -294,18 +295,10 @@ VARIANTS = {"display": (900, 82), "thumbnail": (300, 85)}
 
 def _variant_bytes(png: bytes, size: int, quality: int) -> bytes | None:
     """One derivative of a page. None if it can't be made — a smaller copy is
-    a convenience, never a reason to fail a render."""
-    try:
-        from PIL import Image
-
-        im = Image.open(io.BytesIO(png)).convert("RGB")
-        im.thumbnail((size, size), Image.LANCZOS)
-        buf = io.BytesIO()
-        im.save(buf, "WEBP", quality=quality, method=4)
-        return buf.getvalue()
-    except Exception:  # noqa: BLE001 - never fail a render for a thumbnail
-        logger.warning("page variant failed", exc_info=True)
-        return None
+    a convenience, never a reason to fail a render. The encoder is shared with
+    uploaded photos (`image_variants`); only the sizes differ, because a page
+    is flat artwork read on a screen and a photograph is not."""
+    return image_variants.encode_one(png, size, quality)
 
 
 def _put_page(birth: Birth, rendering_id: uuid.UUID, page_key: str, body: bytes) -> str:

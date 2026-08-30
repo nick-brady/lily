@@ -1,6 +1,9 @@
 # Image variants, and a worker to make them
 
-*Written 2026-08-29. Not built. Come back to this.*
+*Written 2026-08-29. **Built 2026-08-30** — see the DECISIONS entry "Photos are
+stored three ways, and a worker makes the two small ones". Kept for the
+reasoning; the sizes landed at 1600/320 rather than 1600/300, and the
+lightbox loads the original rather than the display copy.*
 
 ## The problem
 
