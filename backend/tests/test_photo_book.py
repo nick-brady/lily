@@ -345,3 +345,27 @@ def test_a_design_that_is_not_a_book_has_no_print_pages_to_make():
         rendering_metadata = {"template_id": "mug_hours"}
 
     assert repo.ensure_print_pages(None, Mug()) == {}
+
+
+# ── drawing one page of twenty-four ────────────────────────────────────────
+
+
+def test_a_single_page_only_needs_its_own_photos():
+    plan = ga.plan_book(n_photos=8, n_notes=0, has_pool=True, has_milestones=True)
+    galleries = [p for p in plan if p["kind"] == "gallery"]
+    first, second = galleries[0], galleries[1]
+
+    assert ga.slots_for_pages(plan, {first["key"]}) == set(first["slots"])
+    assert ga.slots_for_pages(plan, {first["key"], second["key"]}) == set(
+        first["slots"] + second["slots"]
+    )
+    # a page with no photographs on it needs none
+    title = next(p for p in plan if p["kind"] == "title")
+    assert ga.slots_for_pages(plan, {title["key"]}) == set()
+    # and the whole book still means the whole book
+    assert ga.slots_for_pages(plan, None) is None
+
+
+def test_asking_for_a_page_that_is_not_in_the_book_needs_nothing():
+    plan = ga.plan_book(n_photos=8, n_notes=0, has_pool=True, has_milestones=True)
+    assert ga.slots_for_pages(plan, {"page_99"}) == set()
