@@ -382,8 +382,30 @@ class MediaAsset(Base):
         nullable=False,
     )
     original_s3_key: Mapped[str] = mapped_column(sa.Text, nullable=False)
+    # Reserved for the storage-tier lifecycle — moving a birth's media to cold
+    # storage when a family stops paying for the page to stay live. Not for
+    # resolution variants, which are a different axis and have their own
+    # columns below.
     hot_s3_key: Mapped[str | None] = mapped_column(sa.Text, nullable=True)
     cold_s3_key: Mapped[str | None] = mapped_column(sa.Text, nullable=True)
+    # Smaller copies of a photo, made by the media worker after upload (see
+    # image_variants.py). Null means "not made yet" — every reader falls back
+    # to the original — which is what lets the worker run behind the app
+    # rather than in front of it. Presence is the readiness flag: a derived
+    # path couldn't answer "is it ready?" without asking S3 on every request.
+    display_s3_key: Mapped[str | None] = mapped_column(sa.Text, nullable=True)
+    thumbnail_s3_key: Mapped[str | None] = mapped_column(sa.Text, nullable=True)
+    # When the worker last took this row. It claims in one short statement and
+    # commits before touching S3 — holding a row lock across a network round
+    # trip is the idle-in-transaction pattern that has blocked a migration
+    # here before. A claim older than VARIANT_CLAIM_STALE is taken as
+    # abandoned (the worker died) and retried.
+    variants_attempted_at: Mapped[datetime | None] = mapped_column(
+        sa.DateTime(timezone=True), nullable=True
+    )
+    # Why a photo has no variants and won't be tried again — a file Pillow
+    # can't read. Clearing it re-queues the row.
+    variants_error: Mapped[str | None] = mapped_column(sa.Text, nullable=True)
     storage_tier: Mapped[MediaStorageTier] = mapped_column(
         sa.Enum(MediaStorageTier, name="media_storage_tier", native_enum=True),
         nullable=False,

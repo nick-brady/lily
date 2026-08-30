@@ -23,6 +23,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 import gift_stats
+import image_variants
 import gift_themes
 from gift_templates import TEMPLATES, GiftTemplate
 from models import (
@@ -546,11 +547,26 @@ def _select_hero_photo(db: Session, birth: Birth) -> MediaAsset | None:
 
 def _photo_data(asset: MediaAsset, *, max_px: int | None = None) -> tuple[str, int, int] | None:
     """The photo as a data URI, with its pixel size — the size is what lets a
-    placement keep a chosen point of the picture in frame."""
+    placement keep a chosen point of the picture in frame.
+
+    Reads the display copy where there is one: it is already upright, already
+    no bigger than 1600px, and a tenth of the original off the wire. Every
+    caller here asks for 1600 or less, so nothing loses detail by it. Falls
+    back to the original for a photo the worker hasn't reached, or when a
+    caller wants more pixels than the copy holds."""
+    source = asset.original_s3_key
+    display = getattr(asset, "display_s3_key", None)
+    if display and (max_px or 1600) <= image_variants.SIZES["display"][0]:
+        source = display
     try:
-        raw = get_object_bytes(asset.original_s3_key)
+        raw = get_object_bytes(source)
     except Exception:
-        return None
+        if source == asset.original_s3_key:
+            return None
+        try:  # a variant key that's gone stale shouldn't cost us the render
+            raw = get_object_bytes(asset.original_s3_key)
+        except Exception:
+            return None
     mime = asset.mime_type or "image/jpeg"
     w = h = 0
     # Re-encode every photo: apply the EXIF orientation (phone photos are

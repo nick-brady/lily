@@ -13,7 +13,9 @@
       - "--exclude=uploads"
       - "--exclude=.pytest_cache"
       - "--exclude=.env"
-  notify: restart lily app
+  notify:
+    - restart lily app
+    - restart lily worker
 
 - name: Set backend ownership
   file:
@@ -37,7 +39,9 @@
   become_user: "{{ app_user }}"
   register: uv_sync
   changed_when: "'Installed' in uv_sync.stderr or 'Installed' in uv_sync.stdout"
-  notify: restart lily app
+  notify:
+    - restart lily app
+    - restart lily worker
 
 - name: Render backend environment file
   template:
@@ -46,7 +50,9 @@
     owner: "{{ app_user }}"
     group: "{{ app_group }}"
     mode: '0600'
-  notify: restart lily app
+  notify:
+    - restart lily app
+    - restart lily worker
 
 # The app's SSE streams hold their DB transactions open for the stream's
 # lifetime, so any migration needing an exclusive lock (column/table drops)

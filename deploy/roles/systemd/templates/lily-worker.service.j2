@@ -1,0 +1,23 @@
+[Unit]
+Description=Lily media worker (image variants)
+After=network.target postgresql.service
+Wants=postgresql.service
+
+[Service]
+User={{ app_user }}
+Group={{ app_group }}
+WorkingDirectory={{ app_dir }}/backend
+EnvironmentFile={{ app_dir }}/backend/.env
+# Separate from the web process on purpose: an upload should return before
+# Pillow has finished with the photo, and a decode should not compete with a
+# request for the web process's memory. It claims work from the database with
+# SKIP LOCKED, so a second copy could be started here without collisions.
+ExecStart={{ app_dir }}/venv/bin/python scripts/media_worker.py
+Restart=always
+RestartSec=3
+# it finishes the photo in hand on SIGTERM
+KillSignal=SIGTERM
+TimeoutStopSec=30
+
+[Install]
+WantedBy=multi-user.target

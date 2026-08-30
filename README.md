@@ -81,6 +81,35 @@ docker compose exec backend alembic upgrade head
 For the PR 1 cutover (legacy single-tenant → multi-tenant), see
 [Migrating from the legacy schema](#migrating-from-the-legacy-schema).
 
+## The media worker
+
+A second process makes the smaller copies of uploaded photos — a 1600px
+`display` and a 320px `thumbnail`, beside the untouched original — so the
+browser never downloads a 4000px photo to draw a 57px tile. It comes up with
+the rest of the stack:
+
+```bash
+docker compose up -d worker           # runs already; this is just the name
+docker compose logs -f worker
+docker compose restart worker         # no --reload: restart to pick up edits
+```
+
+An upload never waits for it. A variant that hasn't been made yet serves the
+original, so the app works with the worker stopped — it simply serves bigger
+files until it catches up. Ask for a size with
+`GET /media/{id}?variant=display|thumbnail`; the default is the original.
+
+In production it is `lily-worker.service`, a sibling of `lily.service`,
+installed by the same Ansible role and restarted by the same deploy.
+
+```bash
+systemctl status lily-worker
+journalctl -u lily-worker -f
+```
+
+A photo Pillow can't read records `variants_error` and is not retried;
+clearing that column re-queues it.
+
 ## Migrating from the legacy schema
 
 The PR 1 cutover replaces the single-tenant `contractions` / `updates`

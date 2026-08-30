@@ -1069,8 +1069,9 @@ export default function GiftWizard({
                             className="absolute inset-0"
                           >
                             <img
-                              src={api.mediaUrl(p.media_id)}
+                              src={api.mediaUrl(p.media_id, 'thumbnail')}
                               alt=""
+                              loading="lazy"
                               className={`absolute inset-0 w-full h-full object-cover ${p.on ? '' : 'grayscale'}`}
                             />
                           </button>
@@ -1105,7 +1106,7 @@ export default function GiftWizard({
                     return (
                       <CropBox
                         key={p.media_id}
-                        src={api.mediaUrl(p.media_id)}
+                        src={api.mediaUrl(p.media_id, 'display')}
                         frameAspect={aspect}
                         value={draft.crop?.[p.media_id] || null}
                         onChange={(rect) => edit({ crop: { ...(draft.crop || {}), [p.media_id]: rect } })}
@@ -1144,7 +1145,8 @@ export default function GiftWizard({
                           >
                             {photoFor(i) ? (
                               <img
-                                src={api.mediaUrl(photoFor(i))}
+                                src={api.mediaUrl(photoFor(i), 'thumbnail')}
+                                loading="lazy"
                                 alt=""
                                 className="absolute inset-0 w-full h-full object-cover"
                               />
@@ -1204,8 +1206,9 @@ export default function GiftWizard({
                         }}
                       >
                         <img
-                          src={api.mediaUrl(photo.media_id)}
+                          src={api.mediaUrl(photo.media_id, 'thumbnail')}
                           alt=""
+                          loading="lazy"
                           className="w-full aspect-square object-cover block"
                         />
                       </button>
@@ -1227,7 +1230,7 @@ export default function GiftWizard({
                     return (
                       <CropBox
                         key={`${key}-${mediaId}`}
-                        src={api.mediaUrl(mediaId)}
+                        src={api.mediaUrl(mediaId, 'display')}
                         frameAspect={aspect}
                         value={draft.crop?.[key] || null}
                         onChange={(rect) => edit({ crop: { ...(draft.crop || {}), [key]: rect } })}
@@ -1504,7 +1507,14 @@ function PageGlyph({ page, idx, photoFor }) {
             key={i}
             className={`block overflow-hidden rounded-sm bg-gray-100 ${n === 3 && i === 0 ? 'col-span-2' : ''}`}
           >
-            {id && <img src={api.mediaUrl(id)} alt="" className="w-full h-full object-cover" />}
+            {id && (
+              <img
+                src={api.mediaUrl(id, 'thumbnail')}
+                alt=""
+                loading="lazy"
+                className="w-full h-full object-cover"
+              />
+            )}
           </span>
         ))}
       </span>

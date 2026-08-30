@@ -133,7 +133,13 @@ def collect_media_keys(assets: list) -> list[str]:
     files on disk; nothing routable references them afterward."""
     keys: list[str] = []
     for asset in assets:
-        for key in (asset.original_s3_key, asset.hot_s3_key, asset.cold_s3_key):
+        for key in (
+            asset.original_s3_key,
+            asset.hot_s3_key,
+            asset.cold_s3_key,
+            asset.display_s3_key,
+            asset.thumbnail_s3_key,
+        ):
             if key and not key.startswith("local:"):
                 keys.append(key)
     return keys

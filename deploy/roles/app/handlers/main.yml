@@ -3,3 +3,10 @@
   service:
     name: lily
     state: restarted
+
+- name: restart lily worker
+  service:
+    name: lily-worker
+    state: restarted
+  # absent on a first provision, before the systemd role has run
+  failed_when: false

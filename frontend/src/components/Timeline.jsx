@@ -183,7 +183,12 @@ function MediaItem({ event, canManage, onDelete, onEdit, onPhotoClick, engagemen
   // Scripted fixtures (landing demo, hero video) ride a demo_url on the
   // payload; real events always carry a media_id.
   const { media_id, caption, demo_url } = event.payload || {};
+  // The original, for the lightbox and for anything that isn't a photo
+  // (a variant of a video is not a thing).
   const url = demo_url || api.mediaUrl(media_id);
+  // What the timeline itself draws: 736x384 CSS, so 1600px covers a 2x
+  // screen and costs a fifteenth of the original.
+  const displayUrl = demo_url || api.mediaUrl(media_id, 'display');
   if (event.event_type === 'photo') {
     return (
       <div className="flex gap-4 py-4 t-row">
@@ -194,9 +199,14 @@ function MediaItem({ event, canManage, onDelete, onEdit, onPhotoClick, engagemen
           <div
             className="rounded-xl overflow-hidden cursor-pointer"
             style={{ backgroundColor: 'var(--t-note-bg)' }}
-            onClick={() => onPhotoClick(url, caption)}
+            onClick={() => onPhotoClick(url, caption, displayUrl)}
           >
-            <img src={url} alt={caption || 'Photo'} className="w-full max-h-96 object-cover hover:opacity-90 transition-opacity" />
+            <img
+              src={displayUrl}
+              alt={caption || 'Photo'}
+              loading="lazy"
+              className="w-full max-h-96 object-cover hover:opacity-90 transition-opacity"
+            />
           </div>
           {caption && <p className="t-muted text-sm mt-2">{caption}</p>}
           {canManage && (
@@ -373,8 +383,11 @@ export default function Timeline({
   const [editError, setEditError] = useState('');
   const [busy, setBusy] = useState(false);
 
-  const openLightbox = (url, caption) => setLightbox({ open: true, url, caption: caption || '' });
-  const closeLightbox = () => setLightbox({ open: false, url: '', caption: '' });
+  // `preview` is the copy the timeline already drew — shown instantly while
+  // the original loads behind it.
+  const openLightbox = (url, caption, preview) =>
+    setLightbox({ open: true, url, caption: caption || '', preview });
+  const closeLightbox = () => setLightbox({ open: false, url: '', caption: '', preview: undefined });
 
   const askDelete = (event) => setDeleteConfirm(event);
   const askEdit = (event) => {
@@ -534,6 +547,7 @@ export default function Timeline({
       {lightbox.open && (
         <Lightbox
           url={lightbox.url}
+          preview={lightbox.preview}
           caption={lightbox.caption}
           onClose={closeLightbox}
         />
