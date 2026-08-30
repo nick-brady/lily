@@ -135,11 +135,6 @@ export default function GiftWizard({
         ...(rendering.mockup_extras || []).map((v) => ({ url: v.url, caption: v.title || '' })),
       ]
     : [];
-  // Behind because we've edited since it was taken, because the last save
-  // marked it so, or because the last attempt to retake it failed — in which
-  // case what's on screen is still the older, real photograph.
-  const anglesBehind =
-    dirty || rendering.mockup_status === 'stale' || rendering.mockup_status === 'failed';
 
   useEffect(() => {
     // Don't swallow this. An empty grid and "no photos yet" is a claim about
@@ -832,36 +827,12 @@ export default function GiftWizard({
                 </div>
               )}
 
-              {angles.length > 0 && (
-                <div className="w-full sm:flex-none">
-                  {/* a fixed-height strip, so it never competes with the artwork for room */}
-                  <div className={`flex justify-center gap-3 ${anglesBehind ? 'opacity-40' : ''}`}>
-                    {angles.map((a, i) => (
-                      <button
-                        key={a.url}
-                        type="button"
-                        onClick={() => openGallery(i + 1)}
-                        className="block h-24 sm:h-28 aspect-square"
-                        style={{ cursor: 'zoom-in' }}
-                        aria-label={`See ${a.caption || 'this view'} full screen`}
-                      >
-                        <img
-                          src={a.url}
-                          alt={a.caption || 'On the product'}
-                          className="w-full h-full object-cover rounded-lg block bg-white"
-                        />
-                      </button>
-                    ))}
-                  </div>
-                  <p className="text-[11px] t-muted text-center mt-2">
-                    {rendering.mockup_status === 'failed'
-                      ? "Shows an earlier version — the new photo didn't come back."
-                      : anglesBehind
-                        ? 'Shows your design before this change — refreshed at the next step.'
-                        : `On the ${noun}.`}
-                  </p>
-                </div>
-              )}
+              {/* The product shots don't live on this step. Step two is
+                  called "see it", the button below says "see it on the
+                  product", and what could be shown here is a photograph of
+                  the design as it was *before* the change being made — faded
+                  to 40% with a caption explaining why it's wrong. A stale
+                  picture of the thing you're editing isn't worth the room. */}
             </div>
 
             {/* The controls scroll; Next doesn't. A long design — the frame
