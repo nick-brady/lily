@@ -1740,6 +1740,7 @@ def slot_overrides(rendering, slot_count: int) -> dict[int, str]:
 def _slot_photos(
     db: Session, birth: Birth, rendering, n: int, *, photo_max_px: int,
     choices: dict[int, str] | None = None, crop_by_media: bool = False,
+    want: set[int] | None = None,
 ) -> list[dict]:
     """The photos for an n-panel design: the auto sample across the day, with
     the parent's per-slot choices laid over it. A choice replaces its slot's
@@ -1768,10 +1769,15 @@ def _slot_photos(
             chosen.append(ref)
     photos = []
     for i, ref in enumerate(chosen):
-        data = _photo_data(ref["asset"], max_px=photo_max_px)
-        if data is None:
+        # `want` is the caller drawing one page of a book. Fetching, decoding
+        # and base64-ing every photo in the book to draw a single page is
+        # most of what a preview costs — but the rest of the entry is what
+        # decides which note falls on which page, so it is still built.
+        skip = want is not None and i not in want
+        data = None if skip else _photo_data(ref["asset"], max_px=photo_max_px)
+        if data is None and not skip:
             continue
-        uri, w, h = data
+        uri, w, h = data if data else (None, 0, 0)
         photos.append(
             {
                 "uri": uri,
@@ -1783,7 +1789,7 @@ def _slot_photos(
                 "media_id": ref["media_id"],
             }
         )
-    if not photos:
+    if not any(p and p.get("uri") for p in photos):
         raise ArtworkError("missing-photo")
     return photos
 
@@ -2328,6 +2334,23 @@ def book_plan_for(db: Session, birth: Birth, rendering, day: list[dict] | None) 
     return plan_pages_out(plan, birth, auto)
 
 
+def slots_for_pages(plan: list[dict], drawing: set[str] | None) -> set[int] | None:
+    """Which photo slots the pages in `drawing` need, or None for all of them.
+
+    A preview draws one page of twenty-four. Only its photos have to be
+    fetched and decoded — which is most of what a preview costs — while
+    everything that decides *layout* (which note falls on which page, what
+    number is printed on it) still walks the whole plan."""
+    if drawing is None:
+        return None
+    return {
+        slot
+        for page in plan
+        if page["key"] in drawing
+        for slot in page.get("slots", [])
+    }
+
+
 def book_slot_choices(plan: list[dict], rendering, n_slots: int) -> dict[int, str]:
     """Slot → the photo the parent put there, taken off the pages that carry
     their own. A gallery page holds its photos, so moving the page moves
@@ -2784,10 +2807,16 @@ def render_book(
     lo = (getattr(rendering, "layout_overrides", None) or {}) if rendering is not None else {}
     plan = plan_book(n_photos=len(refs), n_notes=len(notes), has_pool=has_pool, has_milestones=bool(marks), day=lo.get("pages"), pen_pages=lo.get("pen_pages"))
     total_slots = sum(p.get("count", 0) for p in plan if p["kind"] == "gallery")
+    # Which files this call will actually rasterise. A preview asks for one
+    # page; there is no reason for it to pay for the other twenty-three —
+    # their photos, their captions, their comments.
+    drawing = {only} if only else (set(keys) if keys is not None else None)
+    want_slots = slots_for_pages(plan, drawing)
     photos = _slot_photos(
         db, birth, rendering, total_slots, photo_max_px=photo_max_px or 1000,
         choices=book_slot_choices(plan, rendering, total_slots), crop_by_media=True,
-    ) if total_slots else []
+        want=want_slots,
+    ) if total_slots and want_slots != set() else []
     photos += [None] * (total_slots - len(photos))
 
     # notes: which fall in each gallery's stretch of the day, and the pages of them
@@ -2813,6 +2842,11 @@ def render_book(
                 note, used_notes.add(j)
                 note = {"text": _truncate(t, 60), "when": _fmt_time(w).upper()}
                 break
+        # The note walk above has to run for every gallery page — which note
+        # falls here depends on which were taken by the pages before it — but
+        # only a page being drawn needs its photos read out of the database.
+        if drawing is not None and page["key"] not in drawing:
+            continue
         ph = [photos[k] for k in page["slots"]]
         # a single photo has room for its caption and what people said about
         # it; a gallery shows the first photo's caption line only
@@ -2838,6 +2872,8 @@ def render_book(
         pages_ctx[page["key"]] = ("book_notes.svg.j2", {"book_quotes": quotes})
 
     for page in plan:
+        if drawing is not None and page["key"] not in drawing:
+            continue
         k = page["kind"]
         if k == "title":
             pages_ctx[page["key"]] = ("book_title.svg.j2", {})
@@ -2901,6 +2937,10 @@ def render_book(
         "cover_front": ("book_cover_front.svg.j2", front_clock, BOOK_PANEL, BOOK_PANEL),
     }
     for i, page in enumerate(plan):
+        # enumerate the whole plan whatever we're drawing: `i` is the number
+        # printed on the page, and it must not shift when only one is asked for
+        if page["key"] not in pages_ctx:
+            continue
         svg, extra = pages_ctx[page["key"]]
         extra = {**extra, "book_page_number": i + 1}
         files_spec[page["key"]] = (svg, extra, BOOK_PAGE, BOOK_PAGE)
