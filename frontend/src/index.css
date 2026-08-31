@@ -1,3 +1,6 @@
+/* Our own copies, served from this origin — see scripts/vendor-fonts.sh. */
+@import './styles/fonts.css';
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
