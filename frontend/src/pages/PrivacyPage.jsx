@@ -4,7 +4,7 @@ const SUPPORT_EMAIL = 'nicholas.aaron.brady@gmail.com';
 
 export default function PrivacyPage() {
   return (
-    <LegalLayout title="Privacy Policy" updated="July 5, 2026">
+    <LegalLayout title="Privacy Policy" updated="August 30, 2026">
       <LegalSection heading="Who we are">
         <p>
           Arrival Story ("we", "us") operates arrivalstory.com, a private family
@@ -31,8 +31,13 @@ export default function PrivacyPage() {
           physical keepsakes we collect a shipping address to fulfill the order.
         </p>
         <p>
-          <strong>Usage data.</strong> Basic technical logs (such as IP address and browser
-          type) generated when you use the service, used for security and reliability.
+          <strong>Usage data.</strong> Our web server keeps short-lived technical logs
+          (including IP address and browser type) for security and reliability. Separately,
+          we count page views ourselves — see{' '}
+          <a href="#analytics" className="text-primary-600 dark:text-primary-400 hover:underline">
+            Analytics and cookies
+          </a>{' '}
+          below.
         </p>
       </LegalSection>
 
@@ -50,6 +55,34 @@ export default function PrivacyPage() {
           <li>keeping the service secure and working.</li>
         </ul>
         <p>We do not run ads, and we do not sell your personal information. Ever.</p>
+      </LegalSection>
+
+      <LegalSection heading="Analytics and cookies" id="analytics">
+        <p>
+          We count page views ourselves, on our own servers. We do not use Google
+          Analytics or any other third-party analytics service, and there are no
+          advertising or tracking networks anywhere on this site.
+        </p>
+        <p>
+          For each page you open we record the page address, the site that linked you here
+          (on your first page only), any campaign tag in the link you arrived by, your
+          browser&rsquo;s user-agent string, and the time. <strong>We do not store your IP
+          address alongside it.</strong> If you are signed in, the visit is linked to your
+          account so we can tell how the service is actually used; if you are not, it is
+          simply an anonymous count. Deleting your account unlinks your past visits, leaving
+          the counts without you in them.
+        </p>
+        <p>
+          <strong>Cookies.</strong> We set one cookie: the one that keeps you signed in.
+          It is strictly necessary for the service to work, so there is no cookie banner to
+          click through. We store one further item in your browser&rsquo;s local storage,
+          remembering which link first brought you here so that credit is not reassigned if
+          you come back another way. Neither is shared with anyone.
+        </p>
+        <p>
+          The fonts and other files this site loads are served from our own servers, so
+          opening a page does not tell any third party that you visited.
+        </p>
       </LegalSection>
 
       <LegalSection heading="Text messaging (SMS) privacy">
