@@ -26,6 +26,28 @@ def next_sequence_id(db: Session, birth_id: uuid.UUID) -> int:
     return int(current) + 1
 
 
+def running_contraction(db: Session, birth_id: uuid.UUID) -> TimelineEvent | None:
+    """The contraction this birth has going right now, if any.
+
+    "Running" had only ever existed in the browser, as a scan for the first
+    event without an end time — which is why a second one could be created at
+    all, and why the older was the one the button reached. The server answers
+    it now, and `uq_timeline_events_one_open_contraction` guarantees the
+    answer is singular.
+    """
+    return db.scalars(
+        select(TimelineEvent)
+        .where(
+            TimelineEvent.birth_id == birth_id,
+            TimelineEvent.event_type == TimelineEventType.contraction,
+            TimelineEvent.deleted_at.is_(None),
+            TimelineEvent.payload["end_time"].astext.is_(None),
+        )
+        .order_by(TimelineEvent.occurred_at.desc())
+        .limit(1)
+    ).first()
+
+
 def append_event(
     db: Session,
     *,

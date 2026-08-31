@@ -49,12 +49,18 @@ async function throwFrom(res) {
     // Machine-readable half of a structured detail, e.g. 'name_required'.
     // Callers that need to branch shouldn't have to match on prose.
     if (typeof body?.detail?.code === 'string') code = body.detail.code;
+    // and the rest of it, for callers that need more than the code — the
+    // contraction refusal carries how many seconds ago it started
+    if (body?.detail && typeof body.detail === 'object' && !Array.isArray(body.detail)) {
+      var structured = body.detail;
+    }
   } catch {
     // empty or non-JSON body, keep statusText
   }
   const err = new Error(detail);
   err.status = res.status;
   if (code) err.code = code;
+  if (typeof structured !== 'undefined') err.detail = structured;
   throw err;
 }
 
@@ -198,11 +204,15 @@ export const api = {
     return jsonOrThrow(res);
   },
 
+  // The server stamps the end itself. We still send a time because the
+  // schema asks for one, but it is not what gets recorded: a duration built
+  // from two devices' clocks carried their skew into every keepsake, and a
+  // phone running behind wrote a negative one.
   async stopContraction(birthId, eventId, endTimeIso) {
     const res = await fetch(`${API_URL}/birth/${birthId}/contraction/${eventId}/stop`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ end_time: endTimeIso }),
+      body: JSON.stringify({ end_time: endTimeIso || new Date().toISOString() }),
     });
     return jsonOrThrow(res);
   },
