@@ -35,9 +35,10 @@ export default function LegalLayout({ title, updated, children }) {
   );
 }
 
-export function LegalSection({ heading, children }) {
+export function LegalSection({ heading, children, id }) {
   return (
-    <section>
+    // `id` makes a section linkable, so one part of a policy can point at another
+    <section id={id} className={id ? 'scroll-mt-24' : undefined}>
       <h2 className="text-lg font-semibold text-gray-800 dark:text-gray-100 mb-3">{heading}</h2>
       <div className="space-y-3 text-[15px] leading-relaxed text-gray-600 dark:text-gray-300">
         {children}
