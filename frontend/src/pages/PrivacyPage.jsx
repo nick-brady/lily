@@ -73,11 +73,12 @@ export default function PrivacyPage() {
           the counts without you in them.
         </p>
         <p>
-          <strong>Cookies.</strong> We set one cookie: the one that keeps you signed in.
-          It is strictly necessary for the service to work, so there is no cookie banner to
-          click through. We store one further item in your browser&rsquo;s local storage,
-          remembering which link first brought you here so that credit is not reassigned if
-          you come back another way. Neither is shared with anyone.
+          <strong>Cookies and local storage.</strong> We set one cookie: the one that
+          keeps you signed in. It is strictly necessary for the service to work, so there is
+          no cookie banner to click through. Your browser also keeps two small items for us
+          on your own device &mdash; whether you prefer dark mode, and which link first
+          brought you here so that credit is not reassigned if you come back another way.
+          Neither is an advertising identifier, and none of this is shared with anyone.
         </p>
         <p>
           The fonts and other files this site loads are served from our own servers, so
