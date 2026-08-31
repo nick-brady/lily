@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { api } from '../api/client';
+import Modal from './Modal';
 import { formatDuration } from '../utils/statistics';
 import { toLocalInputValue } from '../utils/relativeTime';
 import ReactionBar from './ReactionBar';
@@ -586,20 +587,5 @@ export default function Timeline({
   );
 }
 
-function Modal({ children, onClose }) {
-  return (
-    <div
-      className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4"
-      onClick={onClose}
-    >
-      <div
-        className="bg-white dark:bg-gray-800 rounded-xl shadow-xl max-w-sm w-full p-6"
-        onClick={(e) => e.stopPropagation()}
-      >
-        {children}
-      </div>
-    </div>
-  );
-}
 
 export { MILESTONES };

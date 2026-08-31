@@ -355,6 +355,23 @@ class TimelineEvent(Base):
     __table_args__ = (
         sa.UniqueConstraint("birth_id", "sequence_id", name="uq_timeline_events_birth_seq"),
         sa.Index("ix_timeline_events_birth_occurred", "birth_id", "occurred_at"),
+        # A birth has at most one contraction running at a time. Two parents
+        # watch the same page and neither knows who will press the button, so
+        # they sometimes both do, within the same second — and a second open
+        # contraction is not a harmless duplicate: the button stops the older
+        # one, flips straight back to STOP for the other, and that one can
+        # never be stopped again. It has no duration, so the keepsake's count
+        # loses it, while the CSV export still measures the next interval from
+        # it. The route makes this pleasant; the index makes it true.
+        sa.Index(
+            "uq_timeline_events_one_open_contraction",
+            "birth_id",
+            unique=True,
+            postgresql_where=sa.text(
+                "event_type = 'contraction' AND deleted_at IS NULL "
+                "AND payload->>'end_time' IS NULL"
+            ),
+        ),
     )
 
 

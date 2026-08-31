@@ -9,6 +9,7 @@ from typing import Annotated, Literal, Union
 from fastapi import APIRouter, Body, Depends, HTTPException, Response
 from pydantic import Field
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from auth import get_current_user
@@ -131,6 +132,21 @@ def _gap_before_seconds(db: Session, birth_id: uuid.UUID, occurred_at: datetime)
     return int((occurred_at - previous.occurred_at).total_seconds())
 
 
+# How long a just-started contraction is protected from being stopped.
+#
+# Both parents watch the same page and neither knows who is going to press the
+# button. Under GRACE the tapper cannot have known it had started — their tap
+# was for starting, not stopping — so it does nothing at all. Between GRACE
+# and CONFIRM a stop is possible but suspicious, and the client asks. Past
+# CONFIRM it is simply a stop.
+#
+# CONFIRM is 10s because the real contractions recorded here run 14–101s, so
+# the question can only ever land on a misfire, never on someone genuinely
+# ending a short one.
+CONTRACTION_GRACE_SECONDS = 5
+CONTRACTION_CONFIRM_SECONDS = 10
+
+
 @router.post("/birth/{birth_id}/contraction/start", response_model=TimelineEventOut)
 async def start_contraction(
     payload: StartContractionIn = Body(default=StartContractionIn()),
@@ -140,20 +156,39 @@ async def start_contraction(
 ) -> TimelineEventOut:
     now = datetime.now(timezone.utc)
     occurred_at = payload.occurred_at or now
-    event = timeline_repo.append_event(
-        db,
-        birth_id=access.birth.id,
-        event_type=TimelineEventType.contraction,
-        payload={
-            "type": "contraction",
-            "duration_seconds": None,
-            "end_time": None,
-            "gap_before_seconds": _gap_before_seconds(db, access.birth.id, occurred_at),
-        },
-        posted_by_user_id=current_user.id,
-        occurred_at=occurred_at,
-        audience_scope=payload.audience_scope,
-    )
+
+    # Whoever pressed second joins the contraction already running rather than
+    # opening another. No error: from where they are standing they started a
+    # contraction, and one is running — which is the truth they wanted.
+    running = timeline_repo.running_contraction(db, access.birth.id)
+    if running is not None:
+        return serialize_event_out(running)
+
+    try:
+        event = timeline_repo.append_event(
+            db,
+            birth_id=access.birth.id,
+            event_type=TimelineEventType.contraction,
+            payload={
+                "type": "contraction",
+                "duration_seconds": None,
+                "end_time": None,
+                "gap_before_seconds": _gap_before_seconds(db, access.birth.id, occurred_at),
+            },
+            posted_by_user_id=current_user.id,
+            occurred_at=occurred_at,
+            audience_scope=payload.audience_scope,
+        )
+        db.flush()
+    except IntegrityError:
+        # Both taps got past the check together and the index caught the
+        # loser. Hand them the winner's contraction — the same answer they
+        # would have had a millisecond earlier.
+        db.rollback()
+        running = timeline_repo.running_contraction(db, access.birth.id)
+        if running is None:
+            raise
+        return serialize_event_out(running)
     # The first contraction is what tips a birth into labor — the gentle
     # "something's happening" signal family viewers see.
     labor_began = births_repo.begin_labor(db, birth=access.birth, when=occurred_at)
@@ -224,16 +259,40 @@ async def stop_contraction(
         raise HTTPException(status_code=404, detail="Contraction not found")
     if event.event_type is not TimelineEventType.contraction:
         raise HTTPException(status_code=400, detail="Event is not a contraction")
+    # A stop that arrives twice — a retry, a second tap, a reconnect — is the
+    # same request, not a mistake. It used to answer 400 and put a red banner
+    # in front of someone in labour.
     if event.payload.get("end_time") is not None:
-        raise HTTPException(status_code=400, detail="Contraction already stopped")
+        return serialize_event_with_engagement(
+            db, event, requester_user_id=current_user.id
+        )
 
-    duration = int((payload.end_time - event.occurred_at).total_seconds())
+    # Both ends of a contraction are stamped here, on one clock. The end time
+    # used to come from the phone, so a duration was `their now − our start`:
+    # every record carried the skew between two devices, and a phone running
+    # behind wrote a negative duration, which goes on to be printed on a
+    # keepsake.
+    now = datetime.now(timezone.utc)
+    age = (now - event.occurred_at).total_seconds()
+
+    if age < CONTRACTION_GRACE_SECONDS:
+        # They pressed to start it. Their partner was a moment quicker, and
+        # nothing on their screen had said so yet.
+        return serialize_event_with_engagement(
+            db, event, requester_user_id=current_user.id
+        )
+    if age < CONTRACTION_CONFIRM_SECONDS:
+        raise HTTPException(
+            status_code=409,
+            detail={"code": "just_started", "started_seconds_ago": int(age)},
+        )
+
     timeline_repo.update_payload(
         db,
         event,
         {
-            "end_time": payload.end_time.isoformat(),
-            "duration_seconds": duration,
+            "end_time": now.isoformat(),
+            "duration_seconds": int(age),
         },
     )
     gifts_repo.mark_stale(db, birth_id=access.birth.id)

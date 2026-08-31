@@ -1,6 +1,9 @@
 import { useEffect, useState } from 'react';
 
-export default function ContractionButton({ onStart, onStop, startTime }) {
+// `pending` covers the moment between the tap and the server's answer. It is
+// the only button in the app that lacked one, and it is the one that matters
+// most: two parents watch this page and neither knows who will press it.
+export default function ContractionButton({ onStart, onStop, startTime, pending = false }) {
   const [elapsed, setElapsed] = useState(0);
 
   useEffect(() => {
@@ -29,9 +32,12 @@ export default function ContractionButton({ onStart, onStop, startTime }) {
         </div>
         <button
           onClick={onStop}
+          disabled={pending}
+          aria-busy={pending}
           className="w-48 h-48 rounded-full bg-red-500 hover:bg-red-600 text-white text-2xl font-bold
                      shadow-2xl hover:shadow-red-500/50 transition-all duration-200 active:scale-95
-                     animate-pulse-slow flex items-center justify-center"
+                     animate-pulse-slow flex items-center justify-center
+                     disabled:opacity-60 disabled:active:scale-100"
         >
           STOP
         </button>
@@ -49,9 +55,12 @@ export default function ContractionButton({ onStart, onStop, startTime }) {
       </div>
       <button
         onClick={onStart}
+        disabled={pending}
+        aria-busy={pending}
         className="w-48 h-48 rounded-full t-btn-accent t-glow text-xl font-bold
                    shadow-2xl transition-all duration-200 active:scale-95
-                   flex items-center justify-center"
+                   flex items-center justify-center
+                   disabled:opacity-60 disabled:active:scale-100"
       >
         START<br/>CONTRACTION
       </button>

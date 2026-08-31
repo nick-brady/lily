@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link, useParams, useSearchParams } from 'react-router-dom';
 import { api } from '../api/client';
+import Modal from '../components/Modal';
 import { useAuth } from '../contexts/AuthContext';
 import { useSSE } from '../hooks/useSSE';
 import { useDarkMode } from '../hooks/useDarkMode';
@@ -225,29 +226,76 @@ export default function PublicBirthPage() {
 
   // ---- Parent actions (id endpoints; the server enforces parenthood) ----
 
+  // A tap, until the server has answered it. The button was the only one in
+  // the app without this, and it is the one where it matters: both parents
+  // are watching, and the answer used to arrive by way of the event stream,
+  // leaving the button saying START to both of them for the whole round trip.
+  const [contractionPending, setContractionPending] = useState(false);
+  // Set when the server refuses a stop because the contraction has only just
+  // begun: {startedSecondsAgo}. Holding it opens the dialog.
+  const [justStarted, setJustStarted] = useState(null);
+  // The cancel × used to delete a running contraction outright, from a 40px
+  // target, with no confirmation.
+  const [confirmCancel, setConfirmCancel] = useState(false);
+
+  // The server's own answer, applied at once rather than waited for over the
+  // event stream. Not an optimistic guess — the same object SSE would bring,
+  // a few hundred milliseconds earlier.
+  const applyEvent = (event) => {
+    if (!event?.id) return;
+    setEvents((prev) => {
+      const next = new Map(prev);
+      const existing = next.get(event.id);
+      next.set(event.id, {
+        reactions: existing?.reactions || {},
+        comment_count: existing?.comment_count ?? 0,
+        ...event,
+      });
+      return next;
+    });
+  };
+
   const handleStart = async () => {
+    if (contractionPending) return;
+    setContractionPending(true);
     try {
-      await api.startContraction(birth.id);
+      // If their partner was a moment quicker, this returns that contraction
+      // rather than opening a second one.
+      applyEvent(await api.startContraction(birth.id));
     } catch (err) {
       setError(err.message || 'Failed to start contraction');
+    } finally {
+      setContractionPending(false);
     }
   };
 
   const handleStop = async () => {
-    if (!activeContraction) return;
+    if (!activeContraction || contractionPending) return;
+    setContractionPending(true);
     try {
-      await api.stopContraction(birth.id, activeContraction.id, new Date().toISOString());
+      applyEvent(await api.stopContraction(birth.id, activeContraction.id));
     } catch (err) {
-      setError(err.message || 'Failed to stop contraction');
+      if (err.code === 'just_started') {
+        setJustStarted({ startedSecondsAgo: err.detail?.started_seconds_ago ?? 0 });
+      } else {
+        setError(err.message || 'Failed to stop contraction');
+      }
+    } finally {
+      setContractionPending(false);
     }
   };
 
-  const handleCancel = async () => {
+  const discardContraction = async () => {
     if (!activeContraction) return;
+    setContractionPending(true);
     try {
       await api.deleteEvent(birth.id, activeContraction.id);
+      setJustStarted(null);
+      setConfirmCancel(false);
     } catch (err) {
-      setError(err.message || 'Failed to cancel contraction');
+      setError(err.message || 'Failed to discard contraction');
+    } finally {
+      setContractionPending(false);
     }
   };
 
@@ -412,7 +460,7 @@ export default function PublicBirthPage() {
           <section className="card relative flex justify-center py-8">
             {activeContraction && (
               <button
-                onClick={handleCancel}
+                onClick={() => setConfirmCancel(true)}
                 className="absolute top-3 right-3 p-2 text-gray-400 hover:text-red-500
                            dark:text-gray-500 dark:hover:text-red-400 transition-colors"
                 title="Cancel contraction"
@@ -426,9 +474,77 @@ export default function PublicBirthPage() {
               onStart={handleStart}
               onStop={handleStop}
               startTime={activeContraction?.occurred_at || null}
+              pending={contractionPending}
             />
           </section>
         ) : null}
+
+        {/* Someone pressed stop moments after it began. Almost always it was
+            a second thumb going for start — their partner was quicker, and
+            nothing on their screen had said so yet. Under five seconds the
+            server ignores it outright; this is the window just after, where
+            it might have been meant. There is no "stop it here": the
+            contractions recorded here run from fourteen seconds, so anything
+            this short is a misfire, not a short contraction. */}
+        {justStarted && (
+          <Modal onClose={() => setJustStarted(null)}>
+            <h3 className="text-lg font-semibold text-gray-800 dark:text-gray-100 mb-2">
+              This contraction started {justStarted.startedSecondsAgo} seconds ago
+            </h3>
+            <p className="text-sm t-muted mb-5">
+              If you both reached for the button, it&rsquo;s already being timed — keep
+              going. Discard it only if it started by mistake.
+            </p>
+            <div className="flex gap-3">
+              <button
+                type="button"
+                onClick={() => setJustStarted(null)}
+                className="flex-1 py-2 rounded-lg t-btn-accent font-medium"
+              >
+                Keep timing
+              </button>
+              <button
+                type="button"
+                onClick={discardContraction}
+                disabled={contractionPending}
+                className="flex-1 py-2 rounded-lg bg-red-500 text-white font-medium
+                           hover:bg-red-600 disabled:opacity-50"
+              >
+                Discard it
+              </button>
+            </div>
+          </Modal>
+        )}
+
+        {confirmCancel && (
+          <Modal onClose={() => setConfirmCancel(false)}>
+            <h3 className="text-lg font-semibold text-gray-800 dark:text-gray-100 mb-2">
+              Discard this contraction?
+            </h3>
+            <p className="text-sm t-muted mb-5">
+              It won&rsquo;t be timed or counted. There&rsquo;s no undo.
+            </p>
+            <div className="flex gap-3">
+              <button
+                type="button"
+                onClick={() => setConfirmCancel(false)}
+                className="flex-1 py-2 rounded-lg border font-medium t-ink"
+                style={{ borderColor: 'var(--t-soft-ring)' }}
+              >
+                Keep timing
+              </button>
+              <button
+                type="button"
+                onClick={discardContraction}
+                disabled={contractionPending}
+                className="flex-1 py-2 rounded-lg bg-red-500 text-white font-medium
+                           hover:bg-red-600 disabled:opacity-50"
+              >
+                Discard it
+              </button>
+            </div>
+          </Modal>
+        )}
 
         {/* No card here for the birth. Announcing lives in the composer
             because it IS a timeline milestone, and the arrival reads as one
