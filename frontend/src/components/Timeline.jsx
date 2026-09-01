@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { useLayoutEffect, useRef, useState } from 'react';
 import { api } from '../api/client';
 import Modal from './Modal';
 import {
@@ -348,10 +348,31 @@ function TimelinePhoto({ src, caption, focus, onOpen, onReframe }) {
   const overflow = coverOverflow(natural, box);
   const movable = canReframe(overflow);
 
-  const measure = (node) => {
-    frameRef.current = node;
-    if (node) setBox({ width: node.clientWidth, height: node.clientHeight });
-  };
+  // Measure the frame after layout, not during render, and only record a
+  // size that actually differs.
+  //
+  // This was a ref callback that called setBox. A ref callback declared in the
+  // body is a new function every render, so React detaches and re-attaches the
+  // ref each time — and because setBox was handed a fresh object, every
+  // attach counted as a change, re-rendered, and re-attached. React caught it
+  // as "Maximum update depth exceeded" and took the page down with it.
+  //
+  // The frame's height depends on the image having loaded, so the observer
+  // does the real work: at mount it is often still zero.
+  useLayoutEffect(() => {
+    const node = frameRef.current;
+    if (!node || typeof ResizeObserver === 'undefined') return undefined;
+    const read = () => {
+      const { clientWidth: width, clientHeight: height } = node;
+      setBox((prev) =>
+        prev && prev.width === width && prev.height === height ? prev : { width, height },
+      );
+    };
+    read();
+    const observer = new ResizeObserver(read);
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, []);
 
   const onPointerDown = (e) => {
     if (!adjusting) return;
@@ -383,8 +404,8 @@ function TimelinePhoto({ src, caption, focus, onOpen, onReframe }) {
   return (
     <>
       <div
-        ref={measure}
-        className={`rounded-xl overflow-hidden relative ${adjusting ? 'cursor-grab active:cursor-grabbing touch-none ring-2' : 'cursor-pointer'}`}
+        ref={frameRef}
+        className={`group rounded-xl overflow-hidden relative ${adjusting ? 'cursor-grab active:cursor-grabbing touch-none ring-2' : 'cursor-pointer'}`}
         style={{
           backgroundColor: 'var(--t-note-bg)',
           ...(adjusting ? { '--tw-ring-color': 'var(--t-accent)' } : {}),
@@ -417,6 +438,30 @@ function TimelinePhoto({ src, caption, focus, onOpen, onReframe }) {
             Drag the photo to choose what shows
           </span>
         )}
+        {/* Quiet enough to ignore, in the corner of the thing it acts on —
+            a word under the photo read as part of the post. */}
+        {!adjusting && onReframe && movable && (
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();     // not a click on the photo
+              setDraft(focus || { x: 0.5, y: 0.5 });
+            }}
+            aria-label="Reposition this photo"
+            title="Reposition"
+            className="absolute bottom-2 right-2 p-1.5 rounded-full
+                       bg-black/35 text-white/80 backdrop-blur-sm
+                       opacity-0 group-hover:opacity-100 focus:opacity-100
+                       hover:bg-black/55 hover:text-white transition-opacity"
+          >
+            <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                 strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+              <path d="M12 4v16M4 12h16" />
+              <path d="M9.5 6.5 12 4l2.5 2.5M9.5 17.5 12 20l2.5-2.5" />
+              <path d="M6.5 9.5 4 12l2.5 2.5M17.5 9.5 20 12l-2.5 2.5" />
+            </svg>
+          </button>
+        )}
       </div>
 
       {adjusting && (
@@ -439,15 +484,6 @@ function TimelinePhoto({ src, caption, focus, onOpen, onReframe }) {
         </div>
       )}
 
-      {!adjusting && onReframe && movable && (
-        <button
-          type="button"
-          onClick={() => setDraft(focus || { x: 0.5, y: 0.5 })}
-          className="text-xs text-gray-400 hover:text-primary-500 mt-2"
-        >
-          Reposition
-        </button>
-      )}
     </>
   );
 }
