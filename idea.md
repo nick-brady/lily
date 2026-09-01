@@ -218,3 +218,91 @@ Mostly it is ready, and this week's work moved it closer:
 
 None of that is a reason to wait. It is a reason to decide the offline
 contract first, since it is the same contract the app would use.
+
+---
+
+# Seeing it fail
+
+*Written 2026-08-31. Not built.*
+
+## The problem
+
+If Arrival Story breaks for a family at three in the morning, nobody finds
+out. There is no error tracking, nothing writes an application log to disk,
+and `/api/health` returns 404, so there is nothing for an uptime check to
+watch. The first signal would be a text message, or silence.
+
+That matters more here than in most products. A labour happens once. A family
+cannot come back tomorrow and re-record the night — so a bug during it isn't
+an inconvenience to apologise for, it's a hole in the only account of
+something that will never happen again.
+
+> "this is a big deal … I want to make sure I have good logging on my system.
+> don't need datadog.. but I need to at least be writing to log files that I
+> can monitor."
+
+## Where it stands
+
+- **Nothing configures logging.** Six modules call `logging.getLogger`, but
+  no `basicConfig` or `dictConfig` runs in the web app, so those lines go
+  wherever uvicorn's defaults send them. Five places still use `print()`.
+- **Everything lands in journald** — persistent on this box (106 MB so far),
+  size-capped with no time limit. Fine for reading after the fact; not a file
+  you can tail, grep on a schedule, or ship anywhere.
+- **`/opt/lily/logs` already exists**, created by the `common` Ansible role,
+  and is empty. The intent was there.
+- **nginx has access and error logs**, rotated 14 days — the only real log
+  files on the machine.
+- **One HTTP middleware exists** (`slide_session_cookie`, `main.py:55`), so
+  there is already a place a request-logging middleware would sit.
+- **`/` returns `{"name": "arrival-story", "status": "running"}`** without
+  touching the database — it says the process is up, not that the app works.
+
+## The shape of it
+
+**A health endpoint worth monitoring.** `/api/health` that actually asks the
+database a question and reports the alembic revision. Unauthenticated, cheap,
+and honest: a 200 should mean "this can serve a family", not "a process is
+listening". Then any uptime checker — an external ping every minute — has
+something real to watch, and it covers the case where Postgres is down but
+uvicorn isn't.
+
+**Structured logs, to files, under `/opt/lily/logs`.** One line per event as
+JSON, so it can be grepped now and parsed later without rewriting anything:
+
+- a request log — method, path, status, duration, and *who* (user id, not
+  name or email)
+- a **request id** on every line, returned in a response header, so "it broke
+  around 3am" becomes a single trace rather than an archaeology exercise
+- unhandled exceptions with their traceback, which currently reach journald
+  at best
+- the media worker to its own file; it already logs properly and only needs
+  somewhere to put it
+
+Rotated by logrotate like nginx's, with a retention window chosen on purpose
+rather than inherited.
+
+**What must never be logged.** This is the sharp edge, given everything else
+we've decided about privacy. No captions, note bodies, photo contents, file
+names, email addresses, phone numbers, or child names. A log file is the
+easiest place for the data we have been careful about everywhere else to leak
+out sideways — into a backup, a support paste, or a screenshot. User *ids*,
+birth *ids*, and paths are enough to debug with; if something needs more, it
+should be looked up in the database deliberately, not left lying in a file.
+
+**Alerting without a vendor.** Resend is already a dependency for
+transactional email. A cron that reads the last few minutes of the error log
+and emails a digest when there is anything in it would cover the whole need —
+no new service, no account, no bill, and it fails in the safe direction (a
+missed email, not a missed outage). If that ever gets noisy, it is also the
+natural point to reach for something bought.
+
+## Worth deciding early
+
+- **Retention.** The same storage-limitation question as `page_visits`, and
+  the same answer: pick a window rather than letting it grow forever.
+- **Sampling.** At this size, log everything. It is worth knowing now that
+  the request log is the first thing that would need thinning later.
+- **Where errors go when the box is the thing that broke.** A log file on the
+  machine cannot report that the machine is gone; only the external uptime
+  check can. The two are not substitutes for one another.
