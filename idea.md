@@ -306,3 +306,70 @@ natural point to reach for something bought.
 - **Where errors go when the box is the thing that broke.** A log file on the
   machine cannot report that the machine is gone; only the external uptime
   check can. The two are not substitutes for one another.
+
+---
+
+# The loop that already half exists
+
+*Written 2026-08-31. Not built — a thing to decide, not a task.*
+
+## The shape of this business is unusual
+
+One purchase, no repeat, and a window of about nine months per customer that
+opens and closes whether or not anyone is ready. Most products get to earn a
+customer back next month; this one gets a single pass, at a moment nobody
+schedules.
+
+Which makes ordinary acquisition a poor fit. You cannot retarget someone into
+being pregnant, and by the time a person is searching for something like this
+they are often already past the part it is best at.
+
+## But the distribution is already in the product
+
+Every birth puts the page in front of a dozen relatives, and those relatives
+are the most qualified audience this product will ever have: self-selected as
+people who care about a new baby, watching the thing work at the exact moment
+it is most affecting. Some of them are pregnant. More of them know someone
+who is.
+
+The mechanism to reach them exists and works — viewer invitations, a
+shareable link, a page they will open on the day. **What does not exist is
+any way for one of them to become a parent with their own page.** Grepping
+the public birth page, the invitation redemption page and the timeline turns
+up nothing that offers it: no "start your own", nowhere to go. The loop is
+half-built, and the missing half is the cheap half.
+
+## The hard part is timing, not placement
+
+Someone watching a birth page is watching the *end* of someone else's
+pregnancy. They need this at the *beginning* of their own — possibly a year
+later. A call to action at the moment of highest feeling is aimed at a person
+who has no use for it yet, and the ordinary answer (retarget them) is exactly
+what this audience should not be subjected to.
+
+So the interesting question is not where to put a button. It is what survives
+the gap:
+
+- something that reaches them later, at their own moment, without pestering
+  them in between
+- or something physical — a keepsake in a relative's house is a distribution
+  surface with a shelf life measured in years, which is the one thing digital
+  acquisition cannot buy
+- or nothing at all, on the view that this spreads by people telling each
+  other, and the job is only to be worth telling about
+
+## The tension worth naming
+
+This page is a family's private record of a day. The product's whole tone is
+that it is not selling them anything while they use it — the keepsakes sit
+apart, the gift shelf never interrupts. Putting acquisition on that page
+risks the exact quality that makes it worth passing on. A tasteful version of
+this matters more here than it would almost anywhere else, and a clumsy one
+would cost more than it earned.
+
+## One thing that is already in place
+
+First-touch attribution is built and running: `ref` and `utm_*` are captured
+on arrival, kept, and recorded against every visit and every signup. So
+whatever gets built here can be measured from the day it ships, and the
+question "did the loop work" has an answer rather than an opinion.
