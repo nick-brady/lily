@@ -621,6 +621,18 @@ class InvitationRedeemIn(BaseModel):
     """
 
 
+class FocalPointIn(BaseModel):
+    """Which part of a photo to keep when the frame has to crop it.
+
+    Fractions of the picture, so they survive any size the photo is shown
+    at: (0, 0) is the top-left corner, (0.5, 0.5) the middle — which is
+    where a browser crops on its own, and therefore what absence means.
+    """
+
+    x: float = Field(..., ge=0.0, le=1.0)
+    y: float = Field(..., ge=0.0, le=1.0)
+
+
 class EditEventIn(BaseModel):
     """Patch the editable parts of a timeline event.
 
@@ -631,6 +643,10 @@ class EditEventIn(BaseModel):
     `occurred_at` is the event's own column, not payload — posts are often
     logged after the fact mid-labor, so the time can be corrected on any
     event except contractions (their durations and gaps derive from it).
+
+    `focal` is for photos: the timeline gives every one the same fixed
+    height, so a tall photo is cropped from the middle, and on a newborn
+    the middle is a torso.
     """
 
     body: Optional[str] = None
@@ -638,6 +654,7 @@ class EditEventIn(BaseModel):
     caption: Optional[str] = None
     transcript_optional: Optional[str] = None
     occurred_at: Optional[PastDatetime] = None
+    focal: Optional[FocalPointIn] = None
 
 
 # Keep in sync with frontend/src/utils/themes.js THEMES (current ids only,

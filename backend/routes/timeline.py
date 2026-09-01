@@ -320,6 +320,19 @@ async def edit_event(
 
     patch = payload.model_dump(exclude_none=True)
     new_time = patch.pop("occurred_at", None)
+
+    # Only a photo has a part worth choosing. Stored to four places — the
+    # difference between 0.3712 and 0.3713 of a picture is nothing anyone
+    # could see, and short numbers keep the payload readable.
+    if "focal" in patch:
+        if event.event_type is not TimelineEventType.photo:
+            raise HTTPException(
+                status_code=400, detail="Only photos have a focal point"
+            )
+        patch["focal"] = {
+            "x": round(patch["focal"]["x"], 4),
+            "y": round(patch["focal"]["y"], 4),
+        }
     if not patch and new_time is None:
         return serialize_event_with_engagement(
             db, event, requester_user_id=current_user.id
@@ -352,8 +365,13 @@ async def edit_event(
     if patch:
         timeline_repo.update_payload(db, event, patch)
     # The keepsake draws from this event — a corrected arrival time or caption
-    # has to reach the artwork, not just the page.
-    gifts_repo.mark_stale(db, birth_id=access.birth.id)
+    # has to reach the artwork, not just the page. A focal point doesn't: it
+    # says how the timeline crops a photo, and the artwork crops its own. On
+    # its own it would restage every design, and a book takes six seconds to
+    # redraw, so nudging a photo twice would cost a dozen for nothing.
+    only_focal = set(patch) <= {"focal"} and new_time is None
+    if not only_focal:
+        gifts_repo.mark_stale(db, birth_id=access.birth.id)
     db.commit()
     db.refresh(event)
     await publish_event_change(access.birth.id, "updated", event)

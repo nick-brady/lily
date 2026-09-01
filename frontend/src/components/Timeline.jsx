@@ -1,6 +1,9 @@
-import { useState } from 'react';
+import { useLayoutEffect, useRef, useState } from 'react';
 import { api } from '../api/client';
 import Modal from './Modal';
+import {
+  coverOverflow, focusAfterDrag, objectPosition, canReframe, focusOf,
+} from '../utils/photoFocus';
 import { formatDuration } from '../utils/statistics';
 import { toLocalInputValue } from '../utils/relativeTime';
 import ReactionBar from './ReactionBar';
@@ -180,7 +183,7 @@ function BornMilestoneItem({ event, canManage, onDelete, onEdit, engagementScope
   );
 }
 
-function MediaItem({ event, canManage, onDelete, onEdit, onPhotoClick, engagementScope }) {
+function MediaItem({ event, canManage, onDelete, onEdit, onPhotoClick, onReframe, engagementScope }) {
   // Scripted fixtures (landing demo, hero video) ride a demo_url on the
   // payload; real events always carry a media_id.
   const { media_id, caption, demo_url } = event.payload || {};
@@ -197,18 +200,13 @@ function MediaItem({ event, canManage, onDelete, onEdit, onPhotoClick, engagemen
           {formatTime(event.occurred_at)}
         </div>
         <div className="flex-1">
-          <div
-            className="rounded-xl overflow-hidden cursor-pointer"
-            style={{ backgroundColor: 'var(--t-note-bg)' }}
-            onClick={() => onPhotoClick(url, caption, displayUrl)}
-          >
-            <img
-              src={displayUrl}
-              alt={caption || 'Photo'}
-              loading="lazy"
-              className="w-full max-h-96 object-cover hover:opacity-90 transition-opacity"
-            />
-          </div>
+          <TimelinePhoto
+            src={displayUrl}
+            caption={caption}
+            focus={focusOf(event)}
+            onOpen={() => onPhotoClick(url, caption, displayUrl)}
+            onReframe={canManage && onReframe ? (focus) => onReframe(event, focus) : null}
+          />
           {caption && <p className="t-muted text-sm mt-2">{caption}</p>}
           {canManage && (
             <ItemActions onEdit={() => onEdit(event)} onDelete={() => onDelete(event)} audienceScope={event.audience_scope} />
@@ -326,6 +324,170 @@ function EngagementFooter({ event, scope }) {
   );
 }
 
+/**
+ * A photo in the timeline, and the means to say which part of it shows.
+ *
+ * Every photo gets the same width and a capped height, filled `object-cover`,
+ * so a tall one is cropped from its middle — and on a newborn the middle is a
+ * torso. "Reposition" turns the picture into something you can drag: pull it
+ * down to bring the face into the frame.
+ *
+ * Only offered when there is something hidden to drag towards, which is why a
+ * photo that already fits shows no handle at all.
+ */
+function TimelinePhoto({ src, caption, focus, onOpen, onReframe }) {
+  const [natural, setNatural] = useState(null);
+  const [box, setBox] = useState(null);
+  const [draft, setDraft] = useState(null);      // the focus while adjusting
+  const [saving, setSaving] = useState(false);
+  const frameRef = useRef(null);
+  const dragRef = useRef(null);
+
+  const adjusting = draft !== null;
+  const shown = adjusting ? draft : focus;
+  const overflow = coverOverflow(natural, box);
+  const movable = canReframe(overflow);
+
+  // Measure the frame after layout, not during render, and only record a
+  // size that actually differs.
+  //
+  // This was a ref callback that called setBox. A ref callback declared in the
+  // body is a new function every render, so React detaches and re-attaches the
+  // ref each time — and because setBox was handed a fresh object, every
+  // attach counted as a change, re-rendered, and re-attached. React caught it
+  // as "Maximum update depth exceeded" and took the page down with it.
+  //
+  // The frame's height depends on the image having loaded, so the observer
+  // does the real work: at mount it is often still zero.
+  useLayoutEffect(() => {
+    const node = frameRef.current;
+    if (!node || typeof ResizeObserver === 'undefined') return undefined;
+    const read = () => {
+      const { clientWidth: width, clientHeight: height } = node;
+      setBox((prev) =>
+        prev && prev.width === width && prev.height === height ? prev : { width, height },
+      );
+    };
+    read();
+    const observer = new ResizeObserver(read);
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, []);
+
+  const onPointerDown = (e) => {
+    if (!adjusting) return;
+    e.preventDefault();
+    e.currentTarget.setPointerCapture?.(e.pointerId);
+    dragRef.current = { x: e.clientX, y: e.clientY, from: shown };
+  };
+  const onPointerMove = (e) => {
+    const d = dragRef.current;
+    if (!d) return;
+    setDraft(
+      focusAfterDrag(d.from, { dx: e.clientX - d.x, dy: e.clientY - d.y }, overflow),
+    );
+  };
+  const endDrag = () => {
+    dragRef.current = null;
+  };
+
+  const save = async () => {
+    setSaving(true);
+    try {
+      await onReframe(draft);
+      setDraft(null);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <>
+      <div
+        ref={frameRef}
+        className={`group rounded-xl overflow-hidden relative ${adjusting ? 'cursor-grab active:cursor-grabbing touch-none ring-2' : 'cursor-pointer'}`}
+        style={{
+          backgroundColor: 'var(--t-note-bg)',
+          ...(adjusting ? { '--tw-ring-color': 'var(--t-accent)' } : {}),
+        }}
+        onClick={adjusting ? undefined : onOpen}
+        onPointerDown={onPointerDown}
+        onPointerMove={onPointerMove}
+        onPointerUp={endDrag}
+        onPointerCancel={endDrag}
+      >
+        <img
+          src={src}
+          alt={caption || 'Photo'}
+          loading="lazy"
+          draggable={false}
+          onLoad={(e) =>
+            setNatural({
+              width: e.currentTarget.naturalWidth,
+              height: e.currentTarget.naturalHeight,
+            })
+          }
+          className={`w-full max-h-96 object-cover select-none ${
+            adjusting ? '' : 'hover:opacity-90 transition-opacity'
+          }`}
+          style={{ objectPosition: objectPosition(shown) }}
+        />
+        {adjusting && (
+          <span className="absolute inset-x-0 bottom-0 py-1.5 text-center text-[11px]
+                           text-white bg-black/50 pointer-events-none">
+            Drag the photo to choose what shows
+          </span>
+        )}
+        {/* Quiet enough to ignore, in the corner of the thing it acts on —
+            a word under the photo read as part of the post. */}
+        {!adjusting && onReframe && movable && (
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();     // not a click on the photo
+              setDraft(focus || { x: 0.5, y: 0.5 });
+            }}
+            aria-label="Reposition this photo"
+            title="Reposition"
+            className="absolute bottom-2 right-2 p-1.5 rounded-full
+                       bg-black/35 text-white/80 backdrop-blur-sm
+                       opacity-0 group-hover:opacity-100 focus:opacity-100
+                       hover:bg-black/55 hover:text-white transition-opacity"
+          >
+            <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                 strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+              <path d="M12 4v16M4 12h16" />
+              <path d="M9.5 6.5 12 4l2.5 2.5M9.5 17.5 12 20l2.5-2.5" />
+              <path d="M6.5 9.5 4 12l2.5 2.5M17.5 9.5 20 12l-2.5 2.5" />
+            </svg>
+          </button>
+        )}
+      </div>
+
+      {adjusting && (
+        <div className="flex gap-2 mt-2">
+          <button
+            type="button"
+            onClick={save}
+            disabled={saving}
+            className="px-3 py-1.5 rounded-lg text-xs font-medium t-btn-accent disabled:opacity-50"
+          >
+            {saving ? 'Saving…' : 'Done'}
+          </button>
+          <button
+            type="button"
+            onClick={() => setDraft(null)}
+            className="px-3 py-1.5 rounded-lg text-xs t-muted"
+          >
+            Cancel
+          </button>
+        </div>
+      )}
+
+    </>
+  );
+}
+
 function TimelineItem(props) {
   const { event } = props;
   switch (event.event_type) {
@@ -389,6 +551,14 @@ export default function Timeline({
   const openLightbox = (url, caption, preview) =>
     setLightbox({ open: true, url, caption: caption || '', preview });
   const closeLightbox = () => setLightbox({ open: false, url: '', caption: '', preview: undefined });
+
+  // Save which part of a photo shows. The event's own payload carries it, so
+  // it reaches every other device the same way a caption does.
+  const reframePhoto = birthId
+    ? async (event, focus) => {
+        await api.editEvent(birthId, event.id, { focal: focus });
+      }
+    : null;
 
   const askDelete = (event) => setDeleteConfirm(event);
   const askEdit = (event) => {
@@ -574,6 +744,7 @@ export default function Timeline({
                   onDelete={askDelete}
                   onEdit={askEdit}
                   onPhotoClick={openLightbox}
+                  onReframe={reframePhoto}
                   onToggleIgnore={toggleIgnore}
                   engagementScope={engagementScope}
                   childName={childName}
