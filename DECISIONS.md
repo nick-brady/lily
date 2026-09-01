@@ -986,10 +986,25 @@ Aug 2026 flat rates) is charged instead and the order says so
 (`shipping_estimated`). A partner outage at the moment of paying is not the
 buyer's problem, and a guess should admit it is one.
 
-The catalog prices were **not** lowered to match. They were set with one
-parcel's postage inside them; with postage broken out they carry it twice.
-Whether to take it back out of the base prices is a pricing decision still
-to be made — noted here so it isn't mistaken for an oversight.
+### The catalog price is the item; postage is charged on top
+
+*Decided 2026-08-31.* The prices were first worked out with a parcel's
+postage inside them — the framed print as $35.70 + ~$10.50 to ship, the book
+as $11.23 + ~$7.50 — back when the sheet said *Shipping included*. Breaking
+postage out left that open: was $79 meant to be the all-in number, or the
+price of the print?
+
+The price of the print. The catalog price is the item, and shipping is added
+to it, quoted live for wherever the parcel is going.
+
+> "the buyer has to pay for shipping on top of my base price. that's what i
+> want."
+
+So the base prices stay where they are and are **not** to be "corrected"
+later by someone reading the old arithmetic and assuming postage was
+double-counted. A mug is $18 plus its postage, a framed print $79 plus its
+postage. `gift_catalog_items.base_price_cents` is the item alone;
+`gift_orders.shipping_cents` is the parcel.
 
 ## A book page is stored three ways: raw, display, thumbnail
 
