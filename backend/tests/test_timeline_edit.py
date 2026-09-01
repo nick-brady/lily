@@ -253,3 +253,43 @@ def test_labor_duration_reads_unknown_not_zero() -> None:
         birth_completed_at=datetime(2026, 7, 30, 6, 0, tzinfo=timezone.utc),
     )
     assert _labor_duration_seconds(birth) is None
+
+
+# ── which part of a photo shows ────────────────────────────────────────────
+
+
+def test_a_focal_point_is_a_pair_of_fractions_of_the_picture():
+    """Fractions, so they survive whatever size the photo is drawn at."""
+    from pydantic import ValidationError
+    from schemas import FocalPointIn
+
+    assert FocalPointIn(x=0.0, y=0.0).x == 0.0
+    assert FocalPointIn(x=1.0, y=1.0).y == 1.0
+    for bad in ({"x": -0.01, "y": 0.5}, {"x": 0.5, "y": 1.01}, {"x": 2, "y": 0}):
+        with pytest.raises(ValidationError):
+            FocalPointIn(**bad)
+
+
+def test_only_a_photo_has_a_part_worth_choosing():
+    import inspect
+
+    from routes import timeline as timeline_routes
+
+    src = inspect.getsource(timeline_routes.edit_event)
+    assert "Only photos have a focal point" in src
+    assert "TimelineEventType.photo" in src
+
+
+def test_repositioning_a_photo_does_not_restage_the_keepsakes():
+    """The timeline crops a photo one way and the artwork crops it another.
+    Marking every design stale for this would redraw a book — six seconds —
+    for something no design looks at."""
+    import inspect
+
+    from routes import timeline as timeline_routes
+
+    src = inspect.getsource(timeline_routes.edit_event)
+    assert 'only_focal = set(patch) <= {"focal"}' in src
+    assert "if not only_focal:" in src
+    # but a caption or a corrected time still has to reach the artwork
+    assert "mark_stale" in src

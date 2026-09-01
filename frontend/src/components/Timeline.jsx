@@ -1,6 +1,9 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { api } from '../api/client';
 import Modal from './Modal';
+import {
+  coverOverflow, focusAfterDrag, objectPosition, canReframe, focusOf,
+} from '../utils/photoFocus';
 import { formatDuration } from '../utils/statistics';
 import { toLocalInputValue } from '../utils/relativeTime';
 import ReactionBar from './ReactionBar';
@@ -180,7 +183,7 @@ function BornMilestoneItem({ event, canManage, onDelete, onEdit, engagementScope
   );
 }
 
-function MediaItem({ event, canManage, onDelete, onEdit, onPhotoClick, engagementScope }) {
+function MediaItem({ event, canManage, onDelete, onEdit, onPhotoClick, onReframe, engagementScope }) {
   // Scripted fixtures (landing demo, hero video) ride a demo_url on the
   // payload; real events always carry a media_id.
   const { media_id, caption, demo_url } = event.payload || {};
@@ -197,18 +200,13 @@ function MediaItem({ event, canManage, onDelete, onEdit, onPhotoClick, engagemen
           {formatTime(event.occurred_at)}
         </div>
         <div className="flex-1">
-          <div
-            className="rounded-xl overflow-hidden cursor-pointer"
-            style={{ backgroundColor: 'var(--t-note-bg)' }}
-            onClick={() => onPhotoClick(url, caption, displayUrl)}
-          >
-            <img
-              src={displayUrl}
-              alt={caption || 'Photo'}
-              loading="lazy"
-              className="w-full max-h-96 object-cover hover:opacity-90 transition-opacity"
-            />
-          </div>
+          <TimelinePhoto
+            src={displayUrl}
+            caption={caption}
+            focus={focusOf(event)}
+            onOpen={() => onPhotoClick(url, caption, displayUrl)}
+            onReframe={canManage && onReframe ? (focus) => onReframe(event, focus) : null}
+          />
           {caption && <p className="t-muted text-sm mt-2">{caption}</p>}
           {canManage && (
             <ItemActions onEdit={() => onEdit(event)} onDelete={() => onDelete(event)} audienceScope={event.audience_scope} />
@@ -326,6 +324,134 @@ function EngagementFooter({ event, scope }) {
   );
 }
 
+/**
+ * A photo in the timeline, and the means to say which part of it shows.
+ *
+ * Every photo gets the same width and a capped height, filled `object-cover`,
+ * so a tall one is cropped from its middle — and on a newborn the middle is a
+ * torso. "Reposition" turns the picture into something you can drag: pull it
+ * down to bring the face into the frame.
+ *
+ * Only offered when there is something hidden to drag towards, which is why a
+ * photo that already fits shows no handle at all.
+ */
+function TimelinePhoto({ src, caption, focus, onOpen, onReframe }) {
+  const [natural, setNatural] = useState(null);
+  const [box, setBox] = useState(null);
+  const [draft, setDraft] = useState(null);      // the focus while adjusting
+  const [saving, setSaving] = useState(false);
+  const frameRef = useRef(null);
+  const dragRef = useRef(null);
+
+  const adjusting = draft !== null;
+  const shown = adjusting ? draft : focus;
+  const overflow = coverOverflow(natural, box);
+  const movable = canReframe(overflow);
+
+  const measure = (node) => {
+    frameRef.current = node;
+    if (node) setBox({ width: node.clientWidth, height: node.clientHeight });
+  };
+
+  const onPointerDown = (e) => {
+    if (!adjusting) return;
+    e.preventDefault();
+    e.currentTarget.setPointerCapture?.(e.pointerId);
+    dragRef.current = { x: e.clientX, y: e.clientY, from: shown };
+  };
+  const onPointerMove = (e) => {
+    const d = dragRef.current;
+    if (!d) return;
+    setDraft(
+      focusAfterDrag(d.from, { dx: e.clientX - d.x, dy: e.clientY - d.y }, overflow),
+    );
+  };
+  const endDrag = () => {
+    dragRef.current = null;
+  };
+
+  const save = async () => {
+    setSaving(true);
+    try {
+      await onReframe(draft);
+      setDraft(null);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <>
+      <div
+        ref={measure}
+        className={`rounded-xl overflow-hidden relative ${adjusting ? 'cursor-grab active:cursor-grabbing touch-none ring-2' : 'cursor-pointer'}`}
+        style={{
+          backgroundColor: 'var(--t-note-bg)',
+          ...(adjusting ? { '--tw-ring-color': 'var(--t-accent)' } : {}),
+        }}
+        onClick={adjusting ? undefined : onOpen}
+        onPointerDown={onPointerDown}
+        onPointerMove={onPointerMove}
+        onPointerUp={endDrag}
+        onPointerCancel={endDrag}
+      >
+        <img
+          src={src}
+          alt={caption || 'Photo'}
+          loading="lazy"
+          draggable={false}
+          onLoad={(e) =>
+            setNatural({
+              width: e.currentTarget.naturalWidth,
+              height: e.currentTarget.naturalHeight,
+            })
+          }
+          className={`w-full max-h-96 object-cover select-none ${
+            adjusting ? '' : 'hover:opacity-90 transition-opacity'
+          }`}
+          style={{ objectPosition: objectPosition(shown) }}
+        />
+        {adjusting && (
+          <span className="absolute inset-x-0 bottom-0 py-1.5 text-center text-[11px]
+                           text-white bg-black/50 pointer-events-none">
+            Drag the photo to choose what shows
+          </span>
+        )}
+      </div>
+
+      {adjusting && (
+        <div className="flex gap-2 mt-2">
+          <button
+            type="button"
+            onClick={save}
+            disabled={saving}
+            className="px-3 py-1.5 rounded-lg text-xs font-medium t-btn-accent disabled:opacity-50"
+          >
+            {saving ? 'Saving…' : 'Done'}
+          </button>
+          <button
+            type="button"
+            onClick={() => setDraft(null)}
+            className="px-3 py-1.5 rounded-lg text-xs t-muted"
+          >
+            Cancel
+          </button>
+        </div>
+      )}
+
+      {!adjusting && onReframe && movable && (
+        <button
+          type="button"
+          onClick={() => setDraft(focus || { x: 0.5, y: 0.5 })}
+          className="text-xs text-gray-400 hover:text-primary-500 mt-2"
+        >
+          Reposition
+        </button>
+      )}
+    </>
+  );
+}
+
 function TimelineItem(props) {
   const { event } = props;
   switch (event.event_type) {
@@ -389,6 +515,14 @@ export default function Timeline({
   const openLightbox = (url, caption, preview) =>
     setLightbox({ open: true, url, caption: caption || '', preview });
   const closeLightbox = () => setLightbox({ open: false, url: '', caption: '', preview: undefined });
+
+  // Save which part of a photo shows. The event's own payload carries it, so
+  // it reaches every other device the same way a caption does.
+  const reframePhoto = birthId
+    ? async (event, focus) => {
+        await api.editEvent(birthId, event.id, { focal: focus });
+      }
+    : null;
 
   const askDelete = (event) => setDeleteConfirm(event);
   const askEdit = (event) => {
@@ -574,6 +708,7 @@ export default function Timeline({
                   onDelete={askDelete}
                   onEdit={askEdit}
                   onPhotoClick={openLightbox}
+                  onReframe={reframePhoto}
                   onToggleIgnore={toggleIgnore}
                   engagementScope={engagementScope}
                   childName={childName}
