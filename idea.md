@@ -218,3 +218,158 @@ Mostly it is ready, and this week's work moved it closer:
 
 None of that is a reason to wait. It is a reason to decide the offline
 contract first, since it is the same contract the app would use.
+
+---
+
+# Seeing it fail
+
+*Written 2026-08-31. Not built.*
+
+## The problem
+
+If Arrival Story breaks for a family at three in the morning, nobody finds
+out. There is no error tracking, nothing writes an application log to disk,
+and `/api/health` returns 404, so there is nothing for an uptime check to
+watch. The first signal would be a text message, or silence.
+
+That matters more here than in most products. A labour happens once. A family
+cannot come back tomorrow and re-record the night — so a bug during it isn't
+an inconvenience to apologise for, it's a hole in the only account of
+something that will never happen again.
+
+> "this is a big deal … I want to make sure I have good logging on my system.
+> don't need datadog.. but I need to at least be writing to log files that I
+> can monitor."
+
+## Where it stands
+
+- **Nothing configures logging.** Six modules call `logging.getLogger`, but
+  no `basicConfig` or `dictConfig` runs in the web app, so those lines go
+  wherever uvicorn's defaults send them. Five places still use `print()`.
+- **Everything lands in journald** — persistent on this box (106 MB so far),
+  size-capped with no time limit. Fine for reading after the fact; not a file
+  you can tail, grep on a schedule, or ship anywhere.
+- **`/opt/lily/logs` already exists**, created by the `common` Ansible role,
+  and is empty. The intent was there.
+- **nginx has access and error logs**, rotated 14 days — the only real log
+  files on the machine.
+- **One HTTP middleware exists** (`slide_session_cookie`, `main.py:55`), so
+  there is already a place a request-logging middleware would sit.
+- **`/` returns `{"name": "arrival-story", "status": "running"}`** without
+  touching the database — it says the process is up, not that the app works.
+
+## The shape of it
+
+**A health endpoint worth monitoring.** `/api/health` that actually asks the
+database a question and reports the alembic revision. Unauthenticated, cheap,
+and honest: a 200 should mean "this can serve a family", not "a process is
+listening". Then any uptime checker — an external ping every minute — has
+something real to watch, and it covers the case where Postgres is down but
+uvicorn isn't.
+
+**Structured logs, to files, under `/opt/lily/logs`.** One line per event as
+JSON, so it can be grepped now and parsed later without rewriting anything:
+
+- a request log — method, path, status, duration, and *who* (user id, not
+  name or email)
+- a **request id** on every line, returned in a response header, so "it broke
+  around 3am" becomes a single trace rather than an archaeology exercise
+- unhandled exceptions with their traceback, which currently reach journald
+  at best
+- the media worker to its own file; it already logs properly and only needs
+  somewhere to put it
+
+Rotated by logrotate like nginx's, with a retention window chosen on purpose
+rather than inherited.
+
+**What must never be logged.** This is the sharp edge, given everything else
+we've decided about privacy. No captions, note bodies, photo contents, file
+names, email addresses, phone numbers, or child names. A log file is the
+easiest place for the data we have been careful about everywhere else to leak
+out sideways — into a backup, a support paste, or a screenshot. User *ids*,
+birth *ids*, and paths are enough to debug with; if something needs more, it
+should be looked up in the database deliberately, not left lying in a file.
+
+**Alerting without a vendor.** Resend is already a dependency for
+transactional email. A cron that reads the last few minutes of the error log
+and emails a digest when there is anything in it would cover the whole need —
+no new service, no account, no bill, and it fails in the safe direction (a
+missed email, not a missed outage). If that ever gets noisy, it is also the
+natural point to reach for something bought.
+
+## Worth deciding early
+
+- **Retention.** The same storage-limitation question as `page_visits`, and
+  the same answer: pick a window rather than letting it grow forever.
+- **Sampling.** At this size, log everything. It is worth knowing now that
+  the request log is the first thing that would need thinning later.
+- **Where errors go when the box is the thing that broke.** A log file on the
+  machine cannot report that the machine is gone; only the external uptime
+  check can. The two are not substitutes for one another.
+
+---
+
+# The loop that already half exists
+
+*Written 2026-08-31. Not built — a thing to decide, not a task.*
+
+## The shape of this business is unusual
+
+One purchase, no repeat, and a window of about nine months per customer that
+opens and closes whether or not anyone is ready. Most products get to earn a
+customer back next month; this one gets a single pass, at a moment nobody
+schedules.
+
+Which makes ordinary acquisition a poor fit. You cannot retarget someone into
+being pregnant, and by the time a person is searching for something like this
+they are often already past the part it is best at.
+
+## But the distribution is already in the product
+
+Every birth puts the page in front of a dozen relatives, and those relatives
+are the most qualified audience this product will ever have: self-selected as
+people who care about a new baby, watching the thing work at the exact moment
+it is most affecting. Some of them are pregnant. More of them know someone
+who is.
+
+The mechanism to reach them exists and works — viewer invitations, a
+shareable link, a page they will open on the day. **What does not exist is
+any way for one of them to become a parent with their own page.** Grepping
+the public birth page, the invitation redemption page and the timeline turns
+up nothing that offers it: no "start your own", nowhere to go. The loop is
+half-built, and the missing half is the cheap half.
+
+## The hard part is timing, not placement
+
+Someone watching a birth page is watching the *end* of someone else's
+pregnancy. They need this at the *beginning* of their own — possibly a year
+later. A call to action at the moment of highest feeling is aimed at a person
+who has no use for it yet, and the ordinary answer (retarget them) is exactly
+what this audience should not be subjected to.
+
+So the interesting question is not where to put a button. It is what survives
+the gap:
+
+- something that reaches them later, at their own moment, without pestering
+  them in between
+- or something physical — a keepsake in a relative's house is a distribution
+  surface with a shelf life measured in years, which is the one thing digital
+  acquisition cannot buy
+- or nothing at all, on the view that this spreads by people telling each
+  other, and the job is only to be worth telling about
+
+## The tension worth naming
+
+This page is a family's private record of a day. The product's whole tone is
+that it is not selling them anything while they use it — the keepsakes sit
+apart, the gift shelf never interrupts. Putting acquisition on that page
+risks the exact quality that makes it worth passing on. A tasteful version of
+this matters more here than it would almost anywhere else, and a clumsy one
+would cost more than it earned.
+
+## One thing that is already in place
+
+First-touch attribution is built and running: `ref` and `utm_*` are captured
+on arrival, kept, and recorded against every visit and every signup. So
+whatever gets built here can be measured from the day it ships, and the
+question "did the loop work" has an answer rather than an opinion.
