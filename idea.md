@@ -132,3 +132,89 @@ nothing sweeps a rendering left `pending` when the process goes away.
 
 **PR #75** already gives the book's pages raw/display/thumbnail variants in
 this same shape. Whatever naming we settle on here, the two should match.
+
+---
+
+# Contractions when the signal drops
+
+*Written 2026-08-30. Not built — thinking, mostly.*
+
+## The problem
+
+A tap on the contraction button with no connectivity throws, sets the error
+banner, and is gone. There is no service worker, no queue, no retry, and
+nothing in local storage: `handleStart` awaits the POST and that is the whole
+mechanism. The button state is derived from server events, so the UI simply
+never leaves START, and the contraction that just happened is not recorded
+anywhere.
+
+Labour happens in hospital rooms, basements, car parks and lifts. This is the
+one interaction in the product that cannot afford to need the network, and
+it is currently the one most dependent on it.
+
+> "I think what ultimately I'm going to have to do is really think about how
+> internet intermittency is going to work with this. Likely, though, I'm going
+> to say the web is somewhat limited in this, and this would be more of
+> something that can be managed in an iPhone or Android application."
+
+## Where the web genuinely runs out
+
+Worth being honest about which parts are hard limits and which are just work:
+
+**Solvable on the web, and not that hard**
+- A tap survives a dead network: write it to IndexedDB first, sync when the
+  connection returns. The tap time is the truth; the POST is just delivery.
+- Surviving a reload or a closed tab, same way.
+- A service worker keeps the page loading with no signal at all.
+- `navigator.onLine` plus a failed request is enough to know to queue.
+
+**Hard on the web**
+- **The screen locking.** iOS Safari suspends timers and JavaScript when the
+  screen locks. A running contraction cannot tick, and a tap cannot be
+  captured while the phone is in a pocket. Wake Lock helps only while the tab
+  is foregrounded and the battery allows.
+- **Background sync.** Chrome has Background Sync; Safari does not. On iOS a
+  queued tap only leaves the device when someone opens the page again.
+- **Being reachable at all.** No lock-screen control, no widget, no
+  complication, no volume-button shortcut. In labour, unlocking a phone and
+  finding a tab is a real cost.
+- **Notifications.** Web push on iOS requires the site be installed to the
+  home screen first, which nobody does mid-contraction.
+
+So the web can be made to *never lose a tap*. What it cannot be is *ready to
+hand* — and during labour that may matter more.
+
+## What that suggests
+
+Two pieces, and they are independent:
+
+1. **Make the web lose nothing.** Queue taps locally and reconcile on
+   reconnect. Worth doing regardless of whether an app ever exists, because
+   it is also what makes the app's sync story simple: the server already has
+   to accept a tap that happened three minutes ago.
+2. **A native app for the timing itself.** Lock-screen and watch access,
+   background execution, local notifications, a widget. The web page stays
+   what it already is — the thing the family follows.
+
+## What the server would need either way
+
+Mostly it is ready, and this week's work moved it closer:
+
+- `start` already accepts `occurred_at`, so a queued tap can carry the time
+  it actually happened rather than the time it was delivered. `PastDatetime`
+  allows it with a 60s skew tolerance — a longer offline window would need
+  that bound revisited.
+- `stop` now stamps the server clock, which is right for a live tap and
+  **wrong for a replayed one**. A queued stop would need to supply its own
+  end time, and the route would have to trust it. Worth designing before
+  building the queue, not after.
+- Ordering. Two devices queueing offline, then both syncing, can deliver a
+  start after a stop. `uq_timeline_events_one_open_contraction` will refuse
+  the second open contraction, which is the right instinct but the wrong
+  error for a replay.
+- Idempotency. A retried delivery must not create a second contraction. A
+  client-supplied id on the event would settle it — there is none today; ids
+  are `gen_random_uuid()` server-side.
+
+None of that is a reason to wait. It is a reason to decide the offline
+contract first, since it is the same contract the app would use.
