@@ -2,10 +2,11 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { api } from '../api/client';
 import { useAuth } from '../auth';
+import GoogleSignInButton from '../components/GoogleSignInButton';
 
-// OTP-code login only: the magic LINK in the email points at the main site
-// (FRONTEND_URL is the apex domain), so on the admin domain the 6-digit
-// code is the supported path.
+// Google or a 6-digit code. Not the magic LINK: it points at the main site
+// (FRONTEND_URL is the apex domain), so on the admin domain the typed code
+// is the email path.
 export default function LoginPage() {
   const { acceptToken } = useAuth();
   const navigate = useNavigate();
@@ -34,14 +35,17 @@ export default function LoginPage() {
     setBusy(true);
     setError(null);
     try {
-      const result = await api.verifyChallenge({ identifier, code });
-      acceptToken(result.access_token);
-      navigate('/', { replace: true });
+      signedIn(await api.verifyChallenge({ identifier, code }));
     } catch (err) {
       setError(err.message);
     } finally {
       setBusy(false);
     }
+  };
+
+  const signedIn = (result) => {
+    acceptToken(result.access_token);
+    navigate('/', { replace: true });
   };
 
   return (
@@ -50,8 +54,9 @@ export default function LoginPage() {
         <h1 className="text-xl font-bold text-gray-900 mb-1">Arrival Story Admin</h1>
         {step === 'identifier' ? (
           <form onSubmit={submitIdentifier} className="space-y-4 mt-4">
+            <GoogleSignInButton onSuccess={signedIn} onError={(err) => setError(err.message)} />
             <p className="text-sm text-gray-500">
-              Sign in with your admin email. We&apos;ll send a 6-digit code.
+              Or sign in with your admin email. We&apos;ll send a 6-digit code.
             </p>
             <input
               type="email"

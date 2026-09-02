@@ -177,6 +177,7 @@ services:
       - backend
     environment:
       API_PROXY_TARGET: http://backend:8000
+      VITE_GOOGLE_CLIENT_ID: ${VITE_GOOGLE_CLIENT_ID:-}
     ports:
       - "${ADMIN_FRONTEND_PORT:-3001}:3001"
     volumes:
