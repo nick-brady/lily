@@ -209,11 +209,12 @@ def delete_birth(
 
     failed = storage.delete_objects(s3_keys)
     if failed:
+        # counts and ids only: the keys carry the original upload filenames
         logger.error(
-            "birth-deletion: %d S3 objects not deleted for birth %s: %s",
+            "birth-deletion: %d of %d S3 objects not deleted for birth %s",
             len(failed),
+            len(s3_keys),
             birth_id,
-            failed,
         )
     return Response(status_code=204)
 

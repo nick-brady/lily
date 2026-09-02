@@ -69,13 +69,13 @@ class Messenger(ABC):
 
 
 class ConsoleMessenger(Messenger):
-    """Prints credentials to stdout. Dev only.
+    """Prints credentials to stderr. Dev only.
 
-    We deliberately bypass the `logging` framework here — uvicorn's
-    logging config swallows our custom logger and there's no value in
-    fighting that for a dev-only utility. Plain `print` to stdout
-    survives every configuration and shows up cleanly in
-    `docker compose logs backend`.
+    Deliberately `print`, not `logging`: these lines carry live sign-in
+    codes, invite links, email addresses and phone numbers, and the
+    logging tree writes to a file and to the `app_logs` table. Bypassing
+    it is what guarantees none of that is ever persisted. `get_messenger`
+    only falls back to this class when no real channel is configured.
     """
 
     def send_challenge(

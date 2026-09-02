@@ -868,6 +868,41 @@ who were shared to actually log in.
 
 Added after noticing probing traffic.
 
+### Logs are files on the box plus a 30-day table the admin site reads
+*2026-09-01*
+
+No Datadog, no Kibana — the same reasoning as the analytics entry above.
+Every record from the web process and the worker goes three ways
+(`backend/observability.py`): stderr for journald, JSON lines under
+`/opt/lily/logs/<service>.jsonl` rotated ninety days by logrotate, and the
+`app_logs` table for INFO and above, which the admin site's Logs page shows
+(`frontend-admin/src/pages/LogsPage.jsx`, shaped after Datadog's explorer:
+facets, search, a stripe per level, the whole record on click).
+
+> "don't need datadog.. but I need to at least be writing to log files that
+> I can monitor."
+
+- **Per-request access lines go to files only.** The table is for what the
+  app *said*, not every request it answered; the access line has the request
+  id and is there when a trace is needed.
+- **Table retention is thirty days**, swept hourly by the worker's idle loop.
+  Files keep ninety.
+- **Every response carries `X-Request-Id`**, and a 500 body says it too, so
+  a failure a family reports is one lookup, not archaeology.
+- **`/health` is public and answers 503** when the database can't be
+  reached or the worker hasn't been heard from in two minutes, so an outside
+  uptime check can be pointed at it with no further work.
+- **`app_logs.user_id` is a plain column, not a foreign key.** A rolling
+  log table must not slow down or block an account deletion; a UUID with no
+  row behind it says nothing.
+- **Nothing personal goes in a log line.** Callers log ids and counts; the
+  `Enrich` filter redacts anything shaped like an email, a phone number, or
+  a token that slips through, in messages and tracebacks alike. The dev-only
+  console messenger deliberately keeps using `print`, which the logging tree
+  never sees, because its lines are sign-in codes.
+- **Alerting is a follow-up**: a Resend digest of new `fingerprint`s, which
+  is why every row carries one.
+
 ---
 
 <!--

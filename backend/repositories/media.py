@@ -6,7 +6,6 @@ Legacy rows migrated from PR 1 may still use the `local:` prefix until
 """
 from __future__ import annotations
 
-import logging
 import uuid
 
 from sqlalchemy import text
@@ -16,8 +15,6 @@ import image_variants
 from models import MediaAsset, MediaKind, MediaStorageTier
 from storage import get_object_bytes, object_key as s3_object_key, put_object
 
-
-logger = logging.getLogger(__name__)
 
 LOCAL_KEY_PREFIX = "local:"
 

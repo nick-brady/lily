@@ -18,6 +18,9 @@ __pycache__/
 backend/uploads/*
 !backend/uploads/.gitkeep
 
+# Dev log files (LOG_DIR=/app/logs in docker-compose)
+backend/logs/
+
 # Environment
 .env
 .env.local
@@ -41,6 +44,3 @@ deploy/group_vars/secrets.yml
 
 # Generated placeholder video (rebuild with make-placeholder.sh)
 prototype/hero/placeholder.mp4
-
-# Dev log files (LOG_DIR=/app/logs in docker-compose)
-backend/logs/

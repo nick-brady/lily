@@ -970,6 +970,40 @@ class AdminOverviewOut(BaseModel):
     revenue: RevenueStatsOut
 
 
+class WorkerStatusOut(BaseModel):
+    seen_at: Optional[datetime] = None
+    ok: bool
+
+
+class HealthOut(BaseModel):
+    status: str  # "ok" | "degraded"
+    db: str  # "ok" | "error"
+    revision: Optional[str] = None
+    worker: WorkerStatusOut
+
+
+class AppLogOut(BaseModel):
+    id: uuid.UUID
+    logged_at: datetime
+    service: str
+    level: str
+    logger: str
+    message: str
+    fingerprint: str
+    request_id: Optional[str] = None
+    user_id: Optional[uuid.UUID] = None
+    exception: Optional[str] = None
+    extra: Optional[dict] = None
+
+
+class AdminLogsOut(BaseModel):
+    since: datetime
+    items: list[AppLogOut]
+    level_counts: dict[str, int]
+    service_counts: dict[str, int]
+    worker: WorkerStatusOut
+
+
 # Convenience for tests / fixtures that need to validate an EmailStr-shaped
 # value without importing pydantic.EmailStr at call sites.
 EmailString = EmailStr

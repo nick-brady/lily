@@ -82,4 +82,32 @@ export const api = {
     );
     return jsonOrThrow(res);
   },
+
+  // The last stretch of app_logs. `levels` and `services` are arrays;
+  // `since`/`before` are ISO datetimes; `q` is a word in the message.
+  async getLogs({ levels, services, since, q, before, limit } = {}) {
+    const params = new URLSearchParams();
+    if (levels?.length) params.set('levels', levels.join(','));
+    if (services?.length) params.set('services', services.join(','));
+    if (since) params.set('since', since);
+    if (before) params.set('before', before);
+    if (q) params.set('q', q);
+    if (limit) params.set('limit', String(limit));
+    const qs = params.toString();
+    const res = await fetch(`${API_URL}/admin/logs${qs ? `?${qs}` : ''}`, {
+      headers: authHeaders(),
+    });
+    return jsonOrThrow(res);
+  },
+
+  // Public. Answers 503 with the same body when something is down, so read
+  // the body either way rather than throwing on status.
+  async getHealth() {
+    const res = await fetch(`${API_URL}/health`);
+    try {
+      return await res.json();
+    } catch {
+      return { status: 'degraded', db: 'error', revision: null, worker: { seen_at: null, ok: false } };
+    }
+  },
 };

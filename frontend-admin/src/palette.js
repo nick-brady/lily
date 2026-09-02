@@ -12,6 +12,18 @@ export const SERIES_COLORS = [
   '#e34948', // red
 ];
 
+// Log levels, from the same palette so the two pages agree on red.
+export const LEVEL_COLORS = {
+  INFO: '#2a78d6',
+  WARNING: '#eda100',
+  ERROR: '#e34948',
+  CRITICAL: '#7a1f1e',
+};
+
+export function levelColor(level) {
+  return LEVEL_COLORS[level] ?? AXIS_TICK_COLOR;
+}
+
 // Chart chrome
 export const GRID_COLOR = '#e1e0d9';
 export const AXIS_TICK_COLOR = '#898781';

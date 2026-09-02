@@ -1013,3 +1013,42 @@ class PageVisit(Base):
     user_agent: Mapped[str | None] = mapped_column(sa.Text, nullable=True)
 
     __table_args__ = (sa.Index("ix_page_visits_occurred_at", "occurred_at"),)
+
+
+class AppLog(Base):
+    """One log record at INFO or above, from the web process or the worker,
+    kept thirty days so the admin site can show what went wrong without a
+    third-party log service. Messages are redacted before they get here
+    (see `observability.Enrich`), and `user_id` is a plain column rather
+    than a foreign key: a rolling log table must not slow down or block an
+    account deletion, and a UUID with no row behind it says nothing."""
+
+    __tablename__ = "app_logs"
+
+    id: Mapped[uuid.UUID] = _uuid_pk()
+    logged_at: Mapped[datetime] = _created_at()
+    service: Mapped[str] = mapped_column(sa.Text, nullable=False)
+    level: Mapped[str] = mapped_column(sa.Text, nullable=False)
+    logger: Mapped[str] = mapped_column(sa.Text, nullable=False)
+    message: Mapped[str] = mapped_column(sa.Text, nullable=False)
+    fingerprint: Mapped[str] = mapped_column(sa.Text, nullable=False)
+    request_id: Mapped[str | None] = mapped_column(sa.Text, nullable=True)
+    user_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
+    exception: Mapped[str | None] = mapped_column(sa.Text, nullable=True)
+    extra: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+
+    __table_args__ = (
+        sa.Index("ix_app_logs_logged_at", "logged_at"),
+        sa.Index("ix_app_logs_fingerprint", "fingerprint"),
+    )
+
+
+class ServiceHeartbeat(Base):
+    """When each background process last said it was alive. The worker
+    writes its row every thirty seconds; `/health` reads it."""
+
+    __tablename__ = "service_heartbeats"
+
+    service: Mapped[str] = mapped_column(sa.Text, primary_key=True)
+    seen_at: Mapped[datetime] = mapped_column(sa.DateTime(timezone=True), nullable=False)
+    detail: Mapped[str | None] = mapped_column(sa.Text, nullable=True)

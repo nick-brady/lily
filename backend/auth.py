@@ -39,6 +39,7 @@ from jose import JWTError, jwt
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+import observability
 from db import engine, get_db
 from messenger import ChallengeDeliveryError, Messenger, get_messenger
 from models import AuthChallenge, AuthIdentifierKind, User
@@ -452,6 +453,9 @@ def _user_from_jwt(raw_token: str, db: Session) -> User:
             detail="Unknown user",
             headers={"WWW-Authenticate": "Bearer"},
         )
+    # every auth path passes through here, so this is where a log line
+    # written later in the request learns whose it was
+    observability.set_current_user(user.id)
     _touch_last_seen(user)
     return user
 

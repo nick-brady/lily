@@ -88,6 +88,9 @@ services:
       PRINTFUL_CONFIRM_ORDERS: ${PRINTFUL_CONFIRM_ORDERS:-}
       GIFT_SHIPPING_COUNTRIES: ${GIFT_SHIPPING_COUNTRIES:-US}
       ADMIN_EMAILS: ${ADMIN_EMAILS:-}
+      # JSON log files land in ./backend/logs (gitignored) via the bind mount
+      LOG_DIR: /app/logs
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
     # No published host port: the browser reaches the API same-origin via
     # the frontend's /api proxy, and containers use the compose network.
     volumes:
@@ -96,7 +99,8 @@ services:
     # --timeout-graceful-shutdown: on --reload, don't hang waiting for the
     # long-lived SSE stream to close; force-close lingering connections
     # after 1s so code edits actually restart the server.
-    command: sh -c "uvicorn main:app --host 0.0.0.0 --port 8000 --reload --timeout-graceful-shutdown 1"
+    # --no-access-log: the app writes its own access line, with a request id.
+    command: sh -c "uvicorn main:app --host 0.0.0.0 --port 8000 --reload --timeout-graceful-shutdown 1 --no-access-log"
 
 
   # The media worker: makes the smaller copies of uploaded photos, so the
@@ -146,6 +150,9 @@ services:
       PRINTFUL_CONFIRM_ORDERS: ${PRINTFUL_CONFIRM_ORDERS:-}
       GIFT_SHIPPING_COUNTRIES: ${GIFT_SHIPPING_COUNTRIES:-US}
       ADMIN_EMAILS: ${ADMIN_EMAILS:-}
+      # JSON log files land in ./backend/logs (gitignored) via the bind mount
+      LOG_DIR: /app/logs
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
     volumes:
       - ./backend:/app
       - uploads:/app/uploads
