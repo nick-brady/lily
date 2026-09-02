@@ -18,6 +18,9 @@ __pycache__/
 backend/uploads/*
 !backend/uploads/.gitkeep
 
+# Dev log files (LOG_DIR=/app/logs in docker-compose)
+backend/logs/
+
 # Environment
 .env
 .env.local

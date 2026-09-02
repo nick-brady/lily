@@ -17,6 +17,8 @@ os.environ.setdefault(
 )
 os.environ.setdefault("JWT_SECRET_KEY", "test-secret-key")
 os.environ.setdefault("S3_BUCKET", "lily-media-test")
+# no log-writer thread trying to reach the unreachable database above
+os.environ.setdefault("LOG_TO_DB", "0")
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 

@@ -368,9 +368,10 @@ def delete_account(db: Session, user: User, *, remove_contributions: bool) -> No
 
     failed = storage.delete_objects(s3_keys)
     if failed:
+        # counts and ids only: the keys carry the original upload filenames
         logger.error(
-            "account-deletion: %d S3 objects not deleted for user %s: %s",
+            "account-deletion: %d of %d S3 objects not deleted for user %s",
             len(failed),
+            len(s3_keys),
             user.id,
-            failed,
         )

@@ -54,6 +54,17 @@
     - restart lily app
     - restart lily worker
 
+# Lives in this role (not common) so deploy-code.yml applies it. The app
+# writes JSON lines to {{ app_dir }}/logs with a WatchedFileHandler, which
+# reopens the file after logrotate moves it — no copytruncate, no signal.
+- name: Rotate app log files
+  template:
+    src: logrotate.j2
+    dest: /etc/logrotate.d/lily
+    owner: root
+    group: root
+    mode: '0644'
+
 # The app's SSE streams hold their DB transactions open for the stream's
 # lifetime, so any migration needing an exclusive lock (column/table drops)
 # queues behind them forever — and postgres queues every NEW query behind

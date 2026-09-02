@@ -6,6 +6,7 @@ one importable, testable place.
 """
 from __future__ import annotations
 
+import logging
 import uuid
 
 from fastapi import BackgroundTasks
@@ -14,6 +15,8 @@ from sqlalchemy.orm import Session
 import payments
 from models import Birth, GiftCatalogItem, GiftKind
 from repositories import gift_orders as gift_orders_repo
+
+logger = logging.getLogger(__name__)
 
 
 async def fulfill_gift_from_session(
@@ -89,9 +92,10 @@ async def fulfill_gift_from_session(
                 except payments.StripeError:
                     if raise_on_refund_error:
                         raise
-                    print(
-                        f"gift refund failed for {pi}; webhook redelivery will retry",
-                        flush=True,
+                    logger.error(
+                        "gift refund failed for %s; webhook redelivery will retry",
+                        pi,
+                        exc_info=True,
                     )
                     statuses.append("refunded")
                     continue

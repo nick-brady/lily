@@ -8,11 +8,14 @@ address is typed, so the number on the pay button is the number Stripe shows.
 """
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
 
 import fulfillment
 from fulfillment.base import RateError
 from fulfillment.products import ShortlistProduct
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -60,5 +63,5 @@ def quote(product: ShortlistProduct, address: dict, *, quantity: int = 1) -> Shi
                 max_days=rate.max_days,
             )
         except RateError as exc:
-            print(f"shipping quote fell back to the estimate: {exc}", flush=True)
+            logger.warning("shipping quote fell back to the estimate: %s", exc)
     return ShippingQuote(cents=product.shipping_estimate_cents * quantity, estimated=True)

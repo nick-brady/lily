@@ -1,6 +1,7 @@
 """Auth and account routes: OTP/Google sign-in, session cookie, /me."""
 from __future__ import annotations
 
+import logging
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Response
@@ -45,6 +46,8 @@ from schemas import (
     UserOut,
 )
 
+logger = logging.getLogger(__name__)
+
 router = APIRouter()
 
 
@@ -56,9 +59,11 @@ def auth_request(payload: AuthRequestIn, db: Session = Depends(get_db)) -> AuthR
         raise HTTPException(
             status_code=429, detail="A code was just sent — give it a moment"
         )
-    except ChallengeDeliveryError:
+    except ChallengeDeliveryError as exc:
         # identifier-neutral: the failure is provider trouble, not a signal
-        # about whether the identifier exists
+        # about whether the identifier exists. The provider's own words go
+        # to the log (a URL and a status, never the recipient).
+        logger.warning("sign-in code not delivered: %s", exc)
         raise HTTPException(
             status_code=503,
             detail="We couldn't send your code — try again in a minute",
@@ -175,7 +180,8 @@ def set_notify_phone(
         raise HTTPException(status_code=400, detail="Enter a phone number")
     try:
         get_active_messenger().send_notify_optin(identifier)
-    except ChallengeDeliveryError:
+    except ChallengeDeliveryError as exc:
+        logger.warning("opt-in text not delivered: %s", exc)
         raise HTTPException(
             status_code=503,
             detail="We couldn't text that number — check it and try again",

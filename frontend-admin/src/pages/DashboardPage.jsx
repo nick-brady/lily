@@ -3,6 +3,8 @@ import { api } from '../api/client';
 import { useAuth } from '../auth';
 import DailyLineChart from '../components/DailyLineChart';
 import FunnelTable from '../components/FunnelTable';
+import Header from '../components/Header';
+import HealthCard from '../components/HealthCard';
 import SourcesTable from '../components/SourcesTable';
 import StatTile from '../components/StatTile';
 import { colorForSource, SERIES_COLORS } from '../palette';
@@ -116,29 +118,25 @@ export default function DashboardPage() {
 
   return (
     <div className="max-w-6xl mx-auto p-4 sm:p-6 space-y-4">
-      <header className="flex items-center justify-between flex-wrap gap-3">
-        <h1 className="text-xl font-bold text-gray-900">Arrival Story · Admin</h1>
-        <div className="flex items-center gap-3">
-          <div className="flex rounded-lg overflow-hidden border border-gray-200 bg-white">
-            {RANGES.map((r) => (
-              <button
-                key={r.label}
-                onClick={() => setRangeDays(r.days)}
-                className={`px-3 py-1.5 text-sm font-medium ${
-                  rangeDays === r.days
-                    ? 'bg-primary-600 text-white'
-                    : 'text-gray-600 hover:bg-gray-50'
-                }`}
-              >
-                {r.label}
-              </button>
-            ))}
-          </div>
-          <button onClick={logout} className="text-sm text-gray-500 hover:text-gray-700">
-            Sign out
-          </button>
+      <Header>
+        <div className="flex rounded-lg overflow-hidden border border-gray-200 bg-white">
+          {RANGES.map((r) => (
+            <button
+              key={r.label}
+              onClick={() => setRangeDays(r.days)}
+              className={`px-3 py-1.5 text-sm font-medium ${
+                rangeDays === r.days
+                  ? 'bg-primary-600 text-white'
+                  : 'text-gray-600 hover:bg-gray-50'
+              }`}
+            >
+              {r.label}
+            </button>
+          ))}
         </div>
-      </header>
+      </Header>
+
+      <HealthCard />
 
       {error && <div className="card text-red-600 text-sm">{error.message}</div>}
       {loading && !overview && <div className="card text-gray-400 text-sm">Loading…</div>}
@@ -166,7 +164,7 @@ export default function DashboardPage() {
             <StatTile
               label="Revenue"
               value={formatUsd(overview.revenue.total_cents)}
-              hint={`${overview.revenue.unlock_count} unlocks · ${overview.revenue.gift_count} gifts`}
+              hint={`${overview.revenue.gift_count} gifts · ${formatUsd(overview.revenue.gift_cents)}`}
             />
           </div>
 

@@ -1,0 +1,12 @@
+# Rendered by Ansible (deploy/roles/app/templates/logrotate.j2).
+# Ninety days of the app's JSON log files. The app reopens the file itself
+# after rotation (WatchedFileHandler), so no signal is needed.
+{{ app_dir }}/logs/*.jsonl {
+    daily
+    rotate 90
+    compress
+    delaycompress
+    missingok
+    notifempty
+    create 0644 {{ app_user }} {{ app_group }}
+}

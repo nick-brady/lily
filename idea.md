@@ -223,7 +223,9 @@ contract first, since it is the same contract the app would use.
 
 # Seeing it fail
 
-*Written 2026-08-31. Not built.*
+*Written 2026-08-31. Built 2026-09-01, except the alerting — see the
+"Logs are files on the box" entry in DECISIONS.md. What remains from below
+is the Resend digest: every `app_logs` row carries a `fingerprint` for it.*
 
 ## The problem
 

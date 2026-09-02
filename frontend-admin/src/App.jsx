@@ -2,6 +2,7 @@ import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom';
 import { AuthProvider, useAuth } from './auth';
 import DashboardPage from './pages/DashboardPage';
 import LoginPage from './pages/LoginPage';
+import LogsPage from './pages/LogsPage';
 
 function RequireAuth({ children }) {
   const { isAuthenticated } = useAuth();
@@ -20,6 +21,14 @@ export default function App() {
             element={
               <RequireAuth>
                 <DashboardPage />
+              </RequireAuth>
+            }
+          />
+          <Route
+            path="/logs"
+            element={
+              <RequireAuth>
+                <LogsPage />
               </RequireAuth>
             }
           />
