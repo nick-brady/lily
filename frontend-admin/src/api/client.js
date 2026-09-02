@@ -57,6 +57,15 @@ export const api = {
     return jsonOrThrow(res);
   },
 
+  async googleAuth({ credential }) {
+    const res = await fetch(`${API_URL}/auth/google`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ credential }),
+    });
+    return jsonOrThrow(res);
+  },
+
   async me() {
     const res = await fetch(`${API_URL}/me`, { headers: authHeaders() });
     return jsonOrThrow(res);

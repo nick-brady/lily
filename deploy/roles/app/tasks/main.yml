@@ -125,6 +125,10 @@
     module: command
     cmd: npm run build
     chdir: "{{ playbook_dir }}/../frontend-admin"
+  environment:
+    # same Google client as the main site; admin.{{ app_domain }} must be an
+    # authorized JavaScript origin on it in the Google Cloud console
+    VITE_GOOGLE_CLIENT_ID: "{{ google_client_id }}"
   become: no
   run_once: true
 
