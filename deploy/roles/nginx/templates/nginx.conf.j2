@@ -87,7 +87,18 @@ server {
         try_files $uri =404;
     }
 
-    location / {
+    # A family's page and the tooling around it are never for an index —
+    # said here as a header, and again as a meta tag by the app, so a leaked
+    # link stays out of search results either way.
+    location ~ ^/(b|invite|account|setup|login)(/|$) {
+        add_header X-Robots-Tag "noindex, nofollow" always;
         try_files $uri /index.html;
+    }
+
+    # The public pages are pre-rendered at build time into pricing/index.html
+    # and friends (frontend/scripts/prerender.mjs); everything else falls back
+    # to the SPA shell.
+    location / {
+        try_files $uri $uri/index.html /index.html;
     }
 }

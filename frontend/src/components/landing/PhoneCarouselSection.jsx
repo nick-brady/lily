@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import OnePlaceSlide from './OnePlaceSlide';
 import TimerSlide from './TimerSlide';
 import KeepsakeSlide from './KeepsakeSlide';
+import useMediaQuery, { REDUCED_MOTION } from '../../hooks/useMediaQuery';
 
 // The phone-demo carousel under the hero (Lily-Landing-Sections.md §1–3).
 // One section, one story told in slides that share the phone motif:
@@ -33,9 +34,7 @@ export default function PhoneCarouselSection() {
   // Bumped on full exit to remount (= reset) both slides.
   const [runId, setRunId] = useState(0);
 
-  const [reducedMotion] = useState(
-    () => window.matchMedia('(prefers-reduced-motion: reduce)').matches,
-  );
+  const reducedMotion = useMediaQuery(REDUCED_MOTION);
 
   useEffect(() => {
     if (reducedMotion) return undefined;

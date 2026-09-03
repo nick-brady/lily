@@ -8,14 +8,18 @@ export default function LandingPage() {
   const { isAuthenticated, loading, me } = useAuth();
   const navigate = useNavigate();
 
+  // A signed-in parent is sent to their page as soon as /me answers. The
+  // landing renders meanwhile rather than waiting: the session is an
+  // httpOnly cookie, so the browser cannot know it is signed in before that
+  // call, and this page is pre-rendered at build time for everyone else —
+  // the first client render has to match that markup or React throws it
+  // away and starts over.
   useEffect(() => {
     if (loading) return;
     if (!isAuthenticated) return;
     const hasBirth = me?.families?.some((f) => f.births?.length > 0);
     navigate(hasBirth ? '/account' : '/setup', { replace: true });
   }, [isAuthenticated, loading, me, navigate]);
-
-  if (loading) return null;
 
   return (
     <div className="min-h-screen bg-white dark:bg-gray-950">
@@ -38,6 +42,7 @@ export default function LandingPage() {
       {/* Hero — full-bleed video + synced phone UI (Lily-Hero-Video-Plan.md) */}
       <HeroVideo />
 
+      <main>
       {/* Phone demo carousel: silence the group chat, then keep the keepsake */}
       <PhoneCarouselSection />
 
@@ -108,6 +113,7 @@ export default function LandingPage() {
         </Link>
         <p className="mt-4 text-sm text-gray-400">Free for your whole family. No app to download.</p>
       </section>
+      </main>
 
       {/* Footer */}
       <footer className="text-center py-8 text-gray-400 text-sm border-t border-gray-100 dark:border-gray-800">

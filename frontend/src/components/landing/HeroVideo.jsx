@@ -4,6 +4,7 @@ import Timeline from '../Timeline';
 import WordmarkWriteOn from '../WordmarkWriteOn';
 import PhoneFrame from './PhoneFrame';
 import useHeroCueEngine from '../../hooks/useHeroCueEngine';
+import useMediaQuery, { REDUCED_MOTION } from '../../hooks/useMediaQuery';
 import {
   HERO_POSTER_SRC,
   HERO_VIDEO_SRC,
@@ -150,19 +151,11 @@ export default function HeroVideo() {
   const [visible, setVisible] = useState(false);
   const [videoFailed, setVideoFailed] = useState(false);
 
-  const [reducedMotion] = useState(
-    () => window.matchMedia('(prefers-reduced-motion: reduce)').matches,
-  );
-  const [isDesktop, setIsDesktop] = useState(
-    () => window.matchMedia('(min-width: 1024px)').matches,
-  );
-
-  useEffect(() => {
-    const mq = window.matchMedia('(min-width: 1024px)');
-    const onChange = (e) => setIsDesktop(e.matches);
-    mq.addEventListener('change', onChange);
-    return () => mq.removeEventListener('change', onChange);
-  }, []);
+  // Both start false: the pre-rendered page and its first client paint show
+  // the poster and the clock-driven phone, and the video swaps in a frame
+  // later on desktop — the poster is the video's own first frame anyway.
+  const reducedMotion = useMediaQuery(REDUCED_MOTION);
+  const isDesktop = useMediaQuery('(min-width: 1024px)');
 
   useEffect(() => {
     const observer = new IntersectionObserver(
