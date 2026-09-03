@@ -1,13 +1,9 @@
+# The private routes (/b/, /invite/, /account, /setup, /login) are not
+# listed here on purpose. They are kept out of search by a noindex header
+# from nginx and a noindex meta tag from the app — and a crawler can only
+# see those if it is allowed to fetch the page. Disallowing them would let a
+# leaked link be listed as a bare URL instead.
 User-agent: *
-Allow: /$
-Allow: /pricing
-Allow: /privacy
-Allow: /terms
-Disallow: /b/
-Disallow: /invite/
-Disallow: /account
-Disallow: /setup
-Disallow: /login
 Disallow: /api/
 
 Sitemap: https://arrivalstory.com/sitemap.xml
