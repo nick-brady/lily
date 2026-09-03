@@ -1,7 +1,13 @@
 ---
-# Code-only update for an already-provisioned instance:
+# Code update for an already-provisioned instance:
 # rsync backend → uv sync → render .env → alembic upgrade → build + rsync
-# frontend → restart. (Provisioning roles are skipped.)
+# both frontends → restart → re-render the nginx config (reloaded only if
+# it changed). Provisioning roles — packages, postgres, certbot, backups —
+# are skipped; those need playbook.yml.
+#
+# nginx is here because its template is code too: a routing rule that ships
+# with a frontend change (the fonts, the pre-rendered pages) used to need a
+# second run, and twice went out without one.
 - name: Deploy Lily code update
   hosts: lily
   become: yes
@@ -12,3 +18,4 @@
   roles:
     - app
     - systemd
+    - nginx
