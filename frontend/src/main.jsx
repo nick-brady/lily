@@ -11,8 +11,8 @@ const app = (
 )
 
 // The public pages arrive pre-rendered (scripts/prerender.mjs), so React
-// takes over the markup that is already there. Every other route — and the
-// dev server — starts from the empty shell and renders from scratch.
+// takes over the markup that is already there. Every other route — served
+// the empty shell, dist/app.html — and the dev server render from scratch.
 if (root.hasChildNodes()) {
   hydrateRoot(root, app)
 } else {

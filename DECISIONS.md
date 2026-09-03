@@ -877,7 +877,8 @@ pages are public — `/`, `/pricing`, `/privacy`, `/terms` — and their content
 is the same for every visitor, so `npm run build` renders them to static
 HTML with React's server renderer (`frontend/src/entry-server.jsx`,
 `frontend/scripts/prerender.mjs`) and nginx serves `pricing/index.html`
-before falling back to the SPA shell. The browser hydrates the markup and
+before falling back to the SPA shell, which lives on as `app.html` because
+`index.html` is now the home page. The browser hydrates the markup and
 carries on as the SPA it always was.
 
 > "the rest of the app can remain a SPA.. but.. in hindsight.. I do need
