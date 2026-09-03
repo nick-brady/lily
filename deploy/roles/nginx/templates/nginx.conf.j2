@@ -90,15 +90,21 @@ server {
     # A family's page and the tooling around it are never for an index —
     # said here as a header, and again as a meta tag by the app, so a leaked
     # link stays out of search results either way.
+    #
+    # `rewrite … break`, not `try_files … /index.html`: try_files' fallback is
+    # an internal redirect into `location /`, and add_header belongs to the
+    # location that finally answers — so the header was being lost. Nothing
+    # under these paths is a real file, so serving the shell directly is right.
     location ~ ^/(b|invite|account|setup|login)(/|$) {
         add_header X-Robots-Tag "noindex, nofollow" always;
-        try_files $uri /index.html;
+        rewrite ^ /app.html break;
     }
 
-    # The public pages are pre-rendered at build time into pricing/index.html
-    # and friends (frontend/scripts/prerender.mjs); everything else falls back
-    # to the SPA shell.
+    # The public pages are pre-rendered at build time into index.html,
+    # pricing/index.html and friends (frontend/scripts/prerender.mjs).
+    # Everything else falls back to app.html, the untouched SPA shell — not
+    # index.html, which is now the home page's markup.
     location / {
-        try_files $uri $uri/index.html /index.html;
+        try_files $uri $uri/index.html /app.html;
     }
 }
