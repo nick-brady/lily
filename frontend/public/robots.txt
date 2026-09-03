@@ -1,0 +1,13 @@
+User-agent: *
+Allow: /$
+Allow: /pricing
+Allow: /privacy
+Allow: /terms
+Disallow: /b/
+Disallow: /invite/
+Disallow: /account
+Disallow: /setup
+Disallow: /login
+Disallow: /api/
+
+Sitemap: https://arrivalstory.com/sitemap.xml

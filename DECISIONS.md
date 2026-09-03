@@ -868,6 +868,52 @@ who were shared to actually log in.
 
 Added after noticing probing traffic.
 
+### The public pages are pre-rendered at build time; the rest stays a single-page app
+*2026-09-02*
+
+Someone searching "arrival story" should find the site, and a link pasted
+into a family group chat should unfurl with a title and a picture. Four
+pages are public — `/`, `/pricing`, `/privacy`, `/terms` — and their content
+is the same for every visitor, so `npm run build` renders them to static
+HTML with React's server renderer (`frontend/src/entry-server.jsx`,
+`frontend/scripts/prerender.mjs`) and nginx serves `pricing/index.html`
+before falling back to the SPA shell. The browser hydrates the markup and
+carries on as the SPA it always was.
+
+> "the rest of the app can remain a SPA.. but.. in hindsight.. I do need
+> someone to be able to search and find 'arrival story'"
+
+- **No Next.js, no runtime server rendering.** A second framework, router,
+  Tailwind config and deploy for four static pages; or a Node process on the
+  box for output a build step produces identically. Build-time rendering
+  gives a crawler the same bytes SSR would and adds nothing at request time.
+- **One source for what a page says about itself:** `src/seo/routeMeta.js`.
+  The pre-render writes it into each page's head; `usePageMeta` applies it
+  on client-side navigation. Titles under 65 characters, descriptions under
+  160, JSON-LD for Organization and WebSite only — nothing invented.
+- **A family's page is never for an index.** `/b/`, `/invite/`, `/account`,
+  `/setup`, `/login` are `noindex, nofollow` twice over: as an
+  `X-Robots-Tag` header from nginx and as a meta tag from the app. Real
+  `robots.txt` and `sitemap.xml` replace the shell that used to answer for
+  them with a 200.
+- **The demo phones are client-only on purpose.** `PhoneFrame` renders its
+  screen empty until mount: the demo timelines are built from `Date.now()`
+  and the visitor's locale, so what the build machine rendered could never
+  match the browser and React would throw the page away. The frame itself
+  pre-renders at full size so nothing moves.
+- **The landing page renders while auth is loading** instead of returning
+  nothing. The session is an httpOnly cookie, so the browser cannot know it
+  is signed in before `/me` answers; the first client render has to match
+  the pre-rendered logged-out page. A signed-in parent sees the hero for
+  that round trip before landing on their page, where they used to see a
+  blank.
+- **Media queries start at a fixed answer** (`useMediaQuery`): the poster,
+  not the video; the pen not yet down on the wordmark. The real answer
+  arrives in an effect a frame later, so server and first paint agree.
+- **Getting found is a step only the owner can do:** verify the domain in
+  Search Console, submit the sitemap, request indexing. The code makes the
+  pages worth indexing; that makes them indexed.
+
 ### Logs are files on the box plus a 30-day table the admin site reads
 *2026-09-01*
 

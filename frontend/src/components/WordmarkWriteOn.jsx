@@ -77,13 +77,21 @@ export default function WordmarkWriteOn({ className = '', onComplete }) {
   const onCompleteRef = useRef(onComplete);
   onCompleteRef.current = onComplete;
 
-  const [staticRender] = useState(
-    () =>
-      window.matchMedia('(prefers-reduced-motion: reduce)').matches || hasWritten
-  );
+  // 'pending' renders the pen-not-yet-down state, which is also what the
+  // pre-rendered page holds (there is no window to ask at build time). The
+  // effect then either writes it on or shows it finished. Either way nothing
+  // flashes: hidden is the animation's own first frame.
+  const [mode, setMode] = useState('pending');
+  const staticRender = mode === 'static';
 
   useEffect(() => {
-    if (staticRender) {
+    const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    setMode(reduced || hasWritten ? 'static' : 'write');
+  }, []);
+
+  useEffect(() => {
+    if (mode === 'pending') return undefined;
+    if (mode === 'static') {
       onCompleteRef.current?.();
       return undefined;
     }
@@ -119,7 +127,7 @@ export default function WordmarkWriteOn({ className = '', onComplete }) {
       cancelled = true;
       cancelAnimationFrame(raf);
     };
-  }, [staticRender]);
+  }, [mode]);
 
   return (
     <svg
