@@ -765,6 +765,13 @@ def test_destination_is_city_and_state_only():
     assert _destination({"line1": "1 St"}) is None
 
 
+def test_my_orders_requires_a_token():
+    from fastapi.testclient import TestClient
+    import main
+
+    assert TestClient(main.app).get("/me/orders").status_code == 401
+
+
 def test_receipt_route_is_public_and_scoped_to_the_birth(monkeypatch):
     import uuid
     from datetime import datetime, timezone

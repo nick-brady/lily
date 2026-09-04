@@ -348,6 +348,12 @@ export const api = {
     return jsonOrThrow(res);
   },
 
+  // Everything the signed-in person has bought, newest first.
+  async myOrders() {
+    const res = await fetch(`${API_URL}/me/orders`, {});
+    return jsonOrThrow(res);
+  },
+
   async getShippingAddress(birthId) {
     const res = await fetch(`${API_URL}/birth/${birthId}/shipping-address`, {});
     return jsonOrThrow(res);

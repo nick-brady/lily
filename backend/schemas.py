@@ -349,6 +349,14 @@ class OrderReceiptLineOut(BaseModel):
     created_at: datetime
 
 
+class MyOrderOut(OrderReceiptLineOut):
+    """A past purchase on the buyer's own orders page: the receipt line,
+    plus which page it was for."""
+
+    slug: str
+    child_name: Optional[str] = None
+
+
 class OrderReceiptOut(BaseModel):
     slug: str
     child_name: Optional[str] = None

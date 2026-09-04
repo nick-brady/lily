@@ -347,6 +347,17 @@ export default function AccountPage() {
   const { isAuthenticated, loading, me, user, logout, refreshMe } = useAuth();
   const navigate = useNavigate();
   const [showDelete, setShowDelete] = useState(false);
+  const [orderCount, setOrderCount] = useState(0);
+  useEffect(() => {
+    let cancelled = false;
+    api
+      .myOrders()
+      .then((rows) => !cancelled && setOrderCount(rows.length))
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   if (loading) return null;
   if (!isAuthenticated) return <Navigate to="/login" replace />;
@@ -470,6 +481,22 @@ export default function AccountPage() {
                 <FollowedPages key={family.id} family={family} onLeft={refreshMe} />
               ))}
             </div>
+          </div>
+        )}
+
+        {/* Past purchases live on their own page — this one is already full —
+            and the door only appears once there is something behind it. */}
+        {orderCount > 0 && (
+          <div className="mt-10 pt-6 border-t border-gray-200 dark:border-gray-800">
+            <Link
+              to="/account/orders"
+              className="flex items-center justify-between text-sm font-semibold text-gray-700 dark:text-gray-200 hover:text-primary-600 dark:hover:text-primary-400"
+            >
+              <span>Your orders</span>
+              <span className="text-gray-400 font-normal">
+                {orderCount} {orderCount === 1 ? 'order' : 'orders'} →
+              </span>
+            </Link>
           </div>
         )}
 

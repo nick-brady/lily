@@ -36,6 +36,7 @@ from routes.deps import (
 )
 from routes.gifts import load_rendering_for_products
 from schemas import (
+    MyOrderOut,
     OrderReceiptLineOut,
     OrderReceiptOut,
     AddressReviewIn,
@@ -440,6 +441,16 @@ def put_shipping_address(
     }
     db.commit()
     return ShippingAddressOut(address=access.birth.shipping_address)
+
+
+@router.get("/me/orders", response_model=list[MyOrderOut])
+def my_orders(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> list[MyOrderOut]:
+    """What the signed-in person has bought, across every page, newest
+    first. Each links to its receipt."""
+    return [MyOrderOut(**row) for row in gift_orders_repo.my_orders(db, user_id=current_user.id)]
 
 
 @router.get("/b/{slug}/orders/{order_id}", response_model=OrderReceiptOut)
