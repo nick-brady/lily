@@ -1313,6 +1313,43 @@ def _ring_layout(n: int, r_in: float, r_out: float) -> tuple[float, float, float
     return inner, band, band - (RING_GAP if n > 1 else 0.0)
 
 
+# The label pill is 124 wide (see _clock.svg.j2); a mark's halo is up to 26.
+LABEL_HALF_W = 62.0
+LABEL_CLEARANCE = 26.0 + 10.0
+# six o'clock first (the habit), then twelve, then stepping out from six on
+# alternating sides, so the label stays low on the dial when it can
+_LABEL_ANGLES = (
+    math.pi / 2,
+    -math.pi / 2,
+    *(math.pi / 2 + sign * step * 0.31 for step in range(1, 9) for sign in (1, -1)),
+)
+
+
+def _angular_gap(a: float, b: float) -> float:
+    return abs((a - b + math.pi) % (2 * math.pi) - math.pi)
+
+
+def _clear_label_angle(taken: list[float], ring_r: float) -> float:
+    """Where to put a ring's name so it does not sit on a mark.
+
+    The first candidate whose pill clears every mark wins, in preference
+    order. On a small inner ring the pill can be wider than the free arc,
+    so when nothing clears, the candidate farthest from any mark is taken —
+    a label brushing a halo beats one drawn straight over a hospital.
+    """
+    if not taken:
+        return _LABEL_ANGLES[0]
+    need = (LABEL_HALF_W + LABEL_CLEARANCE) / max(ring_r, 1.0)
+    best, best_gap = _LABEL_ANGLES[0], -1.0
+    for cand in _LABEL_ANGLES:
+        gap = min(_angular_gap(cand, a) for a in taken)
+        if gap >= need:
+            return cand
+        if gap > best_gap:
+            best, best_gap = cand, gap
+    return best
+
+
 def build_hours_clock(
     *,
     durations: list[int],
@@ -1482,6 +1519,21 @@ def build_hours_clock(
             "transform": None, "rule": "nonzero",
             "stroke": BORN_STROKE, "halo": BORN_HALO_R,
         }
+
+    # ── where each ring's name goes ──────────────────────────────────────
+    # The label rides the same grey circle as the marks, at six o'clock by
+    # habit — and a hospital at 5:58pm sat straight on top of "DAY 1". The
+    # mark's position means something (when it happened); the label's does
+    # not, so the label is the one that moves: six o'clock if it is clear,
+    # else twelve, else a little to either side of six.
+    for k, ring in enumerate(rings):
+        taken = [a for pk, a in placed if pk == k]
+        if born_mark is not None and k == n - 1:
+            taken.append(_clock_angle(born_at))
+        ring_r = ring["base"]
+        ang = _clear_label_angle(taken, ring_r)
+        ring["label_x"] = round(cx + ring_r * math.cos(ang), 1)
+        ring["label_y"] = round(cy + ring_r * math.sin(ang), 1)
 
     # ── the legend ───────────────────────────────────────────────────────
     # The two tones need naming or they read as texture. This only decides

@@ -429,8 +429,10 @@ def test_hours_clock_handles_missing_times():
         cx=100,
         cy=100,
     )
+    base = clock["clock_rings"][0]["base"]
     assert clock["clock_rings"] == [
-        {"base": clock["clock_rings"][0]["base"], "label": "DAY 1", "strokes": []}
+        # nothing on the ring, so the label keeps its six-o'clock habit
+        {"base": base, "label": "DAY 1", "strokes": [], "label_x": 100.0, "label_y": 100.0 + base}
     ]
     assert clock["clock_born_mark"] is None
     assert clock["clock_marks"] == []
@@ -755,3 +757,59 @@ def test_the_shortlist_stays_light_coloured():
     # A frame is different: it surrounds the print rather than sitting under
     # it, so the opaque background is a non-issue and a black frame is fine.
     assert any("black" in p.key for p in fp.for_product_kind("framed_print"))
+
+
+def test_hours_clock_day_label_steps_aside_for_a_mark():
+    """The day label and the marks share a ring's circle. A milestone near
+    six o'clock used to sit on top of "DAY 1"; now the label moves — to
+    twelve when six is taken, and stays at six when nothing is there."""
+    import math
+    from datetime import datetime, timezone
+
+    from gift_artwork import build_hours_clock
+
+    start = datetime(2026, 8, 20, 9, 0, tzinfo=timezone.utc)   # 9am day one
+    offsets = [i * 1800 for i in range(2 * 48)]                # two days, every 30 min
+    arrived = 9 * 3600                                          # 6pm on day one — six o'clock
+    clock = build_hours_clock(
+        durations=[60] * len(offsets),
+        offsets_seconds=offsets,
+        first_contraction_at=start,
+        born_at=None,
+        cx=750, cy=940,
+        milestones=[{"kind": "arrived", "offset_seconds": arrived}],
+    )
+    day1, day2 = clock["clock_rings"]
+    assert clock["clock_marks"], "the hospital mark was placed"
+
+    # day one's label left six o'clock for twelve
+    assert day1["label_y"] < 940 and abs(day1["label_x"] - 750) < 0.5
+    # and it is clear of the mark by more than the pill's half-width plus a halo
+    (mark,) = clock["clock_marks"]
+    gap = math.hypot(mark["x"] - day1["label_x"], mark["y"] - day1["label_y"])
+    assert gap > 62 + 26
+
+    # day two had nothing at six, so it stayed there
+    assert day2["label_y"] > 940 and abs(day2["label_x"] - 750) < 0.5
+    assert abs(day2["label_y"] - (940 + day2["base"])) < 0.5
+
+
+def test_hours_clock_day_label_avoids_the_heart_too():
+    """The arrival heart rides the outermost ring; a baby born at six o'clock
+    must not be covered by that ring's name."""
+    from datetime import datetime, timedelta, timezone
+
+    from gift_artwork import build_hours_clock
+
+    start = datetime(2026, 8, 20, 9, 0, tzinfo=timezone.utc)
+    offsets = [i * 1800 for i in range(2 * 48)]
+    clock = build_hours_clock(
+        durations=[60] * len(offsets),
+        offsets_seconds=offsets,
+        first_contraction_at=start,
+        born_at=start + timedelta(hours=24 + 9),               # 6pm on day two
+        cx=750, cy=940,
+        milestones=[],
+    )
+    outer = clock["clock_rings"][-1]
+    assert outer["label_y"] < 940, "moved off the heart at six"
