@@ -396,6 +396,40 @@ The edit modal stays open and says why on failure. It used to close regardless,
 so a rejected correction looked exactly like a saved one — the worst outcome
 for someone fixing their baby's arrival time.
 
+### One contraction, two parents, one button
+*2026-08-30 (PR #86) · refined 2026-09-03*
+
+Both parents watch the page in labour and neither knows who will press the
+button, so sometimes both do within a second. The server owns "the running
+contraction": a START while one is running returns it rather than opening a
+second (`uq_timeline_events_one_open_contraction` makes that true, not just
+polite); a STOP is judged by the contraction's age on the server clock.
+
+| STOP arrives when it is | the server |
+| --- | --- |
+| under 5 s old | does nothing — the tapper's tap was a START, not a stop |
+| 5–10 s old | refuses with `just_started`; the page asks *Keep timing / Discard it* |
+| 10 s or older | stops it, stamping `end_time` itself |
+
+**Why 10 s and not 20:** the real contractions here run 14–101 s. A 20 s band
+would put a dialog in front of a genuine short stop, and the dialog has no
+"stop it anyway".
+
+**Refinement (2026-09-03): the third quiet tap gets the dialog.** A STOP under
+five seconds does nothing and says nothing, which is right for the partner
+who reached at the same moment and baffling for someone who started it by
+accident and keeps pressing STOP to make it go away. After three declined
+taps on the same contraction the page shows the same *Keep timing / Discard
+it* dialog. Counted on the client (`frontend/src/utils/stopTaps.js`); the
+server's rule is unchanged.
+
+> "if you click it on accident, and you don't see the x, you might keep
+> clicking on it trying to stop it"
+
+**Where:** `backend/routes/timeline.py` (`CONTRACTION_GRACE_SECONDS`,
+`CONTRACTION_CONFIRM_SECONDS`), `frontend/src/pages/PublicBirthPage.jsx`
+(`handleStop`).
+
 ---
 
 ## Gifts & keepsakes
