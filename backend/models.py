@@ -938,6 +938,13 @@ class GiftOrder(Base):
     # once the payment is confirmed. A "both" purchase shares one payment, so
     # each order carries its proportional share.
     payment_fee_cents: Mapped[int | None] = mapped_column(sa.Integer, nullable=True)
+    # Where the receipt went, and whether it has. Stripe's checkout collected
+    # the address; it is kept for this one purpose. `receipt_emailed_at` is
+    # the claim that stops the webhook and the confirm path both sending.
+    buyer_email: Mapped[str | None] = mapped_column(sa.Text, nullable=True)
+    receipt_emailed_at: Mapped[datetime | None] = mapped_column(
+        sa.DateTime(timezone=True), nullable=True
+    )
     currency: Mapped[str] = mapped_column(
         sa.Text, nullable=False, server_default="usd"
     )

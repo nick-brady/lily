@@ -445,7 +445,9 @@ client draws rather than decides.
 
 # An order confirmation email
 
-*Written 2026-09-04. Not built.*
+*Written 2026-09-04. Built the same day — `gift_receipt_email.py`; see the
+DECISIONS entry "Arrival Story sends the receipt; Stripe's stays off". Kept
+for the reasoning.*
 
 Arrival Story sends no email when someone buys a keepsake. The receipt page
 (built 2026-09-04) is only there while the tab is; the Stripe receipt is a

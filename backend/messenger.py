@@ -370,6 +370,35 @@ class RoutingMessenger(Messenger):
         )
 
 
+def send_email(*, to: str, subject: str, html: str, text: str) -> bool:
+    """One transactional email, for the things that aren't a sign-in code or
+    an invitation (the order receipt). Resend when configured; otherwise a
+    dev-only print to stderr — deliberately not the logging tree, since the
+    body names the buyer. Returns whether it was accepted; never raises."""
+    api_key = os.getenv("RESEND_API_KEY")
+    if not api_key:
+        banner = "=" * 72
+        print(f"\n{banner}\n  EMAIL to {to}\n  {subject}\n\n{text}\n{banner}", flush=True, file=sys.stderr)
+        return True
+    try:
+        resp = httpx.post(
+            _RESEND_URL,
+            headers={"Authorization": f"Bearer {api_key}"},
+            json={
+                "from": os.getenv("RESEND_FROM") or _RESEND_DEFAULT_FROM,
+                "to": [to],
+                "subject": subject,
+                "html": html,
+                "text": text,
+            },
+            timeout=_REQUEST_TIMEOUT,
+        )
+        resp.raise_for_status()
+        return True
+    except httpx.HTTPError:
+        return False
+
+
 def get_messenger() -> Messenger:
     """The configured messenger. Each channel is real when its env vars are
     set and console otherwise (same gating ethos as fulfillment.get_adapter),

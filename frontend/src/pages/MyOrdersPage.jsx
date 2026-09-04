@@ -124,6 +124,5 @@ function statusWord(o) {
   if (o.status === 'refunded') return 'Refunded';
   if (o.status === 'pending') return 'Confirming payment';
   if (o.fulfillment_status === 'failed') return 'Problem — we are on it';
-  if (o.fulfillment_status === 'submitted') return 'Being made';
-  return 'Sending to the printer';
+  return 'Being made';
 }

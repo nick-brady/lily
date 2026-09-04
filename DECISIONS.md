@@ -640,6 +640,41 @@ called the whole $24.69 revenue.
 
 ---
 
+### Arrival Story sends the receipt; Stripe's stays off
+*2026-09-04*
+
+One email after a purchase, from us, through Resend — the receipt page in
+the inbox: the design, who it's going to (city and state), item / postage /
+total, the reference to quote, the gift message shown back, a button to the
+receipt page. Never "on its way".
+
+> "what do you think about sending a second email through resend? separate
+> from stripe's?"
+
+Two emails for one purchase read as a mistake ("was I charged twice?"), and
+Stripe's says "Arrival Story $24.69" with none of the story. So Stripe's
+"email customers about successful payments" setting stays **off** (it is off
+in the sandbox; leave it off in live). Stripe's refund emails stay on — that
+is the one case its automatic mail earns its place.
+
+- **Once per checkout.** Both the webhook and the browser's confirm call
+  reach the funnel; a claim on `gift_orders.receipt_emailed_at` decides which
+  sends. A "both" purchase is one email covering both copies.
+- **The address is the buyer's, from Stripe.** `customer_details.email` on
+  the checkout session, falling back to the account's email (a phone-only
+  account has none). Kept on the order as `buyer_email` for this purpose.
+- **Best effort, after the response.** A BackgroundTask with its own session,
+  like the shipment. A failed send logs a warning and releases the claim;
+  it never fails fulfillment.
+- **The image outlives the inbox.** The receipt page presigns S3 for an hour;
+  the email carries the HMAC-signed artwork link with a year's expiry.
+- **Failures are not emailed to the buyer.** A shipment the printer refused
+  is the operator's to fix first; the receipt page says so honestly, the
+  inbox does not.
+
+**Where:** `gift_receipt_email.py`, `messenger.send_email`,
+`gift_fulfillment.fulfill_gift_from_session`, migration 0045.
+
 ### Stripe sends the buyer back to a receipt, not the page
 *2026-09-04*
 
