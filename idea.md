@@ -206,6 +206,79 @@ texts, an hour of comparing.
 
 ---
 
+# The keepsakes should say where they came from
+
+*Written 2026-09-03. Not built.*
+
+A book on a shelf and a mug on a desk are the two places a relative will see
+Arrival Story a year from now, and neither says so. Both keepsakes should
+carry the brand, and the book should carry the way back to the page.
+
+## The book
+
+A QR code on the first page (the title page, not the cover), pointing at the
+birth page. Anyone who picks the book up can scan it and see the day itself —
+the videos, the voice memos, the things a book can't hold. The page is
+private and the link carries no token, so a scan lands on the sign-in, which
+is right: the QR is a door for people who already belong, not an invite.
+
+Sizing: a QR at 1 inch square with a quiet margin scans reliably from a
+printed page; the title page has room.
+
+## The mug
+
+Two things, decided in conversation:
+
+- **The Arrival Story wordmark**, small, somewhere it looks like a maker's
+  mark rather than an advert. The script wordmark at ~0.6 inch on the wrap,
+  opposite the design or under it.
+- **A QR code, if anywhere, on the bottom.** The link itself printed on the
+  mug was vetoed ("wife didn't like the idea of the link on the mug"), and a
+  QR on the wrap competes with the artwork. The bottom is where a maker's
+  mark goes on ceramics anyway.
+
+The catch: Printful's mugs print the wrap only — the base is not a print
+area on their 11oz/15oz mugs. So a bottom QR needs either a different
+supplier for that product or dropping the idea for mugs and keeping it to
+the book. Worth confirming on the product spec before designing around it.
+
+Minimum size for a QR to survive sublimation on a curved wrap is ~0.8 inch;
+smaller than that and the modules blur.
+
+---
+
+# Gift colours should follow the baby, not the brand
+
+*Written 2026-09-03. Not built.*
+
+Pink is Arrival Story's default and it suits the app. It does not suit a
+radial sunburst for a boy. Today the gift palettes follow the birth's chosen
+theme (`gift_themes.py`: lily, blossom, dino, ocean, golden, starry) and the
+theme defaults to lily — so a family that never changes it gets pink
+keepsakes whatever the baby.
+
+## What to do instead
+
+- **Default the gift palette from what is known.** Girl → lily or blossom.
+  Boy → ocean. Not known (or not shared) → a neutral: dino's green, or
+  golden. The birth already records the baby's sex once the pool settles,
+  and the parents can set it at any time.
+- **Keep it a default, not a rule.** The editor should offer the palette as
+  a choice per design, prefilled from the above, so a family who wants a
+  green sunburst for a girl gets one without changing the page's theme.
+- **Don't retheme the page.** The app's own colour is the family's choice in
+  settings and separate from what prints; the two only share a default.
+
+## Where it touches
+
+`gift_themes.for_theme` picks the palette; the renderers read `birth.theme`.
+A `palette` field on the rendering (design) would carry the per-design
+choice; the default would be derived from `birth.child_sex` when the theme
+is the untouched default. Existing designs keep whatever they were rendered
+with.
+
+---
+
 # The loop that already half exists
 
 *Written 2026-08-31. Not built — a thing to decide, not a task.*
