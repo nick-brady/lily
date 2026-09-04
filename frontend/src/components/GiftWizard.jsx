@@ -4,6 +4,7 @@ import { formatPrice } from '../utils/money';
 import { PRODUCT_NOUN } from '../utils/products';
 import { createLatestBlob } from '../utils/latestBlob';
 import Lightbox from './Lightbox';
+import useDialog from '../hooks/useDialog';
 
 // Customise → see it on the product → send.
 //
@@ -571,14 +572,17 @@ export default function GiftWizard({
   const imageWaiting = !shown || loadedSrc !== shown;
   const slots = rendering.editable_text || [];
 
+  const panelRef = useDialog(onClose, { label: 'Design your keepsake' });
+
   return (
     <div
       className="fixed inset-0 z-50 bg-black/60 flex items-end sm:items-center justify-center sm:p-6"
       onClick={onClose}
     >
       <div
+        ref={panelRef}
         className="animate-slide-up w-full sm:max-w-6xl bg-white dark:bg-gray-900
-                   rounded-t-2xl sm:rounded-2xl shadow-xl max-h-[94vh] sm:h-[94vh] flex flex-col relative"
+                   rounded-t-2xl sm:rounded-2xl shadow-xl max-h-[94vh] sm:h-[94vh] flex flex-col relative outline-none"
         onClick={(e) => e.stopPropagation()}
       >
         <header
@@ -733,6 +737,8 @@ export default function GiftWizard({
                                 data-page-idx={idx}
                                 onClick={() => goToPage(idx)}
                                 title={idx === 0 ? 'Cover' : `Page ${idx} · ${(pg?.kind || '').replace('_', ' ')}`}
+                                aria-label={idx === 0 ? 'Cover' : `Page ${idx} · ${(pg?.kind || '').replace('_', ' ')}`}
+                                aria-current={idx === pageIdx ? 'true' : undefined}
                                 className="w-12 h-12 rounded border-2 overflow-hidden bg-white text-[10px] t-muted"
                                 style={{ borderColor: idx === pageIdx ? 'var(--t-accent)' : 'var(--t-soft-ring)' }}
                               >

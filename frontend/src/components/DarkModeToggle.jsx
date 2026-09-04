@@ -3,6 +3,8 @@ export default function DarkModeToggle({ darkMode, setDarkMode }) {
   return (
     <button
       onClick={() => setDarkMode(!darkMode)}
+      aria-label={darkMode ? 'Switch to light mode' : 'Switch to dark mode'}
+      aria-pressed={darkMode}
       className="p-2 rounded-lg transition-opacity hover:opacity-80"
       style={{ backgroundColor: 'var(--t-soft-bg)', color: 'var(--t-soft-text)' }}
     >

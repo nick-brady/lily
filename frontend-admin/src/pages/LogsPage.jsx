@@ -174,6 +174,7 @@ export default function LogsPage() {
           value={draftQ}
           onChange={(e) => setDraftQ(e.target.value)}
           placeholder="Search messages"
+          aria-label="Search messages"
           className="flex-1 min-w-[12rem] rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-sm text-gray-800 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-primary-500"
         />
         <div className="flex rounded-lg overflow-hidden border border-gray-200 bg-white">
@@ -206,7 +207,7 @@ export default function LogsPage() {
         </button>
       </div>
 
-      {error && <div className="card text-red-600 text-sm">{error.message}</div>}
+      {error && <div role="alert" className="card text-red-600 text-sm">{error.message}</div>}
 
       <div className="grid grid-cols-1 md:grid-cols-[13rem_1fr] gap-4 items-start">
         <aside className="space-y-4">
@@ -336,7 +337,15 @@ function LogRow({ row, now, open, onToggle }) {
     <>
       <tr
         onClick={onToggle}
-        className={`border-b border-gray-50 cursor-pointer hover:bg-gray-50 ${open ? 'bg-gray-50' : ''}`}
+        tabIndex={0}
+        aria-expanded={open}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            onToggle();
+          }
+        }}
+        className={`border-b border-gray-50 cursor-pointer hover:bg-gray-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary-500 ${open ? 'bg-gray-50' : ''}`}
         style={{ boxShadow: `inset 3px 0 0 ${color}` }}
       >
         <td className="py-1.5 pl-4 pr-2 text-gray-500 tabular whitespace-nowrap" title={exact(row.logged_at)}>
@@ -344,8 +353,8 @@ function LogRow({ row, now, open, onToggle }) {
         </td>
         <td className="py-1.5 px-2">
           <span
-            className="inline-block rounded px-1.5 py-0.5 text-[11px] font-semibold uppercase tracking-wide text-white"
-            style={{ backgroundColor: color }}
+            className="inline-block rounded px-1.5 py-0.5 text-[11px] font-semibold uppercase tracking-wide"
+            style={{ backgroundColor: color, color: row.level === 'WARNING' ? '#3b2a00' : '#fff' }}
           >
             {row.level === 'WARNING' ? 'warn' : row.level.toLowerCase()}
           </span>

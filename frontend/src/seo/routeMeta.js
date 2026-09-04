@@ -58,6 +58,15 @@ export const PUBLIC_ROUTES = {
 // Prefixes, matched longest-first. A family's page and the tooling around it.
 export const PRIVATE_PREFIXES = ['/account', '/setup', '/login', '/invite', '/b'];
 
+// Tab titles for the private routes — never indexed, but a screen reader
+// reads the title first, and five pages called "Arrival Story" are one page.
+const PRIVATE_TITLES = {
+  '/account': `Your account · ${SITE_NAME}`,
+  '/setup': `Set up your baby’s page · ${SITE_NAME}`,
+  '/login': `Sign in · ${SITE_NAME}`,
+  '/invite': `Your invitation · ${SITE_NAME}`,
+};
+
 const DEFAULT_TITLE = SITE_NAME;
 
 export function metaFor(pathname) {
@@ -74,8 +83,9 @@ export function metaFor(pathname) {
       image: OG_IMAGE,
     };
   }
-  if (PRIVATE_PREFIXES.some((p) => path === p || path.startsWith(`${p}/`))) {
-    return { path, title: DEFAULT_TITLE, description: null, canonical: null, robots: 'noindex, nofollow', jsonLd: null, image: null };
+  const prefix = PRIVATE_PREFIXES.find((p) => path === p || path.startsWith(`${p}/`));
+  if (prefix) {
+    return { path, title: PRIVATE_TITLES[prefix] || DEFAULT_TITLE, description: null, canonical: null, robots: 'noindex, nofollow', jsonLd: null, image: null };
   }
   return null;
 }

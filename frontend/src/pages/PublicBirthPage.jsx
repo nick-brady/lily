@@ -418,6 +418,7 @@ export default function PublicBirthPage() {
       <main className="max-w-4xl mx-auto px-4 py-6 space-y-6">
         {giftBanner && (
           <div
+            role="status"
             className="card flex items-center gap-3 py-3"
             style={{ backgroundColor: 'var(--t-soft-bg)' }}
           >
@@ -428,7 +429,7 @@ export default function PublicBirthPage() {
           </div>
         )}
         {error && (
-          <div className="p-3 rounded-lg bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-300 text-sm">
+          <div role="alert" className="p-3 rounded-lg bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-300 text-sm">
             {error}
           </div>
         )}
@@ -476,8 +477,9 @@ export default function PublicBirthPage() {
             {activeContraction && (
               <button
                 onClick={() => setConfirmCancel(true)}
-                className="absolute top-3 right-3 p-2 text-gray-400 hover:text-red-500
+                className="absolute top-2 right-2 p-3 text-gray-400 hover:text-red-500
                            dark:text-gray-500 dark:hover:text-red-400 transition-colors"
+                aria-label="Cancel contraction"
                 title="Cancel contraction"
               >
                 <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">

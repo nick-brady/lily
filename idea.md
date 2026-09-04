@@ -106,38 +106,46 @@ machine is gone. `/api/health` exists so an outside uptime check can.
 
 # A basic accessibility review
 
-*Written 2026-09-02. Not done.*
+*Written 2026-09-02. First pass done 2026-09-04 (code audit + fixes, PR
+"Accessibility: every overlay is a dialog…"); the browser pass is still to do.*
 
-Nobody has gone through the app with a keyboard or a screen reader. The
-audience makes this matter more than usual: grandparents on phones, a parent
-in labour who can't look at the screen, a relative with low vision following
-along at 3am.
+## Done in the first pass
 
-## What to check
+- Every overlay is a real dialog: `hooks/useDialog.js` gives the Modal, the
+  lightbox, the gift editor, the bottom sheets, the account-deletion dialog
+  and the celebration a role and name, moves focus in and back, closes on
+  Escape, keeps Tab inside, and stops the page behind scrolling.
+- The timeline photo opens from the keyboard; icon-only buttons (theme
+  toggle, menu, remove photo/video, record, discard, gap marker, delete,
+  cancel contraction) have names; every placeholder-only field has a label.
+- Live regions: connection status, the page error and gift banners, admin
+  errors; the contraction clock is a `role="timer"` that stays quiet with a
+  status line that announces start and stop once.
+- Motion: the STOP pulse, sheets, confetti and pings stop under reduced
+  motion; the landing carousel has a Pause button.
+- A global `:focus-visible` ring; the timeline's 24px icon buttons and the
+  post Edit/Delete links have 40px hit areas; the admin warning pill has
+  dark text; the private routes have their own tab titles; the settings
+  page's sections are h2 under its h1.
 
-- **The keyboard path** through setup, the contraction button, and the
-  timeline: can every action be reached and fired without a pointer, and is
-  focus visible everywhere it lands?
-- **Focus management in `Modal`** (lifted to its own file in August): focus
-  moves in when it opens, returns to the trigger when it closes, Escape
-  closes it, and nothing behind it is reachable while it's open.
-- **The running contraction.** A screen-reader user gets no announcement
-  when one starts or stops; an `aria-live` region on the button's status
-  would say it.
-- **Colour contrast** of the muted text (`t-muted`, `text-gray-400`) on white
-  and on the dark theme, and of the level pills on the admin Logs page.
-- **Form labels** on setup and checkout: every input has a real label, not
-  just a placeholder; errors are associated with their fields.
-- **Reduced motion** is honoured by the hero and the carousel; check the
-  timeline's photo reposition and the celebration confetti too.
-- **The landing carousel auto-advances.** WCAG 2.2.2 wants a way to pause or
-  stop anything that moves for more than five seconds. A visitor who
-  navigates manually takes the wheel today; there is no explicit pause.
-- **Alt text on uploaded photos.** They carry captions but no `alt`; the
-  caption is the obvious alt when there is one, and "Photo" plus the time
-  when there isn't.
-- **`lang`, landmarks, and one `h1` per page** — done for the four public
-  pages as part of the SEO work (2026-09-02); check the app pages.
+## Still to do
+
+- **The browser pass**: axe DevTools on each page, a keyboard-only pass of
+  the parent flow, VoiceOver on an iPhone through a birth page as a viewer.
+  The code audit can't see contrast or what a screen reader actually says.
+- **Landmarks on the app pages**: `/account`, `/setup`, `/login` and the
+  invite page have no `<main>`; the setup wizard's steps each carry an h1.
+- **Transcripts**: uploaded videos and voice memos have no captions or
+  transcript, and the composer's previews neither.
+- **Errors tied to their fields**: no `aria-describedby`/`aria-invalid`
+  anywhere; hints and errors float beside inputs.
+- **Contrast**: measure `t-faint` (#9ca3af) and `text-gray-400` on white for
+  the timeline timestamps and secondary copy; the dark-mode faint pair is
+  the tightest.
+- **Header menu keyboard semantics** (arrow keys, focus on open); the tab
+  switcher and segmented controls without `aria-selected`/`aria-pressed`;
+  charts with no text alternative; `autoFocus` on page load pulling focus
+  past content and raising the phone keyboard.
 
 ## How to check it
 

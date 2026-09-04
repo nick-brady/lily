@@ -25,8 +25,8 @@ export default function ConnectionStatus({ status }) {
   const look = PRESENTATION[status];
   if (!look) return null;
   return (
-    <div className="flex items-center gap-2">
-      <div className={`w-2 h-2 rounded-full ${look.dot}`} />
+    <div className="flex items-center gap-2" role="status">
+      <div aria-hidden="true" className={`w-2 h-2 rounded-full ${look.dot}`} />
       <span className={`text-xs ${look.text}`}>{look.label}</span>
     </div>
   );

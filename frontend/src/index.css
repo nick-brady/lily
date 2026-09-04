@@ -257,3 +257,24 @@
 .thin-scrollbar:hover::-webkit-scrollbar-thumb { background: var(--t-accent); opacity: 0.6; }
 
 @keyframes fade-in { from { opacity: 0 } to { opacity: 1 } }
+
+/* Focus you can see, on every control, only when the keyboard put it there.
+   The custom buttons are rounded, shadowed and coloured; the browser's
+   default ring vanished against them. */
+:focus-visible {
+  outline: 2px solid var(--t-accent, #c026d3);
+  outline-offset: 2px;
+}
+
+/* Motion that carries no information stops when the visitor asked it to.
+   The hero and carousel already honour this through useMediaQuery; these
+   are the CSS-only animations that didn't. */
+@media (prefers-reduced-motion: reduce) {
+  .animate-slide-up,
+  .animate-float-up,
+  .animate-celebrate-pop,
+  .animate-pulse,
+  .animate-ping {
+    animation: none !important;
+  }
+}

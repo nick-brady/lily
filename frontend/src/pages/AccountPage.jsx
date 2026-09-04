@@ -4,6 +4,7 @@ import { api } from '../api/client';
 import { useAuth } from '../contexts/AuthContext';
 import { getTheme, themeVars } from '../utils/themes';
 import CoParentManager from '../components/CoParentManager';
+import useDialog from '../hooks/useDialog';
 
 const STATUS_LABELS = {
   preparing: 'Preparing',
@@ -191,6 +192,7 @@ function NameField({ user, onSaved }) {
         autoFocus
         maxLength={80}
         placeholder="Your name"
+        aria-label="Your name"
         onKeyDown={(e) => e.key === 'Enter' && save()}
         className="px-3 py-1.5 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-sm text-gray-900 dark:text-white"
       />
@@ -314,6 +316,7 @@ function NotifyPhoneField({ user, onSaved }) {
         inputMode="tel"
         autoComplete="tel"
         placeholder="(555) 555-5555"
+        aria-label="Phone number for birth alerts"
         onKeyDown={(e) => e.key === 'Enter' && save()}
         className="px-3 py-1.5 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-sm text-gray-900 dark:text-white"
       />
@@ -588,13 +591,16 @@ function DeleteAccountModal({ me, onClose, onDeleted }) {
     }
   };
 
+  const panelRef = useDialog(onClose);
+
   return (
     <div
       className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4"
       onClick={onClose}
     >
       <div
-        className="bg-white dark:bg-gray-800 rounded-2xl shadow-xl max-w-md w-full p-6 max-h-[85vh] overflow-y-auto"
+        ref={panelRef}
+        className="bg-white dark:bg-gray-800 rounded-2xl shadow-xl max-w-md w-full p-6 max-h-[85vh] overflow-y-auto outline-none"
         onClick={(e) => e.stopPropagation()}
       >
         <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
@@ -644,10 +650,11 @@ function DeleteAccountModal({ me, onClose, onDeleted }) {
         </label>
 
         <div className="mt-5">
-          <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">
+          <label htmlFor="delete-confirm" className="block text-xs text-gray-500 dark:text-gray-400 mb-1">
             Type <span className="font-mono font-semibold">DELETE</span> to confirm
           </label>
           <input
+            id="delete-confirm"
             value={confirmText}
             onChange={(e) => setConfirmText(e.target.value)}
             className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-sm text-gray-900 dark:text-white"

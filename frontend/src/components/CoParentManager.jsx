@@ -198,6 +198,7 @@ export default function CoParentManager({ familyId, familyName }) {
             value={name}
             onChange={(e) => setName(e.target.value)}
             placeholder="Their name (e.g. Marco)"
+            aria-label="Their name"
             className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white text-sm focus:ring-2 focus:ring-primary-500 focus:border-transparent focus:outline-none"
           />
           <IdentifierInput

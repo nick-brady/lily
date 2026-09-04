@@ -86,24 +86,27 @@ function ContractionItem({ event, canManage, onDelete, onToggleIgnore }) {
             <>
               <button
                 onClick={() => onToggleIgnore(event.id)}
-                className={`ml-auto p-1 transition-colors ${
+                className={`ml-auto p-2 -my-1 transition-colors ${
                   ignore_interval_before
                     ? 'text-amber-500 hover:text-amber-600'
                     : 'text-gray-300 hover:text-amber-500 dark:text-gray-600 dark:hover:text-amber-400'
                 }`}
+                aria-label={ignore_interval_before ? 'Remove gap marker' : 'Mark gap before this'}
+                aria-pressed={Boolean(ignore_interval_before)}
                 title={ignore_interval_before ? 'Remove gap marker' : 'Mark gap before this'}
               >
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <svg aria-hidden="true" className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
                     d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
                 </svg>
               </button>
               <button
                 onClick={() => onDelete(event)}
-                className="p-1 text-gray-300 hover:text-red-500 dark:text-gray-600 dark:hover:text-red-400 transition-colors"
+                className="p-2 -my-1 text-gray-300 hover:text-red-500 dark:text-gray-600 dark:hover:text-red-400 transition-colors"
+                aria-label="Delete contraction"
                 title="Delete contraction"
               >
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <svg aria-hidden="true" className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
                     d="M6 18L18 6M6 6l12 12" />
                 </svg>
@@ -290,10 +293,10 @@ function TextNoteItem({ event, canManage, onDelete, onEdit, engagementScope }) {
 function ItemActions({ onEdit, onDelete, audienceScope }) {
   return (
     <div className="flex items-center gap-3 mt-2">
-      <button onClick={onEdit} className="text-xs text-gray-400 hover:text-primary-500">
+      <button onClick={onEdit} className="text-xs text-gray-400 hover:text-primary-500 py-2 -my-2">
         Edit
       </button>
-      <button onClick={onDelete} className="text-xs text-gray-400 hover:text-red-500">
+      <button onClick={onDelete} className="text-xs text-gray-400 hover:text-red-500 py-2 -my-2">
         Delete
       </button>
       <AudienceBadge scope={audienceScope} />
@@ -410,6 +413,14 @@ function TimelinePhoto({ src, caption, focus, onOpen, onReframe }) {
           backgroundColor: 'var(--t-note-bg)',
           ...(adjusting ? { '--tw-ring-color': 'var(--t-accent)' } : {}),
         }}
+        role={adjusting ? undefined : 'button'}
+        tabIndex={adjusting ? -1 : 0}
+        aria-label={adjusting ? undefined : caption ? `Open photo: ${caption}` : 'Open photo'}
+        onKeyDown={(e) => {
+          if (adjusting || (e.key !== 'Enter' && e.key !== ' ')) return;
+          e.preventDefault();
+          onOpen?.();
+        }}
         onClick={adjusting ? undefined : onOpen}
         onPointerDown={onPointerDown}
         onPointerMove={onPointerMove}
@@ -418,7 +429,7 @@ function TimelinePhoto({ src, caption, focus, onOpen, onReframe }) {
       >
         <img
           src={src}
-          alt={caption || 'Photo'}
+          alt=""
           loading="lazy"
           draggable={false}
           onLoad={(e) =>

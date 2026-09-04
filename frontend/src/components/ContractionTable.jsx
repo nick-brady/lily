@@ -90,10 +90,11 @@ export default function ContractionTable({ contractions, onDelete, isAdmin = fal
                   <td className="px-4 py-3">
                     <button
                       onClick={() => onDelete(contraction.id)}
-                      className="text-gray-400 hover:text-red-500 transition-colors p-1"
+                      className="text-gray-400 hover:text-red-500 transition-colors p-2 -m-1"
+                      aria-label="Delete contraction"
                       title="Delete"
                     >
-                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <svg aria-hidden="true" className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
                       </svg>
                     </button>

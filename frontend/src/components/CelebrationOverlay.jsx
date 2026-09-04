@@ -1,4 +1,5 @@
 import { useEffect } from 'react';
+import useDialog from '../hooks/useDialog';
 
 const EMOJI = ['🤍', '💛', '🎉', '👶', '✨', '🩷', '🎈'];
 
@@ -25,9 +26,12 @@ export default function CelebrationOverlay({ childName, onDone }) {
     return () => clearTimeout(t);
   }, [onDone]);
 
+  const panelRef = useDialog(onDone, { label: childName ? `${childName} is here!` : 'Baby is here!' });
+
   return (
     <div
-      className="fixed inset-0 z-50 overflow-hidden flex items-center justify-center"
+      ref={panelRef}
+      className="fixed inset-0 z-50 overflow-hidden flex items-center justify-center outline-none"
       onClick={onDone}
       style={{ backgroundColor: 'rgba(0,0,0,0.18)' }}
     >

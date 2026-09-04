@@ -366,6 +366,7 @@ export default function UpdateForm({
               onChange={(e) => setNoteText(e.target.value)}
               onFocus={() => setNoteOpen(true)}
               placeholder={placeholder}
+              aria-label={placeholder}
               rows={noteOpen ? 3 : 1}
               className="w-full px-5 py-3 rounded-2xl border resize-none transition-all
                          focus:outline-none focus:ring-2 focus:ring-offset-0"
@@ -506,8 +507,10 @@ export default function UpdateForm({
             <div className="relative">
               <img src={preview} alt="Preview" className="w-full rounded-xl max-h-64 object-cover" />
               <button
+                type="button"
                 onClick={() => { setSelectedFile(null); setPreview(null); }}
-                className="absolute top-2 right-2 p-1 bg-black/50 rounded-full text-white"
+                aria-label="Remove photo"
+                className="absolute top-2 right-2 p-2 bg-black/50 rounded-full text-white"
               >
                 <CloseIcon />
               </button>
@@ -527,6 +530,7 @@ export default function UpdateForm({
             value={photoCaption}
             onChange={(e) => setPhotoCaption(e.target.value)}
             placeholder="Add a caption (optional)"
+            aria-label="Photo caption"
             className="w-full px-4 py-3 rounded-xl border border-gray-200 dark:border-gray-700
                        bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100"
           />
@@ -552,7 +556,8 @@ export default function UpdateForm({
               <button
                 type="button"
                 onClick={clearVideoSelection}
-                className="absolute top-2 right-2 p-1 bg-black/50 rounded-full text-white"
+                aria-label="Remove video"
+                className="absolute top-2 right-2 p-2 bg-black/50 rounded-full text-white"
               >
                 <CloseIcon />
               </button>
@@ -573,6 +578,7 @@ export default function UpdateForm({
             value={videoCaption}
             onChange={(e) => setVideoCaption(e.target.value)}
             placeholder="Add a caption (optional)"
+            aria-label="Video caption"
             className="w-full px-4 py-3 rounded-xl border border-gray-200 dark:border-gray-700
                        bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100"
           />
@@ -604,6 +610,7 @@ export default function UpdateForm({
             value={milestoneNote}
             onChange={(e) => setMilestoneNote(e.target.value)}
             placeholder="Add details (optional)"
+            aria-label="Milestone details"
             className="w-full px-4 py-3 rounded-xl border border-gray-200 dark:border-gray-700
                        bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100"
           />
@@ -634,7 +641,9 @@ export default function UpdateForm({
               ) : (
                 <>
                   <button
+                    type="button"
                     onClick={startRecording}
+                    aria-label="Start recording"
                     className="w-20 h-20 rounded-full bg-rose-500 hover:bg-rose-600 flex items-center justify-center transition-colors mb-4"
                   >
                     <MicIcon />
@@ -652,8 +661,10 @@ export default function UpdateForm({
                     Voice memo ({formatRecordingTime(recordingTime)})
                   </span>
                   <button
+                    type="button"
                     onClick={discardRecording}
-                    className="ml-auto p-1 text-gray-400 hover:text-red-500"
+                    aria-label="Discard recording"
+                    className="ml-auto p-2 -m-1 text-gray-400 hover:text-red-500"
                   >
                     <CloseIcon />
                   </button>
@@ -665,6 +676,7 @@ export default function UpdateForm({
                 value={audioCaption}
                 onChange={(e) => setAudioCaption(e.target.value)}
                 placeholder="Add a caption (optional)"
+                aria-label="Voice memo caption"
                 className="w-full px-4 py-3 rounded-xl border border-gray-200 dark:border-gray-700
                            bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100"
               />
@@ -718,6 +730,7 @@ function BackdateRow({ backdate, setBackdate }) {
             type="datetime-local"
             value={backdate}
             onChange={(e) => setBackdate(e.target.value)}
+            aria-label="Date and time this happened"
             max={toLocalInputValue()}
             className="flex-1 px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-700
                        bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 text-sm"
