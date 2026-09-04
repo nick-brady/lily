@@ -73,7 +73,7 @@ export function presentOrder(line, settling = false) {
     return {
       tone: 'good',
       headline: 'Thank you — your order is in.',
-      detail: "It's with the printer, waiting for us to check it over and send it to print.",
+      detail: "We're preparing your order.",
     };
   }
   return { tone: 'good', headline: 'Thank you — your order is in.', detail: null };
