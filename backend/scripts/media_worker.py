@@ -30,12 +30,16 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 import image_variants  # noqa: E402
 import observability  # noqa: E402
 from db import SessionLocal  # noqa: E402
+import payments  # noqa: E402
 from repositories import app_logs as app_logs_repo  # noqa: E402
+from repositories import gift_orders as gift_orders_repo  # noqa: E402
 from repositories import media as media_repo  # noqa: E402
 
 IDLE_SLEEP_SECONDS = 5.0
 HEARTBEAT_SECONDS = 30.0
 SWEEP_SECONDS = 3600.0
+# Stripe's fee trails the payment by seconds; a few minutes is plenty
+FEES_SECONDS = 300.0
 # A photo that fails for a reason that isn't the file itself — S3 down, say —
 # shouldn't be retired. The claim is simply left to go stale and be retried.
 logger = logging.getLogger("media_worker")
@@ -82,6 +86,7 @@ class Housekeeping:
     def __init__(self) -> None:
         self.last_beat = 0.0
         self.last_sweep = 0.0
+        self.last_fees = 0.0
 
     def tick(self, db, *, now: float | None = None) -> None:
         now = time.monotonic() if now is None else now
@@ -91,6 +96,15 @@ class Housekeeping:
         if now - self.last_sweep >= SWEEP_SECONDS:
             self.last_sweep = now
             self._safely(db, lambda: self._sweep(db))
+        if now - self.last_fees >= FEES_SECONDS:
+            self.last_fees = now
+            self._safely(db, lambda: self._fees(db))
+
+    @staticmethod
+    def _fees(db) -> None:
+        filled = gift_orders_repo.backfill_payment_fees(db, payments.get_stripe())
+        if filled:
+            logger.info("recorded the payment fee on %d order(s) Stripe had not settled at confirm", filled)
 
     @staticmethod
     def _sweep(db) -> None:

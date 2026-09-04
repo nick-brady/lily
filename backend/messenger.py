@@ -38,6 +38,10 @@ _RESEND_DEFAULT_FROM = "Arrival Story <onboarding@resend.dev>"
 
 _TWILIO_URL = "https://api.twilio.com/2010-04-01/Accounts/{sid}/Messages.json"
 
+# Where a person writes when something is wrong. Replies to transactional
+# mail land here too. (The mailbox itself is a setup task — see idea.md.)
+SUPPORT_EMAIL = os.getenv("SUPPORT_EMAIL", "help@arrivalstory.com")
+
 
 class ChallengeDeliveryError(Exception):
     """The provider couldn't deliver the message — worth a 503, not a 500."""
@@ -368,6 +372,36 @@ class RoutingMessenger(Messenger):
             role_label=role_label,
             invite_url=invite_url,
         )
+
+
+def send_email(*, to: str, subject: str, html: str, text: str) -> bool:
+    """One transactional email, for the things that aren't a sign-in code or
+    an invitation (the order receipt). Resend when configured; otherwise a
+    dev-only print to stderr — deliberately not the logging tree, since the
+    body names the buyer. Returns whether it was accepted; never raises."""
+    api_key = os.getenv("RESEND_API_KEY")
+    if not api_key:
+        banner = "=" * 72
+        print(f"\n{banner}\n  EMAIL to {to}\n  {subject}\n\n{text}\n{banner}", flush=True, file=sys.stderr)
+        return True
+    try:
+        resp = httpx.post(
+            _RESEND_URL,
+            headers={"Authorization": f"Bearer {api_key}"},
+            json={
+                "from": os.getenv("RESEND_FROM") or _RESEND_DEFAULT_FROM,
+                "to": [to],
+                "reply_to": SUPPORT_EMAIL,
+                "subject": subject,
+                "html": html,
+                "text": text,
+            },
+            timeout=_REQUEST_TIMEOUT,
+        )
+        resp.raise_for_status()
+        return True
+    except httpx.HTTPError:
+        return False
 
 
 def get_messenger() -> Messenger:

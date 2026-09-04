@@ -315,8 +315,48 @@ def _destination(address: dict | None) -> str | None:
     if not address:
         return None
     city = address.get("city")
+    if city and city.isupper():
+        city = city.title()  # "RALEIGH" as the partner stores it → "Raleigh"
     state = address.get("state") or address.get("state_code")
     return ", ".join(p for p in (city, state) if p) or None
+
+
+def receipt_line(db: Session, o: GiftOrder, birth: Birth) -> dict:
+    """One order as its buyer may see it (see OrderReceiptLineOut)."""
+    item = db.get(GiftCatalogItem, o.gift_catalog_item_id)
+    rendering = db.get(GiftRendering, o.gift_rendering_id) if o.gift_rendering_id else None
+    shipment = db.scalar(
+        select(GiftShipment).where(GiftShipment.gift_order_id == o.id).order_by(GiftShipment.created_at.desc())
+    )
+    product = (
+        fulfillment_products.for_rendering(getattr(rendering, "product_key", None), item.product_kind)
+        if item is not None and item.kind == GiftKind.physical
+        else None
+    )
+    address = (shipment.address if shipment else None) or o.shipping_address or (
+        birth.shipping_address if o.recipient_kind == "family" else None
+    )
+    image = None
+    if rendering is not None:
+        image = gifts_repo.mockup_url(rendering) or gifts_repo.artwork_url(rendering)
+    return {
+        "id": o.id,
+        "reference": order_reference(o.id),
+        "status": o.status,
+        "fulfillment_status": shipment.fulfillment_status if shipment else "none",
+        "recipient_kind": o.recipient_kind,
+        "item_display_name": item.display_name if item else "Gift",
+        "product_display_name": product.display_name if product else None,
+        "image_url": image,
+        "destination": _destination(address),
+        "product_price_cents": o.product_price_cents
+        if o.product_price_cents is not None
+        else max(0, (o.amount_cents or 0) - (o.shipping_cents or 0)),
+        "shipping_cents": o.shipping_cents or 0,
+        "amount_cents": o.amount_cents or 0,
+        "gift_message": o.gift_message,
+        "created_at": o.created_at,
+    }
 
 
 def receipt(db: Session, order: GiftOrder, birth: Birth) -> list[dict]:
@@ -332,45 +372,63 @@ def receipt(db: Session, order: GiftOrder, birth: Birth) -> list[dict]:
                 ).order_by(GiftOrder.created_at)
             )
         )
-    lines = []
+    return [receipt_line(db, o, birth) for o in orders]
+
+
+def my_orders(db: Session, *, user_id: uuid.UUID) -> list[dict]:
+    """Everything this person has bought, newest first, across every page —
+    each line the receipt's shape plus which page it was for. Abandoned
+    checkouts (still pending after their Stripe session expired) aren't
+    orders and aren't shown."""
+    rows = db.execute(
+        select(GiftOrder, Birth)
+        .join(Birth, Birth.id == GiftOrder.birth_id)
+        .where(
+            GiftOrder.purchased_by_user_id == user_id,
+            GiftOrder.status.in_(["paid", "refunded"]),
+        )
+        .order_by(GiftOrder.created_at.desc())
+    ).all()
+    return [
+        {**receipt_line(db, o, b), "slug": b.slug, "child_name": b.child_name}
+        for o, b in rows
+    ]
+
+
+def backfill_payment_fees(db: Session, stripe, *, limit: int = 20) -> int:
+    """Stripe's balance transaction can trail the payment by a few seconds,
+    so the fee is sometimes not there when the order is confirmed. The
+    worker calls this on its housekeeping tick to fill in the gaps. Returns
+    how many orders were filled."""
+    if stripe is None:
+        return 0
+    orders = list(
+        db.scalars(
+            select(GiftOrder)
+            .where(
+                GiftOrder.status == "paid",
+                GiftOrder.payment_fee_cents.is_(None),
+                GiftOrder.stripe_payment_intent_id.isnot(None),
+            )
+            .order_by(GiftOrder.paid_at.desc())
+            .limit(limit)
+        )
+    )
+    by_intent: dict[str, list[GiftOrder]] = {}
     for o in orders:
-        item = db.get(GiftCatalogItem, o.gift_catalog_item_id)
-        rendering = db.get(GiftRendering, o.gift_rendering_id) if o.gift_rendering_id else None
-        shipment = db.scalar(
-            select(GiftShipment).where(GiftShipment.gift_order_id == o.id).order_by(GiftShipment.created_at.desc())
+        by_intent.setdefault(o.stripe_payment_intent_id, []).append(o)
+    filled = 0
+    for pi, group in by_intent.items():
+        # every order this payment covered shares the fee, in proportion
+        siblings = list(
+            db.scalars(select(GiftOrder).where(GiftOrder.stripe_payment_intent_id == pi, GiftOrder.status == "paid"))
         )
-        product = (
-            fulfillment_products.for_rendering(getattr(rendering, "product_key", None), item.product_kind)
-            if item is not None and item.kind == GiftKind.physical
-            else None
-        )
-        address = (shipment.address if shipment else None) or o.shipping_address or (
-            birth.shipping_address if o.recipient_kind == "family" else None
-        )
-        image = None
-        if rendering is not None:
-            image = gifts_repo.mockup_url(rendering) or gifts_repo.artwork_url(rendering)
-        lines.append(
-            {
-                "id": o.id,
-                "reference": order_reference(o.id),
-                "status": o.status,
-                "fulfillment_status": shipment.fulfillment_status if shipment else "none",
-                "recipient_kind": o.recipient_kind,
-                "item_display_name": item.display_name if item else "Gift",
-                "product_display_name": product.display_name if product else None,
-                "image_url": image,
-                "destination": _destination(address),
-                "product_price_cents": o.product_price_cents
-                if o.product_price_cents is not None
-                else max(0, (o.amount_cents or 0) - (o.shipping_cents or 0)),
-                "shipping_cents": o.shipping_cents or 0,
-                "amount_cents": o.amount_cents or 0,
-                "gift_message": o.gift_message,
-                "created_at": o.created_at,
-            }
-        )
-    return lines
+        fee = stripe.payment_fee_cents(pi)
+        if fee is None:
+            continue
+        record_payment_fees(db, orders=siblings, fee_cents=fee)
+        filled += len(group)
+    return filled
 
 
 def partner_external_id(order_id: uuid.UUID) -> str:

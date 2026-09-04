@@ -296,6 +296,14 @@ class _Tasks:
     def add_task(self, fn, *args):
         self.scheduled.append((fn, args))
 
+    # the funnel schedules two kinds of work: the shipment to the partner,
+    # and the buyer's receipt email. Tests count them separately.
+    def shipments(self):
+        return [t for t in self.scheduled if t[0].__name__ == "submit_shipment"]
+
+    def receipts(self):
+        return [t for t in self.scheduled if t[0].__name__ == "send_for_orders"]
+
 
 def _dispatching_db(birth, item):
     """A fake session whose get() returns the right fixture per model —
@@ -338,7 +346,9 @@ def test_funnel_paid_schedules_exactly_one_submission(monkeypatch):
         )
     )
     assert status == "fulfilled"
-    assert len(tasks.scheduled) == 1
+    assert len(tasks.shipments()) == 1
+    # one receipt for the checkout, covering the paid order
+    assert len(tasks.receipts()) == 1 and tasks.receipts()[0][1][0] == [order.id]
     # family recipient with a saved address uses it
     assert created[0]["address"]["name"] == "Fam"
 
@@ -375,9 +385,9 @@ def test_funnel_paid_storage_gift_grants_storage_no_shipment(monkeypatch):
     )
     assert status == "fulfilled"
     assert granted == [{"birth": birth, "storage_years_granted": 5}]
-    # no shipment for a storage gift — nothing to ship
+    # no shipment for a storage gift — nothing to ship, but still a receipt
     assert shipment_calls == []
-    assert tasks.scheduled == []
+    assert tasks.shipments() == [] and len(tasks.receipts()) == 1
 
 
 def test_funnel_claim_lost_refunds_then_marks(monkeypatch):
@@ -493,7 +503,9 @@ def test_funnel_both_orders_fulfill_from_one_session(monkeypatch):
         )
     )
     assert status == "fulfilled"
-    assert len(tasks.scheduled) == 2
+    assert len(tasks.shipments()) == 2
+    # one receipt covers both copies of the purchase
+    assert len(tasks.receipts()) == 1 and len(tasks.receipts()[0][1][0]) == 2
     # each order records its share of the doubled charge
     # each copy records its own price, so mark_paid is told it shares a session
     assert seen == [(family.id, 2), (selfo.id, 2)]
@@ -761,8 +773,17 @@ def test_destination_is_city_and_state_only():
     assert _destination({"name": "J", "line1": "1 St", "city": "Raleigh", "state": "NC", "postal_code": "27601"}) == "Raleigh, NC"
     # a partner-shaped address (state_code) reads the same
     assert _destination({"city": "Raleigh", "state_code": "NC"}) == "Raleigh, NC"
+    # the partner stores it shouting; the buyer shouldn't read it that way
+    assert _destination({"city": "RALEIGH", "state": "NC"}) == "Raleigh, NC"
     assert _destination(None) is None
     assert _destination({"line1": "1 St"}) is None
+
+
+def test_my_orders_requires_a_token():
+    from fastapi.testclient import TestClient
+    import main
+
+    assert TestClient(main.app).get("/me/orders").status_code == 401
 
 
 def test_receipt_route_is_public_and_scoped_to_the_birth(monkeypatch):
@@ -810,3 +831,63 @@ def test_receipt_route_is_public_and_scoped_to_the_birth(monkeypatch):
         assert client.get(f"/b/lily-wren/orders/{uuid.uuid4()}").status_code == 404
     finally:
         main.app.dependency_overrides.clear()
+
+
+# ── the receipt email ─────────────────────────────────────────────────────
+
+
+def test_buyer_email_prefers_what_stripe_collected():
+    import gift_receipt_email as rcpt
+
+    user = SimpleNamespace(email="account@example.com")
+    assert rcpt.buyer_email_from({"customer_details": {"email": " typed@example.com "}}, user) == "typed@example.com"
+    assert rcpt.buyer_email_from({"customer_details": {}}, user) == "account@example.com"
+    assert rcpt.buyer_email_from({}, SimpleNamespace(email=None)) is None
+    assert rcpt.buyer_email_from({"customer_email": "not-an-address"}, None) is None
+
+
+def test_receipt_email_reads_like_the_page():
+    import gift_receipt_email as rcpt
+
+    line = {
+        "reference": "9B2D3281", "recipient_kind": "family", "item_display_name": "Birth Story Mug",
+        "product_display_name": "White Glossy Mug (11 oz)", "image_url": "https://arrivalstory.com/api/gift-artwork/x.png?exp=1&sig=2",
+        "destination": "Raleigh, NC", "product_price_cents": 1800, "shipping_cents": 669, "amount_cents": 2469,
+        "gift_message": "love, <Mom>",
+    }
+    birth = SimpleNamespace(child_name="Lily Wren", slug="lily-wren")
+    subject, body_html, text = rcpt.build([line], birth=birth, url="https://arrivalstory.com/b/lily-wren/order/abc")
+    assert subject == "Your order is in — Birth Story Mug for Lily Wren"
+    for needle in ("your order is in.", "9B2D3281", "to the family, in Raleigh, NC", "$18.00", "$6.69", "$24.69"):
+        assert needle in body_html and needle in text
+    assert "View your order" in body_html
+    # entities, not raw punctuation: mail clients disagree about charsets
+    assert "Thank you &mdash; your order is in." in body_html and "—" not in body_html
+    # the message is shown back, escaped; never "on its way"
+    assert "love, &lt;Mom&gt;" in body_html and "<Mom>" not in body_html
+    assert "on its way" not in body_html.lower()
+    # the design image rides along
+    assert 'src="https://arrivalstory.com/api/gift-artwork/x.png?exp=1&amp;sig=2"' in body_html
+
+
+def test_send_email_uses_resend_and_never_raises(monkeypatch):
+    import messenger
+
+    seen = {}
+
+    def fake_post(url, **kw):
+        seen["url"] = url
+        seen["json"] = kw["json"]
+        return httpx.Response(200, json={"id": "em_1"}, request=httpx.Request("POST", url))
+
+    monkeypatch.setenv("RESEND_API_KEY", "re_test")
+    monkeypatch.setenv("RESEND_FROM", "Arrival Story <hello@arrivalstory.com>")
+    monkeypatch.setattr(messenger.httpx, "post", fake_post)
+    assert messenger.send_email(to="a@example.com", subject="s", html="<p>h</p>", text="t") is True
+    assert seen["json"]["to"] == ["a@example.com"] and seen["json"]["from"].startswith("Arrival Story")
+
+    def failing_post(url, **kw):
+        raise httpx.ConnectError("down")
+
+    monkeypatch.setattr(messenger.httpx, "post", failing_post)
+    assert messenger.send_email(to="a@example.com", subject="s", html="h", text="t") is False

@@ -31,19 +31,16 @@ export function presentOrder(line, settling = false) {
           detail: "If it doesn't clear in a few minutes, your card wasn't charged and you can try again.",
         };
   }
-  // paid
-  switch (line.fulfillment_status) {
-    case 'failed':
-      return {
-        tone: 'warn',
-        headline: 'Your payment went through, but we hit a problem sending it to the printer.',
-        detail: "We've been notified and will sort it out. There's nothing more for you to do.",
-      };
-    case 'submitted':
-      return { tone: 'good', headline: 'Thank you — your order is in.', detail: "It's being made to order." };
-    default:
-      return { tone: 'good', headline: 'Thank you — your order is in.', detail: 'Sending it to the printer…' };
+  // paid: the headline is the news; there is nothing to add until the
+  // printer has refused it, in which case say so plainly
+  if (line.fulfillment_status === 'failed') {
+    return {
+      tone: 'warn',
+      headline: 'Your payment went through, but we hit a problem sending it to the printer.',
+      detail: "We've been notified and will sort it out. There's nothing more for you to do.",
+    };
   }
+  return { tone: 'good', headline: 'Thank you — your order is in.', detail: null };
 }
 
 /** "to the family" / "to you", with the city when we have it. */
@@ -52,7 +49,15 @@ export function destinationLine(line) {
   return line.destination ? `${who}, in ${line.destination}` : who;
 }
 
-/** Whether the page should keep asking: any order not yet settled. */
+/** Whether the page should keep asking: a payment not yet confirmed, or a
+ * paid order the printer hasn't answered on yet. */
 export function stillSettling(orders) {
+  return orders.some(
+    (o) => o.status === 'pending' || (o.status === 'paid' && ['none', 'submitting'].includes(o.fulfillment_status)),
+  );
+}
+
+/** Only a pending payment is worth telling the buyer we're waiting on. */
+export function paymentSettling(orders) {
   return orders.some((o) => o.status === 'pending');
 }

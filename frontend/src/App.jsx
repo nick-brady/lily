@@ -7,6 +7,7 @@ import AuthPage from './pages/AuthPage';
 import BirthSettingsPage from './pages/BirthSettingsPage';
 import InviteRedeemPage from './pages/InviteRedeemPage';
 import LandingPage from './pages/LandingPage';
+import MyOrdersPage from './pages/MyOrdersPage';
 import OrderConfirmationPage from './pages/OrderConfirmationPage';
 import PricingPage from './pages/PricingPage';
 import PrivacyPage from './pages/PrivacyPage';
@@ -30,6 +31,7 @@ export function AppRoutes() {
       <Routes>
         <Route path="/" element={<LandingPage />} />
         <Route path="/account" element={<AccountPage />} />
+        <Route path="/account/orders" element={<MyOrdersPage />} />
         <Route path="/setup" element={<SetupPage />} />
         <Route path="/login" element={<AuthPage />} />
         <Route path="/pricing" element={<PricingPage />} />

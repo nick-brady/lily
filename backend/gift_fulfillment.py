@@ -12,6 +12,7 @@ import uuid
 from fastapi import BackgroundTasks
 from sqlalchemy.orm import Session
 
+import gift_receipt_email
 import payments
 from models import Birth, GiftCatalogItem, GiftKind
 from repositories import gift_orders as gift_orders_repo
@@ -111,6 +112,11 @@ async def fulfill_gift_from_session(
 
     if paid_orders:
         _record_fee(db, stripe, session_obj, paid_orders)
+        # the buyer's receipt, after the response; a claim on the orders
+        # means only one of the webhook and the confirm path sends it
+        background_tasks.add_task(
+            gift_receipt_email.send_for_orders, [o.id for o in paid_orders], session_obj
+        )
 
     # the session-level status: any fulfillment wins, then any refund
     for status in ("fulfilled", "refunded"):
