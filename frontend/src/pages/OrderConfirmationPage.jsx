@@ -317,11 +317,11 @@ function OrderCard({ line, settling, first, childName, onCancel }) {
 
       {onCancel && (
         <p className="text-sm text-gray-500 dark:text-gray-400 border-t pt-4">
-          Changed your mind?{' '}
+          Changed your mind? You can{' '}
           <button type="button" onClick={onCancel} className="underline underline-offset-2 text-gray-800 dark:text-white hover:text-primary-600">
-            Cancel this order
+            cancel this order
           </button>{' '}
-          for a full refund — you can until we send it to print.
+          for a full refund until we send it to print.
         </p>
       )}
     </section>
