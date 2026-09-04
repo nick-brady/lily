@@ -317,6 +317,7 @@ export default function InviteRedeemPage() {
               inputMode="numeric"
               autoComplete="one-time-code"
               placeholder="000000"
+              aria-label="6-digit code"
               className="w-full px-4 py-3 rounded-lg border border-gray-300 dark:border-gray-600
                          bg-white dark:bg-gray-700 text-gray-900 dark:text-white
                          text-center text-2xl font-mono tracking-widest

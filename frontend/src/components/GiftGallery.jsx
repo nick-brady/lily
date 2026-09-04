@@ -4,6 +4,7 @@ import AddressForm, { addressComplete, emptyAddress } from './AddressForm';
 import { formatPrice } from '../utils/money';
 import GiftWizard from './GiftWizard';
 import { PRODUCT_NOUN } from '../utils/products';
+import useDialog from '../hooks/useDialog';
 
 function formatDate(timestamp) {
   return new Date(timestamp).toLocaleDateString([], { dateStyle: 'long' });
@@ -400,14 +401,17 @@ function StorageGiftCheckoutSheet({ birthId, item, onClose }) {
     }
   }
 
+  const panelRef = useDialog(onClose);
+
   return (
     <div
       className="fixed inset-0 z-50 bg-black/40 flex items-end sm:items-center justify-center"
       onClick={onClose}
     >
       <div
+        ref={panelRef}
         className="animate-slide-up w-full sm:max-w-lg bg-white dark:bg-gray-900
-                   rounded-t-2xl sm:rounded-2xl shadow-xl p-5 max-h-[85vh] overflow-y-auto"
+                   rounded-t-2xl sm:rounded-2xl shadow-xl p-5 max-h-[85vh] overflow-y-auto outline-none"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="text-center">
@@ -675,6 +679,7 @@ function Recipient({ label, hint, checked, disabled = false, onChange, open, chi
         className="grid transition-[grid-template-rows] duration-300 ease-out motion-reduce:transition-none"
         style={{ gridTemplateRows: open ? '1fr' : '0fr' }}
         aria-hidden={!open}
+        inert={open ? undefined : ''}
       >
         {/* the row is what animates; this is what gets clipped while it does */}
         <div className="overflow-hidden">
@@ -934,14 +939,17 @@ function GiftCheckoutSheet({
 
   if (embedded) return content;
 
+  const panelRef = useDialog(onClose);
+
   return (
     <div
       className="fixed inset-0 z-50 bg-black/40 flex items-end sm:items-center justify-center"
       onClick={onClose}
     >
       <div
+        ref={panelRef}
         className="animate-slide-up w-full sm:max-w-lg bg-white dark:bg-gray-900
-                   rounded-t-2xl sm:rounded-2xl shadow-xl p-5 max-h-[85vh] overflow-y-auto"
+                   rounded-t-2xl sm:rounded-2xl shadow-xl p-5 max-h-[85vh] overflow-y-auto outline-none"
         onClick={(e) => e.stopPropagation()}
       >
         {content}

@@ -968,6 +968,30 @@ who were shared to actually log in.
 
 Added after noticing probing traffic.
 
+### Every overlay is a dialog, through one hook
+*2026-09-04*
+
+A dozen overlays — confirmations, bottom sheets, the gift editor, the
+lightbox, the celebration — were each a dimmed `<div>` with an `onClick`.
+None had a dialog role, moved focus, closed on Escape, or kept Tab inside,
+so a keyboard or screen-reader user was left on the page behind. They all go
+through `frontend/src/hooks/useDialog.js` now: one ref on the panel gives it
+role, name (its first heading, or a label), focus in and back, Escape, a tab
+ring, and a scroll-locked page. The role and name are set on the DOM by the
+hook rather than repeated in JSX, so adding a sheet stays one line.
+
+Alongside, from the same review: the contraction clock is a `role="timer"`
+that announces nothing on its own (a screen reader must not read every
+second) with a status line that says "in progress" and "no contraction"
+once; motion that carries no information stops under `prefers-reduced-
+motion`; the landing carousel can be paused (WCAG 2.2.2); a global
+`:focus-visible` ring, since the custom buttons hid the browser's.
+
+**Where:** `useDialog.js` and its call sites (`Modal.jsx`, `Lightbox.jsx`,
+`GiftWizard.jsx`, `GiftGallery.jsx`, `ThemePickerSheet.jsx`, `PoolPill.jsx`,
+`AccountPage.jsx`, `CelebrationOverlay.jsx`); `ContractionButton.jsx`;
+`index.css`; `PhoneCarouselSection.jsx`. The rest of the review is in idea.md.
+
 ### The public pages are pre-rendered at build time; the rest stays a single-page app
 *2026-09-02*
 

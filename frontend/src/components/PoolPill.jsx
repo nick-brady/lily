@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { api } from '../api/client';
 import Predictions from './Predictions';
+import useDialog from '../hooks/useDialog';
 
 /**
  * The pool's one piece of page chrome: a tiny balloon chip in the sticky
@@ -66,6 +67,8 @@ export default function PoolPill({
     label = "🎈 guess the baby's size & arrival day";
   }
 
+  const panelRef = useDialog(() => setOpen(false), { label: 'The guessing jar' });
+
   return (
     <>
       {renderTrigger ? renderTrigger(board, () => setOpen(true)) : (
@@ -105,6 +108,7 @@ export default function PoolPill({
             // The portal escapes the themed page root, so the theme's CSS
             // variables ride along explicitly.
             style={themeStyle}
+            ref={panelRef}
             onClick={(e) => e.stopPropagation()}
           >
             <Predictions

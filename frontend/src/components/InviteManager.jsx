@@ -400,7 +400,8 @@ function ContactPillForm({ creating, onSend, onCancel }) {
           autoCapitalize="none"
           autoCorrect="off"
           placeholder={pills.length === 0 ? 'Paste or type emails and phone numbers' : ''}
-          className="flex-1 min-w-[12ch] px-1 py-1 text-sm bg-transparent t-ink focus:outline-none"
+          aria-label="Emails and phone numbers to invite"
+          className="flex-1 min-w-[12ch] px-1 py-1 text-sm bg-transparent t-ink rounded focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-400"
         />
       </div>
       {hasInvalid && (

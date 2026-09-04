@@ -334,6 +334,7 @@ export default function SetupPage() {
                     value={babyName}
                     onChange={(e) => setBabyName(e.target.value)}
                     placeholder="Lily Wren"
+                    aria-label="Baby's name"
                     autoFocus
                     autoComplete="off"
                     className="w-full px-4 py-4 text-xl lg:py-2.5 lg:text-base rounded-xl
@@ -685,6 +686,7 @@ function InviteStep({ birth, theme, displayName, onDone }) {
           <div className="flex gap-2">
             <input
               readOnly
+              aria-label="Invite link"
               value={invite.invite_url}
               onFocus={(e) => e.target.select()}
               className="flex-1 min-w-0 px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600

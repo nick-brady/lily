@@ -138,7 +138,7 @@ export default function BirthSettingsPage() {
         {/* Theme */}
         <section className="card flex items-center justify-between">
           <div>
-            <h3 className="text-lg font-semibold t-ink">Theme</h3>
+            <h2 className="text-lg font-semibold t-ink">Theme</h2>
             <p className="text-sm t-muted">The look of {birth.child_name || 'this'}'s page.</p>
           </div>
           <button
@@ -167,7 +167,7 @@ export default function BirthSettingsPage() {
 
         {/* Birth details */}
         <section className="card">
-          <h3 className="text-lg font-semibold t-ink mb-3">Birth details</h3>
+          <h2 className="text-lg font-semibold t-ink mb-3">Birth details</h2>
           <dl className="space-y-3 text-sm">
             <div className="flex justify-between gap-3">
               <dt className="t-muted">Name</dt>
@@ -243,9 +243,9 @@ function DangerZoneCard({ birth }) {
       className="card"
       style={{ border: '1px solid rgba(239, 68, 68, 0.45)' }}
     >
-      <h3 className="text-lg font-semibold text-red-600 dark:text-red-400">
+      <h2 className="text-lg font-semibold text-red-600 dark:text-red-400">
         Danger zone
-      </h3>
+      </h2>
       <p className="text-sm t-muted mt-1 mb-4">
         Deleting {birth.child_name ? `${birth.child_name}'s` : 'this'} page
         permanently erases the timeline, every photo and video, comments,
@@ -337,7 +337,7 @@ function DownloadDataCard({ birthId }) {
 
   return (
     <section className="card">
-      <h3 className="text-lg font-semibold t-ink">Download everything</h3>
+      <h2 className="text-lg font-semibold t-ink">Download everything</h2>
       <p className="text-sm t-muted mt-1 mb-4">
         One ZIP with every photo, video, and voice memo at full quality, plus
         spreadsheets of contractions, guesses, comments, and the whole
@@ -405,9 +405,9 @@ function ShippingAddressCard({ birthId, childName }) {
 
   return (
     <section className="card">
-      <h3 className="text-lg font-semibold t-ink">
+      <h2 className="text-lg font-semibold t-ink">
         Gift deliveries <span className="font-normal t-muted">(optional)</span>
-      </h3>
+      </h2>
       <p className="text-sm t-muted mb-3">
         Once {childName || 'the baby'} arrives, this page offers keepsake
         gifts — mugs and prints designed from the birth story. Save an address
@@ -473,7 +473,7 @@ function GiftsReceivedCard({ birthId }) {
 
   return (
     <section className="card">
-      <h3 className="text-lg font-semibold t-ink mb-3">Gifts received</h3>
+      <h2 className="text-lg font-semibold t-ink mb-3">Gifts received</h2>
       <ul className="space-y-3">
         {orders.map((o) => (
           <li
@@ -557,7 +557,7 @@ function PoolSettingsCard({ birth, onSaved, themeStyle }) {
   return (
     <section className="card space-y-4">
       <div>
-        <h3 className="text-lg font-semibold t-ink">The guessing jar 🎈</h3>
+        <h2 className="text-lg font-semibold t-ink">The guessing jar 🎈</h2>
         <p className="text-sm t-muted">
           Everyone's guesses at the big stats — sealed until the arrival.
         </p>

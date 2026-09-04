@@ -194,6 +194,7 @@ export default function CommentThread({
                   autoFocus
                   maxLength={80}
                   placeholder="e.g. Grandma Rose"
+                  aria-label="Your name"
                   onKeyDown={(e) => e.key === 'Enter' && saveNameThenPost()}
                   className="flex-1 px-3 py-2 rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-sm text-gray-900 dark:text-gray-100"
                 />
@@ -281,6 +282,7 @@ const Composer = forwardRef(function Composer(
         onChange={(e) => setBody(e.target.value)}
         rows={2}
         placeholder="Write a note…"
+        aria-label="Your note"
         className="w-full px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-700
                    bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100
                    text-sm resize-none focus:outline-none focus:ring-2 focus:ring-primary-300"

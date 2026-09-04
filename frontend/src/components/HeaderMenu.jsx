@@ -27,6 +27,7 @@ export default function HeaderMenu({ items }) {
         onClick={() => setOpen((v) => !v)}
         aria-haspopup="menu"
         aria-expanded={open}
+        aria-label="Menu"
         title="Menu"
         className="p-2 rounded-lg transition-opacity hover:opacity-80"
         style={{ backgroundColor: 'var(--t-soft-bg)', color: 'var(--t-soft-text)' }}

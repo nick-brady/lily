@@ -27,16 +27,25 @@ export default function ContractionButton({ onStart, onStop, startTime, pending 
   if (startTime) {
     return (
       <div className="flex flex-col items-center gap-4">
-        <div className="text-6xl font-mono font-bold text-red-500 dark:text-red-400">
+        {/* the clock ticks every second — a screen reader must not read it
+            every second, so it is a timer that announces nothing on its own;
+            the status line below says the state changed, once */}
+        <div
+          role="timer"
+          aria-live="off"
+          aria-label="Contraction elapsed time"
+          className="text-6xl font-mono font-bold text-red-500 dark:text-red-400"
+        >
           {formatTime(elapsed)}
         </div>
+        <p className="sr-only" role="status">Contraction in progress</p>
         <button
           onClick={onStop}
           disabled={pending}
           aria-busy={pending}
           className="w-48 h-48 rounded-full bg-red-500 hover:bg-red-600 text-white text-2xl font-bold
                      shadow-2xl hover:shadow-red-500/50 transition-all duration-200 active:scale-95
-                     animate-pulse-slow flex items-center justify-center
+                     motion-safe:animate-pulse-slow flex items-center justify-center
                      disabled:opacity-60 disabled:active:scale-100"
         >
           STOP
@@ -50,9 +59,10 @@ export default function ContractionButton({ onStart, onStop, startTime, pending 
 
   return (
     <div className="flex flex-col items-center gap-4">
-      <div className="text-6xl font-mono font-bold t-faint">
+      <div className="text-6xl font-mono font-bold t-faint" aria-hidden="true">
         00:00
       </div>
+      <p className="sr-only" role="status">No contraction running</p>
       <button
         onClick={onStart}
         disabled={pending}

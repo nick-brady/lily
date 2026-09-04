@@ -65,6 +65,7 @@ export default function LoginPage() {
               value={identifier}
               onChange={(e) => setIdentifier(e.target.value)}
               placeholder="you@example.com"
+              aria-label="Email address"
               className="w-full border border-gray-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-primary-500"
             />
             <button
@@ -90,6 +91,7 @@ export default function LoginPage() {
               value={code}
               onChange={(e) => setCode(e.target.value.replace(/\D/g, ''))}
               placeholder="123456"
+              aria-label="6-digit code"
               className="w-full border border-gray-300 rounded-lg px-3 py-2 text-center text-2xl tracking-[0.5em] tabular focus:outline-none focus:ring-2 focus:ring-primary-500"
             />
             <button
@@ -108,7 +110,7 @@ export default function LoginPage() {
             </button>
           </form>
         )}
-        {error && <p className="mt-4 text-sm text-red-600">{error}</p>}
+        {error && <p role="alert" className="mt-4 text-sm text-red-600">{error}</p>}
       </div>
     </div>
   );

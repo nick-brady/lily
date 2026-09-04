@@ -74,10 +74,28 @@ export default function PhoneCarouselSection() {
   const handleSlideComplete = (index) => {
     if (index >= SLIDE_COUNT - 1) return;
     advanceTimerRef.current = setTimeout(() => {
-      if (!userNavigatedRef.current && visibleRef.current && activeRef.current === index) {
+      if (
+        !userNavigatedRef.current &&
+        !pausedRef.current &&
+        visibleRef.current &&
+        activeRef.current === index
+      ) {
         setActive(index + 1);
       }
     }, AUTO_ADVANCE_DELAY_MS);
+  };
+
+  // Anything that moves on its own for more than five seconds needs a way to
+  // stop it (WCAG 2.2.2). Pausing holds the current slide; the arrows and
+  // dots still work, and Play hands the wheel back.
+  const [paused, setPaused] = useState(false);
+  const pausedRef = useRef(false);
+  const togglePaused = () => {
+    const next = !paused;
+    pausedRef.current = next;
+    setPaused(next);
+    if (next) clearTimeout(advanceTimerRef.current);
+    else userNavigatedRef.current = false;
   };
 
   const onTouchStart = (e) => {
@@ -150,10 +168,27 @@ export default function PhoneCarouselSection() {
         <div className="mt-10 flex items-center justify-center gap-5">
           <button
             type="button"
+            onClick={togglePaused}
+            aria-pressed={paused}
+            aria-label={paused ? 'Play the slides' : 'Pause the slides'}
+            className="p-2 text-gray-400 transition-colors hover:text-primary-500 dark:text-gray-500"
+          >
+            {paused ? (
+              <svg aria-hidden="true" className="h-5 w-5" fill="currentColor" viewBox="0 0 24 24">
+                <path d="M8 5v14l11-7z" />
+              </svg>
+            ) : (
+              <svg aria-hidden="true" className="h-5 w-5" fill="currentColor" viewBox="0 0 24 24">
+                <path d="M6 5h4v14H6zm8 0h4v14h-4z" />
+              </svg>
+            )}
+          </button>
+          <button
+            type="button"
             aria-label="Previous slide"
             disabled={active === 0}
             onClick={() => goTo(active - 1)}
-            className="p-1 text-gray-400 transition-colors hover:text-primary-500 disabled:opacity-30 disabled:hover:text-gray-400 dark:text-gray-500"
+            className="p-2 text-gray-400 transition-colors hover:text-primary-500 disabled:opacity-30 disabled:hover:text-gray-400 dark:text-gray-500"
           >
             <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
@@ -164,9 +199,9 @@ export default function PhoneCarouselSection() {
               key={i}
               type="button"
               aria-label={`Go to slide ${i + 1}`}
-              aria-current={active === i}
+              aria-current={active === i ? 'true' : undefined}
               onClick={() => goTo(i)}
-              className={`h-2.5 rounded-full transition-all duration-300 ${
+              className={`h-2.5 my-[15px] rounded-full transition-all duration-300 ${
                 active === i
                   ? 'w-6 bg-primary-500'
                   : 'w-2.5 bg-gray-300 hover:bg-gray-400 dark:bg-gray-600 dark:hover:bg-gray-500'
@@ -178,7 +213,7 @@ export default function PhoneCarouselSection() {
             aria-label="Next slide"
             disabled={active === SLIDE_COUNT - 1}
             onClick={() => goTo(active + 1)}
-            className="p-1 text-gray-400 transition-colors hover:text-primary-500 disabled:opacity-30 disabled:hover:text-gray-400 dark:text-gray-500"
+            className="p-2 text-gray-400 transition-colors hover:text-primary-500 disabled:opacity-30 disabled:hover:text-gray-400 dark:text-gray-500"
           >
             <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />

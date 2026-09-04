@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import useDialog from '../hooks/useDialog';
 
 // Full-screen image view, shared by the timeline's photos and the keepsake
 // designs. Takes either a single `url` or a set of `images` — a set gets
@@ -32,9 +33,7 @@ export default function Lightbox({
   useEffect(() => {
     if (!slides.length) return undefined;
     const onKey = (e) => {
-      if (e.key === 'Escape') {
-        onClose();
-      } else if (many && (e.key === 'ArrowRight' || e.key === 'ArrowLeft')) {
+      if (many && (e.key === 'ArrowRight' || e.key === 'ArrowLeft')) {
         // wraps: with four angles, stopping dead at either end just makes
         // you reverse over ground you've already seen
         const step = e.key === 'ArrowRight' ? 1 : -1;
@@ -53,6 +52,7 @@ export default function Lightbox({
   const slide = slides[Math.min(i, slides.length - 1)];
 
   const stop = (e) => e.stopPropagation();
+  const panelRef = useDialog(onClose, { label: 'Photo' });
   const go = (step) => (e) => {
     e.stopPropagation();
     setI((n) => (n + step + slides.length) % slides.length);
@@ -60,13 +60,15 @@ export default function Lightbox({
 
   return (
     <div
-      className="fixed inset-0 bg-black/90 z-[60] flex items-center justify-center p-4"
+      ref={panelRef}
+      className="fixed inset-0 bg-black/90 z-[60] flex items-center justify-center p-4 outline-none"
       onClick={(e) => {
         e.stopPropagation();
         onClose();
       }}
       role="dialog"
       aria-modal="true"
+      aria-label="Photo"
     >
       <button
         type="button"

@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { api } from '../api/client';
 import { THEMES, getTheme } from '../utils/themes';
 import ThemeCard from './ThemeCard';
+import useDialog from '../hooks/useDialog';
 
 export default function ThemePickerSheet({ birth, onClose, onSaved }) {
   const [selected, setSelected] = useState(birth.theme || 'lily');
@@ -28,14 +29,17 @@ export default function ThemePickerSheet({ birth, onClose, onSaved }) {
     }
   };
 
+  const panelRef = useDialog(onClose);
+
   return (
     <div
       className="fixed inset-0 z-50 bg-black/40 flex items-end sm:items-center justify-center"
       onClick={onClose}
     >
       <div
+        ref={panelRef}
         className="animate-slide-up w-full sm:max-w-md bg-white dark:bg-gray-900
-                   rounded-t-2xl sm:rounded-2xl shadow-xl p-5 space-y-4"
+                   rounded-t-2xl sm:rounded-2xl shadow-xl p-5 space-y-4 outline-none"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="text-center">
