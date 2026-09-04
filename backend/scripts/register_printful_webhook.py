@@ -39,11 +39,15 @@ def main() -> int:
         timeout=30,
     )
     body = resp.json() if resp.headers.get("content-type", "").startswith("application/json") else {}
-    result = body.get("result") or {}
-    # print the registered URL with the token masked — it is a secret
-    shown = (result.get("url") or url).replace(token, token[:4] + "…")
-    print(resp.status_code, shown, result.get("types"))
-    return 0 if resp.status_code == 200 else 1
+    result = body.get("result")
+    masked = lambda text: str(text).replace(token, token[:4] + "…")  # noqa: E731 - the token is a secret
+    if resp.status_code != 200 or not isinstance(result, dict):
+        # Printful answers errors with a string in `result`; the common one is
+        # a token missing the webhooks/read and webhooks/write scopes
+        print(resp.status_code, masked(result or body), file=sys.stderr)
+        return 1
+    print(resp.status_code, masked(result.get("url") or url), result.get("types"))
+    return 0
 
 
 if __name__ == "__main__":
