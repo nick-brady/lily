@@ -603,6 +603,43 @@ in `backend/gift_artwork.py`.
 
 ---
 
+### An order records what it cost, not only what it charged
+*2026-09-03*
+
+The first real order (test mode) charged $24.69. Printful quoted $13.69 to
+make and post it, Stripe kept $1.02, and neither was stored — the dashboard
+called the whole $24.69 revenue.
+
+> "the order should track the amount received, and the amount spent. we
+> should separate out shipping and the product as well."
+
+- **What the buyer paid** lives on `gift_orders`: `product_price_cents`,
+  `shipping_cents`, and `amount_cents` as the reconciling total. Postage is
+  charged on top of the catalog price (see "Postage is charged, per parcel"),
+  so the split is exact.
+- **What the partner bills** lives on `gift_shipments`, because Printful's
+  order — and its costs — belong to a parcel, and a "both" purchase is two
+  parcels: `product_cost_cents`, `shipping_cost_cents`, `tax_cost_cents`,
+  `total_cost_cents`, written from Printful's response when the draft is
+  created (`costs_recorded_at`). Printful may revise a draft before it is
+  confirmed; a later re-fetch on confirmation is the follow-up.
+- **What Stripe kept** lives on `gift_orders.payment_fee_cents`, read from
+  the balance transaction when the payment is confirmed. One payment can
+  cover two orders; the fee is split in proportion to each order's amount,
+  summing exactly. Best effort: a fee that can't be read is a warning in the
+  log and a gap on the dashboard, never a failed fulfillment.
+- **The dashboard's money tile says "Kept"**: charged, less Printful, less
+  Stripe — and says how many paid orders have no costs in yet rather than
+  quietly overstating the margin.
+- Stripe's rate is 2.9% + 30¢ and is not negotiable at this size. The 30¢
+  is what hurts on a mug; the answer is pricing, not another processor.
+
+**Where:** migration 0044; `repositories/gift_orders.py` (`split_fee`,
+`record_payment_fees`, `submit_shipment`); `payments.StripeClient.payment_fee_cents`;
+`fulfillment/printful.py` (`_costs_cents`); `repositories/stats.revenue`.
+
+---
+
 ## Shipping address
 
 ### Framed prints in, announcement cards out

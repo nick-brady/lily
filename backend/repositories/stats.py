@@ -23,6 +23,7 @@ from models import (
     User,
     ViewerInvitation,
     ViewerInvitationRedemption,
+    GiftShipment,
 )
 
 
@@ -222,14 +223,40 @@ def active_users(db: Session, now: datetime) -> tuple[int, int]:
 
 
 def revenue(db: Session, start: datetime, end: datetime) -> dict:
-    gift_count, gift_cents = db.execute(
-        select(func.count(), func.coalesce(func.sum(GiftOrder.amount_cents), 0)).where(
-            GiftOrder.status == "paid",
-            GiftOrder.paid_at >= start,
-            GiftOrder.paid_at < end,
+    """Paid gifts in the window: what was charged, what it cost, what Stripe
+    kept, and what was left. Costs come from the shipment (the partner's
+    order); a paid order whose costs aren't in yet counts in `gift_cents`
+    but not in `cost_cents`, and `costed_count` says how many are in."""
+    paid = (
+        GiftOrder.status == "paid",
+        GiftOrder.paid_at >= start,
+        GiftOrder.paid_at < end,
+    )
+    gift_count, gift_cents, product_cents, shipping_cents, fee_cents = db.execute(
+        select(
+            func.count(),
+            func.coalesce(func.sum(GiftOrder.amount_cents), 0),
+            func.coalesce(func.sum(GiftOrder.product_price_cents), 0),
+            func.coalesce(func.sum(GiftOrder.shipping_cents), 0),
+            func.coalesce(func.sum(GiftOrder.payment_fee_cents), 0),
+        ).where(*paid)
+    ).one()
+    costed_count, cost_cents = db.execute(
+        select(
+            func.count(),
+            func.coalesce(func.sum(GiftShipment.total_cost_cents), 0),
         )
+        .select_from(GiftShipment)
+        .join(GiftOrder, GiftOrder.id == GiftShipment.gift_order_id)
+        .where(*paid, GiftShipment.total_cost_cents.isnot(None))
     ).one()
     return {
         "gift_count": int(gift_count),
         "gift_cents": int(gift_cents),
+        "product_cents": int(product_cents),
+        "shipping_cents": int(shipping_cents),
+        "fee_cents": int(fee_cents),
+        "cost_cents": int(cost_cents),
+        "costed_count": int(costed_count),
+        "margin_cents": int(gift_cents) - int(fee_cents) - int(cost_cents),
     }

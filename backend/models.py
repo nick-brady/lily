@@ -931,6 +931,13 @@ class GiftOrder(Base):
     shipping_estimated: Mapped[bool] = mapped_column(
         sa.Boolean, nullable=False, server_default=sa.false()
     )
+    # The item's share of the charge (amount minus postage), kept as its own
+    # number so margin can be read per line rather than by subtraction.
+    product_price_cents: Mapped[int | None] = mapped_column(sa.Integer, nullable=True)
+    # What Stripe kept of this order's payment, from the balance transaction
+    # once the payment is confirmed. A "both" purchase shares one payment, so
+    # each order carries its proportional share.
+    payment_fee_cents: Mapped[int | None] = mapped_column(sa.Integer, nullable=True)
     currency: Mapped[str] = mapped_column(
         sa.Text, nullable=False, server_default="usd"
     )
@@ -983,6 +990,16 @@ class GiftShipment(Base):
         sa.Text, nullable=False, server_default="none"
     )
     failure_reason: Mapped[str | None] = mapped_column(sa.Text, nullable=True)
+    # What the partner charges us for this parcel, from their order response
+    # when the draft is created: the item, the postage, the sales tax they
+    # collect, and the total they bill. Null until the draft exists.
+    product_cost_cents: Mapped[int | None] = mapped_column(sa.Integer, nullable=True)
+    shipping_cost_cents: Mapped[int | None] = mapped_column(sa.Integer, nullable=True)
+    tax_cost_cents: Mapped[int | None] = mapped_column(sa.Integer, nullable=True)
+    total_cost_cents: Mapped[int | None] = mapped_column(sa.Integer, nullable=True)
+    costs_recorded_at: Mapped[datetime | None] = mapped_column(
+        sa.DateTime(timezone=True), nullable=True
+    )
     created_at: Mapped[datetime] = _created_at()
 
     __table_args__ = (sa.Index("ix_gift_shipments_order", "gift_order_id"),)

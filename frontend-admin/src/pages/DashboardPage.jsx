@@ -33,6 +33,20 @@ function formatUsd(cents) {
   return (cents / 100).toLocaleString('en-US', { style: 'currency', currency: 'USD' });
 }
 
+// What was left after the partner and the processor: "$24.69 in · $13.69
+// Printful · $1.02 Stripe · 1 gift". Costs arrive when the partner's draft
+// is created, so an order can be paid and not yet costed; say so rather than
+// quietly overstating the margin.
+function marginHint(rev) {
+  const parts = [`${formatUsd(rev.gift_cents)} in`];
+  if (rev.cost_cents) parts.push(`${formatUsd(rev.cost_cents)} Printful`);
+  if (rev.fee_cents) parts.push(`${formatUsd(rev.fee_cents)} Stripe`);
+  parts.push(`${rev.gift_count} gift${rev.gift_count === 1 ? '' : 's'}`);
+  const uncosted = rev.gift_count - (rev.costed_count ?? 0);
+  if (uncosted > 0 && rev.gift_count > 0) parts.push(`costs pending on ${uncosted}`);
+  return parts.join(' · ');
+}
+
 function formatPercent(rate) {
   return rate == null ? '—' : `${(rate * 100).toFixed(0)}%`;
 }
@@ -162,9 +176,9 @@ export default function DashboardPage() {
               hint="redeemers → owners, all-time"
             />
             <StatTile
-              label="Revenue"
-              value={formatUsd(overview.revenue.total_cents)}
-              hint={`${overview.revenue.gift_count} gifts · ${formatUsd(overview.revenue.gift_cents)}`}
+              label="Kept"
+              value={formatUsd(overview.revenue.margin_cents ?? overview.revenue.total_cents)}
+              hint={marginHint(overview.revenue)}
             />
           </div>
 

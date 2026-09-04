@@ -956,6 +956,15 @@ class RevenueStatsOut(BaseModel):
     gift_count: int
     gift_cents: int
     total_cents: int
+    # the economics behind the gross: item vs postage charged, what the
+    # partner billed (for the orders whose costs are in), what Stripe kept,
+    # and what was left. Zero-defaults keep older callers valid.
+    product_cents: int = 0
+    shipping_cents: int = 0
+    fee_cents: int = 0
+    cost_cents: int = 0
+    costed_count: int = 0
+    margin_cents: int = 0
 
 
 class AdminOverviewOut(BaseModel):
