@@ -293,6 +293,86 @@ with.
 
 ---
 
+# The hero video on phones
+
+*Written 2026-09-04. Not built. Raised by Nick's wife: the video is the best
+thing on the site and most visitors will arrive on a phone, where it doesn't
+play.*
+
+## What happens today, and why
+
+Under 1024px the hero shows the poster behind a heavy scrim, the copy, and
+the demo phone running the same choreography on an internal clock. The
+video plan chose this deliberately: the footage is 16:9, and on a portrait
+screen `object-cover` keeps a slice about a third as wide as the frame. The
+three-panel reaction scene becomes one face; the phone mock, centred, then
+covers most of what's left. It wasn't "video won't play on phones" — iOS has
+autoplayed muted inline video for years — it was "the video we made doesn't
+fit in that shape", plus 64 seconds of 1080p over cellular.
+
+The mobile view is otherwise right, so whatever this becomes should add the
+video without moving anything else.
+
+## Three ways, cheapest first
+
+1. **Flip the switch and look.** Let the video be the background on phones
+   too, behind the existing scrim and phone. One line (`isDesktop` in
+   `HeroVideo.jsx`), plus a smaller encode. The shots were framed "tight,
+   centred, portrait-ish with generous headroom" precisely so they crop, so
+   this may hold up better than the plan feared. Cheap enough to try first
+   behind a query flag (`?video=1`) and judge on real phones before deciding
+   anything. Likely verdict: motion behind glass. Alive, but the video isn't
+   *seen*.
+
+2. **A portrait cut.** Re-edit the same generations into 9:16 (or 4:5): the
+   solo shots re-framed, the three-panel scene stacked instead of sliced,
+   the phone-occluded panel chosen for where the phone sits on mobile
+   (centre-bottom, not left). Served with `<source media="(orientation:
+   portrait)">` so the browser picks. Then the phone can shrink and sit low,
+   the scrim can lighten, and the footage carries the hero the way it does
+   on desktop. This is the version that answers "the video is so good, people
+   should see it". The cost is a day in the edit, not in the code; the cue
+   timings stay if the cut keeps the scene order and durations, which it
+   should.
+
+3. **A tap to watch it properly.** Keep the mobile hero as it is and add a
+   play affordance on the poster that opens the full desktop composition —
+   footage plus the phone UI — as one video. That means rendering the
+   desktop hero to an mp4 (Playwright capturing the real components over the
+   footage, regenerated when either changes) so the file *is* the hero,
+   drift-free. Plays in the native fullscreen player, which is also a
+   shareable asset: the same file goes in an iMessage or a story. Most
+   engineering of the three, and a tap is a wall some won't climb; but it's
+   the only one that shows a phone user exactly what a laptop user sees.
+
+## What has to be true in every version
+
+- **A phone encode.** 720 or 540 tall, 3–5 MB, H.264 (AV1 is still patchy
+  on older iPhones). Same S3 prefix, same presigned redirect; the browser
+  picks by `<source media>`. Never send the 1080 file to a phone.
+- **Autoplay can fail.** Low Power Mode and Data Saver block it. When
+  `play()` rejects, keep the poster and show a play button rather than a
+  frozen first frame with nothing to tap. `prefers-reduced-data` gets the
+  poster outright.
+- **The phone stays in sync.** The cue engine already switches from the
+  clock to `currentTime` when a video is present; nothing new to build
+  there. Reduced motion keeps the finished timeline as now.
+- **Pre-render unchanged.** The server still emits the poster; the video
+  swaps in after hydration, as on desktop.
+
+## Suggested order
+
+Do (1) as a flag this week and look at it on both of your phones. If the
+crop reads, ship it with a phone encode and call it done. If it reads as
+motion behind glass, that's the brief for (2), and the edit is the work.
+(3) is worth doing regardless at some point, for the share asset alone —
+but as its own idea, not as the fix for this.
+
+**Where:** `frontend/src/components/landing/HeroVideo.jsx` (`isDesktop`,
+`useVideo`, the `<video>` element), `heroCues.js` (`HERO_VIDEO_SRC` →
+sources), `backend/routes/media.py` `/assets/hero-section/`,
+`Lily-Hero-Video-Plan.md` §6 for the original mobile reasoning.
+
 # Gaps that mark themselves
 
 *Written 2026-09-03. Not built.*
