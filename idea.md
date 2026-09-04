@@ -147,6 +147,65 @@ through a birth page as a viewer — that last one is the audience.
 
 ---
 
+# Every text the app sends, against what the campaign promised
+
+*Written 2026-09-03. Not done — a compliance walk-through, not a feature.*
+
+The Twilio A2P 10DLC campaign was registered with sample messages and a
+described use case. Carriers and Twilio hold the sender to that: a text that
+doesn't match the registered samples, or a number texted without the consent
+the campaign describes, is what gets a campaign suspended. Nobody has walked
+the customer journey end to end and compared what the app actually sends to
+what was filed.
+
+## What the app sends today (from `backend/messenger.py`)
+
+1. **Sign-in code** — email only now (`request_challenge` rejects phones), so
+   no SMS. Confirm the campaign doesn't still describe an SMS OTP.
+2. **Opt-in confirmation** (`send_notify_optin`, on saving a notify phone):
+   "Arrival Story: you're set — we'll text you the moment labor begins. Birth
+   updates only, ever. Msg & data rates may apply. Reply STOP to opt out."
+3. **Invitation** (`send_invitation`, when a parent invites by phone): "{name}
+   invited you as a {role} to {baby}'s page on Arrival Story: {link} Reply
+   STOP to opt out." — sent to someone who has not personally opted in,
+   on the strength of the parent's relationship. Whether the campaign covers
+   that is the first thing to check.
+
+## What to check, in journey order
+
+- **Signup and phone capture.** Where is the number collected, what consent
+  language sits next to the field, and does it match the campaign's
+  "how consumers opt in" description word for word?
+- **The invitation text.** Is a parent-initiated invite covered by the
+  campaign's use case? If the campaign says "recipients opt in via the web
+  form", it isn't. The fix might be wording on the invite screen, or
+  registering the use case, or dropping SMS invites for email plus a link
+  the parent shares themselves.
+- **The promise in the opt-in text.** It says "we'll text you the moment
+  labor begins." **Nothing sends that text.** `notify_phone` is written by
+  the auth routes and read by nothing else — the born milestone and labour
+  start send no SMS. Either build the birth alert (and register its sample)
+  or stop promising it; a confirmation that promises a message that never
+  comes is its own kind of problem.
+- **STOP / HELP.** Twilio Advanced Opt-Out handles STOP; confirm HELP is
+  configured and that a STOPped number is never texted again by the
+  invitation path (it goes through the same Twilio number, so it should be
+  blocked by Twilio — verify, don't assume).
+- **Frequency and quiet hours.** State what the campaign promised; make sure
+  the app cannot exceed it (e.g. repeated invites to the same number).
+- **Records.** `notify_phone_opted_in_at` is the consent timestamp. Check
+  it's set on every path that stores a number, and that clearing the number
+  clears it.
+
+## How to do it
+
+Sit with the Twilio console open on the campaign page and a phone in hand.
+Walk the app as a new parent, then as an invited relative, and write down
+every text received beside the sample it should match. Ten minutes of
+texts, an hour of comparing.
+
+---
+
 # The loop that already half exists
 
 *Written 2026-08-31. Not built — a thing to decide, not a task.*
