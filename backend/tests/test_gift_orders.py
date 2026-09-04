@@ -741,3 +741,72 @@ def test_split_fee_shares_by_amount_and_sums_exactly():
     assert sum(shares) == 150 and shares[0] < shares[1]
     assert split_fee(30, [0, 0]) == [30, 0]
     assert split_fee(30, []) == []
+
+
+# ── the buyer's receipt ───────────────────────────────────────────────────
+
+
+def test_order_reference_is_short_and_quotable():
+    import uuid
+
+    from repositories.gift_orders import order_reference
+
+    ref = order_reference(uuid.UUID("638659f9-b331-4d03-b7c2-93578c233519"))
+    assert ref == "638659F9"
+
+
+def test_destination_is_city_and_state_only():
+    from repositories.gift_orders import _destination
+
+    assert _destination({"name": "J", "line1": "1 St", "city": "Raleigh", "state": "NC", "postal_code": "27601"}) == "Raleigh, NC"
+    # a partner-shaped address (state_code) reads the same
+    assert _destination({"city": "Raleigh", "state_code": "NC"}) == "Raleigh, NC"
+    assert _destination(None) is None
+    assert _destination({"line1": "1 St"}) is None
+
+
+def test_receipt_route_is_public_and_scoped_to_the_birth(monkeypatch):
+    import uuid
+    from datetime import datetime, timezone
+
+    from fastapi.testclient import TestClient
+    import main
+    from db import get_db
+    from routes import checkout
+
+    birth = SimpleNamespace(id=uuid.uuid4(), slug="lily-wren", child_name="Lily", theme="lily")
+    order_id = uuid.uuid4()
+    order = SimpleNamespace(id=order_id, birth_id=birth.id)
+    other_birth_order = SimpleNamespace(id=uuid.uuid4(), birth_id=uuid.uuid4())
+
+    class FakeDb:
+        def get(self, model, key):
+            return {order_id: order, other_birth_order.id: other_birth_order}.get(key)
+
+    monkeypatch.setattr(checkout, "resolve_public_birth", lambda db, slug: birth)
+    monkeypatch.setattr(
+        checkout.gift_orders_repo,
+        "receipt",
+        lambda db, o, b: [{
+            "id": o.id, "reference": "638659F9", "status": "paid", "fulfillment_status": "submitted",
+            "recipient_kind": "self", "item_display_name": "Birth Story Mug",
+            "product_display_name": "White glossy 11oz", "image_url": None, "destination": "Raleigh, NC",
+            "product_price_cents": 1800, "shipping_cents": 669, "amount_cents": 2469,
+            "gift_message": None, "created_at": datetime.now(timezone.utc),
+        }],
+    )
+    main.app.dependency_overrides[get_db] = lambda: FakeDb()
+    try:
+        client = TestClient(main.app)
+        ok = client.get(f"/b/lily-wren/orders/{order_id}")
+        assert ok.status_code == 200
+        body = ok.json()
+        assert body["child_name"] == "Lily" and body["orders"][0]["reference"] == "638659F9"
+        assert ok.headers["cache-control"] == "no-store"
+        # nothing a stranger could use rides along
+        assert not {"email", "line1", "stripe_payment_intent_id", "printful_order_id"} & set(body["orders"][0])
+        # an order from another birth is not this page's business
+        assert client.get(f"/b/lily-wren/orders/{other_birth_order.id}").status_code == 404
+        assert client.get(f"/b/lily-wren/orders/{uuid.uuid4()}").status_code == 404
+    finally:
+        main.app.dependency_overrides.clear()

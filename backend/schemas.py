@@ -327,6 +327,35 @@ class GiftOrderAdminOut(BaseModel):
     created_at: datetime
 
 
+class OrderReceiptLineOut(BaseModel):
+    """One order as the buyer may see it after paying: what it is, where it
+    is going (city and state only), what it cost them, and where it stands.
+    Nothing here is a secret — the order id is the key to the page, and
+    the page shows no email, no street, no partner or payment ids."""
+
+    id: uuid.UUID
+    reference: str  # eight characters of the id, what they quote
+    status: str  # pending | paid | refunded
+    fulfillment_status: str  # none | submitting | submitted | failed
+    recipient_kind: str  # family | self
+    item_display_name: str
+    product_display_name: Optional[str] = None
+    image_url: Optional[str] = None
+    destination: Optional[str] = None  # "Raleigh, NC"
+    product_price_cents: int
+    shipping_cents: int
+    amount_cents: int
+    gift_message: Optional[str] = None
+    created_at: datetime
+
+
+class OrderReceiptOut(BaseModel):
+    slug: str
+    child_name: Optional[str] = None
+    theme: str = "lily"
+    orders: list[OrderReceiptLineOut]
+
+
 class ReactionCountOut(BaseModel):
     """Per-kind reaction summary on an event.
 

@@ -640,6 +640,41 @@ called the whole $24.69 revenue.
 
 ---
 
+### Stripe sends the buyer back to a receipt, not the page
+*2026-09-04*
+
+After paying, the buyer used to land straight on the birth page with a
+banner. Stripe's own success screen is a flash; the page after it is the
+receipt the buyer remembers, and there wasn't one.
+
+> "I'm left kind of confused because I expected to see some sort of order
+> complete page after the stripe checkout."
+
+`success_url` now points at `/b/{slug}/order/{order_id}`. The page confirms
+the checkout session on load (the browser path; the webhook is the source of
+truth), then shows the order **honestly**: a thank-you and the true state —
+being sent to the printer, being made, or *we hit a problem*, never "on its
+way" when the printer refused it — an eight-character reference from the
+order id, the design, the product option, where it's going as city and state
+only, item / postage / total matching the Stripe receipt, the gift message
+back to them, and one button to the child's page. While a payment is still
+settling it polls for about twelve seconds before saying anything worrying.
+
+**Not on it, on purpose:** the buyer's email, the street address, Stripe or
+Printful ids, our costs, or another thing to buy.
+
+**Public, like the confirm route.** The order id is the key; the page carries
+nothing a stranger could use. `GET /b/{slug}/orders/{order_id}` returns this
+order and any companion paid in the same session (a "both" purchase), scoped
+to the birth in the URL, `Cache-Control: no-store`. The old `gift_session`
+handling on the birth page stays for checkouts started before this shipped.
+
+**Where:** `routes/checkout.py` (`gift_order_receipt`),
+`repositories/gift_orders.receipt`, `frontend/src/pages/OrderConfirmationPage.jsx`,
+`utils/orderPresentation.js`.
+
+---
+
 ## Shipping address
 
 ### Framed prints in, announcement cards out

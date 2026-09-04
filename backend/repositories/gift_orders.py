@@ -33,6 +33,7 @@ import gift_shipping
 from db import SessionLocal
 from fulfillment import products as fulfillment_products
 from models import (
+    GiftKind,
     Birth,
     GiftCatalogItem,
     GiftOrder,
@@ -300,6 +301,76 @@ def record_payment_fees(db: Session, *, orders: list[GiftOrder], fee_cents: int)
     for order, share in zip(orders, split_fee(fee_cents, [o.amount_cents or 0 for o in orders])):
         order.payment_fee_cents = share
     db.commit()
+
+
+def order_reference(order_id: uuid.UUID) -> str:
+    """What a buyer quotes if they write in: eight characters, upper-case,
+    from the id — not the UUID, not Stripe's ids."""
+    return order_id.hex[:8].upper()
+
+
+def _destination(address: dict | None) -> str | None:
+    """City and state only. The full address is the buyer's already and
+    needn't be on a screen someone else might see."""
+    if not address:
+        return None
+    city = address.get("city")
+    state = address.get("state") or address.get("state_code")
+    return ", ".join(p for p in (city, state) if p) or None
+
+
+def receipt(db: Session, order: GiftOrder, birth: Birth) -> list[dict]:
+    """The buyer's view of a checkout: this order and any companion paid in
+    the same session (a "both" purchase is two orders, one payment)."""
+    orders = [order]
+    if order.stripe_checkout_session_id:
+        orders += list(
+            db.scalars(
+                select(GiftOrder).where(
+                    GiftOrder.stripe_checkout_session_id == order.stripe_checkout_session_id,
+                    GiftOrder.id != order.id,
+                ).order_by(GiftOrder.created_at)
+            )
+        )
+    lines = []
+    for o in orders:
+        item = db.get(GiftCatalogItem, o.gift_catalog_item_id)
+        rendering = db.get(GiftRendering, o.gift_rendering_id) if o.gift_rendering_id else None
+        shipment = db.scalar(
+            select(GiftShipment).where(GiftShipment.gift_order_id == o.id).order_by(GiftShipment.created_at.desc())
+        )
+        product = (
+            fulfillment_products.for_rendering(getattr(rendering, "product_key", None), item.product_kind)
+            if item is not None and item.kind == GiftKind.physical
+            else None
+        )
+        address = (shipment.address if shipment else None) or o.shipping_address or (
+            birth.shipping_address if o.recipient_kind == "family" else None
+        )
+        image = None
+        if rendering is not None:
+            image = gifts_repo.mockup_url(rendering) or gifts_repo.artwork_url(rendering)
+        lines.append(
+            {
+                "id": o.id,
+                "reference": order_reference(o.id),
+                "status": o.status,
+                "fulfillment_status": shipment.fulfillment_status if shipment else "none",
+                "recipient_kind": o.recipient_kind,
+                "item_display_name": item.display_name if item else "Gift",
+                "product_display_name": product.display_name if product else None,
+                "image_url": image,
+                "destination": _destination(address),
+                "product_price_cents": o.product_price_cents
+                if o.product_price_cents is not None
+                else max(0, (o.amount_cents or 0) - (o.shipping_cents or 0)),
+                "shipping_cents": o.shipping_cents or 0,
+                "amount_cents": o.amount_cents or 0,
+                "gift_message": o.gift_message,
+                "created_at": o.created_at,
+            }
+        )
+    return lines
 
 
 def partner_external_id(order_id: uuid.UUID) -> str:

@@ -76,8 +76,9 @@ class StripeClient:
             "line_items[0][price_data][currency]": "usd",
             "line_items[0][price_data][unit_amount]": str(amount_cents),
             "line_items[0][price_data][product_data][name]": product_name,
+            # the receipt page, which confirms the session server-side on load
             "success_url": (
-                f"{FRONTEND_URL}/b/{slug}?gift_session={{CHECKOUT_SESSION_ID}}"
+                f"{FRONTEND_URL}/b/{slug}/order/{order_id}?gift_session={{CHECKOUT_SESSION_ID}}"
             ),
             "cancel_url": f"{FRONTEND_URL}/b/{slug}",
             "metadata[kind]": "gift_order",

@@ -15,6 +15,7 @@ from fastapi import (
     HTTPException,
     Path as PathParam,
     Request,
+    Response,
 )
 from sqlalchemy.orm import Session
 
@@ -35,6 +36,8 @@ from routes.deps import (
 )
 from routes.gifts import load_rendering_for_products
 from schemas import (
+    OrderReceiptLineOut,
+    OrderReceiptOut,
     AddressReviewIn,
     AddressReviewOut,
     GiftCheckoutIn,
@@ -437,6 +440,33 @@ def put_shipping_address(
     }
     db.commit()
     return ShippingAddressOut(address=access.birth.shipping_address)
+
+
+@router.get("/b/{slug}/orders/{order_id}", response_model=OrderReceiptOut)
+def gift_order_receipt(
+    slug: str,
+    order_id: uuid.UUID,
+    response: Response,
+    db: Session = Depends(get_db),
+) -> OrderReceiptOut:
+    """The page after Stripe: what was bought, where it's going, what it
+    cost, where it stands. Unauthenticated like the confirm route — the
+    order id is the key and the page carries nothing a stranger could use
+    (no email, no street, no partner or payment ids)."""
+    birth = resolve_public_birth(db, slug)
+    order = db.get(GiftOrder, order_id)
+    if order is None or order.birth_id != birth.id:
+        raise HTTPException(status_code=404, detail="Unknown order")
+    response.headers["Cache-Control"] = "no-store"
+    return OrderReceiptOut(
+        slug=birth.slug,
+        child_name=birth.child_name,
+        theme=birth.theme or "lily",
+        orders=[
+            OrderReceiptLineOut(**line)
+            for line in gift_orders_repo.receipt(db, order, birth)
+        ],
+    )
 
 
 @router.get(
