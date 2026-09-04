@@ -66,6 +66,7 @@ export default function MyOrdersPage() {
                 <li key={o.id}>
                   <Link
                     to={`/b/${o.slug}/order/${o.id}`}
+                    state={{ from: 'orders' }}
                     className="card flex gap-4 items-center hover:shadow-md transition-shadow"
                   >
                     {o.image_url ? (

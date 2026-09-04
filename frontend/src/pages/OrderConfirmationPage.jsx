@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Link, useParams, useSearchParams } from 'react-router-dom';
+import { Link, useLocation, useParams, useSearchParams } from 'react-router-dom';
 import { api } from '../api/client';
 import { useAuth } from '../contexts/AuthContext';
 import useDialog from '../hooks/useDialog';
@@ -27,6 +27,9 @@ export default function OrderConfirmationPage() {
   const { slug, orderId } = useParams();
   const [searchParams, setSearchParams] = useSearchParams();
   const { isAuthenticated } = useAuth();
+  // Arriving from Stripe, the way back is the family's page; arriving from
+  // Your orders, it's the list you were just reading.
+  const fromOrders = useLocation().state?.from === 'orders';
   const [receipt, setReceipt] = useState(null);
   const [error, setError] = useState(null);
   const [tries, setTries] = useState(0);
@@ -135,10 +138,23 @@ export default function OrderConfirmationPage() {
               </p>
             </div>
 
-            <div className="pt-2 text-center">
-              <Link to={`/b/${slug}`} className="btn-primary inline-block px-8 py-4 text-base">
-                Back to {pageName} →
-              </Link>
+            <div className="pt-2 text-center space-y-3">
+              {fromOrders ? (
+                <>
+                  <Link to="/account/orders" className="btn-primary inline-block px-8 py-4 text-base">
+                    ← Back to your orders
+                  </Link>
+                  <p>
+                    <Link to={`/b/${slug}`} className="text-sm text-gray-500 dark:text-gray-400 underline underline-offset-2 hover:text-primary-600">
+                      {pageName.charAt(0).toUpperCase() + pageName.slice(1)} →
+                    </Link>
+                  </p>
+                </>
+              ) : (
+                <Link to={`/b/${slug}`} className="btn-primary inline-block px-8 py-4 text-base">
+                  Back to {pageName} →
+                </Link>
+              )}
             </div>
           </>
         )}
