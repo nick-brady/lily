@@ -279,6 +279,97 @@ with.
 
 ---
 
+# Register the Stripe webhook before the first real order
+
+*Written 2026-09-03. Not done — a dashboard task, ten minutes.*
+
+Stripe has no webhook endpoint registered for this account, in test or live
+mode (checked via the API on 2026-09-03: `webhook_endpoints` is empty). The
+first test order completed only because the buyer's browser came back to the
+page and called `/b/{slug}/gifts/confirm`. A buyer who closes the tab on
+Stripe's success screen, loses signal, or has the return blocked leaves a
+paid order sitting `pending` forever — money taken, nothing made.
+
+The code path is built and tested (`POST /api/webhooks/stripe`, verifies the
+signature, dispatches `checkout.session.completed`, idempotent against the
+confirm path via the CAS in `mark_paid`). It only needs the endpoint to exist.
+
+## Steps
+
+1. Stripe dashboard → Developers → Webhooks → Add endpoint:
+   `https://arrivalstory.com/api/webhooks/stripe`, event
+   `checkout.session.completed`. Do it in **test mode** now.
+2. Copy the signing secret (`whsec_…`) into `deploy/group_vars/secrets.yml`
+   as `stripe_webhook_secret`; deploy. The current value on the box is a
+   placeholder-era secret that matches no endpoint.
+3. Send a test event from the dashboard; it should answer 200 and the Logs
+   page should show the access line. A real test purchase should then show
+   the webhook arriving *before* the browser's confirm call.
+4. Repeat 1–2 in **live mode** when switching to `sk_live`; live and test
+   endpoints have different secrets.
+
+---
+
+# An order confirmation page
+
+*Written 2026-09-03. Not built.*
+
+After Stripe, the buyer lands straight back on the birth page with a banner:
+"Your gift is on its way — thank you 🤍". It works, and it is confusing:
+
+> "I'm left kind of confused because I expected to see some sort of order
+> complete page after the stripe checkout."
+
+Stripe's own success screen is a flash; the page after it is the receipt
+the buyer remembers. Today there isn't one.
+
+## What the page is
+
+`/b/{slug}/order/{order_id}` — Stripe's `success_url` points here instead of
+the birth page. Unauthenticated read, like the confirm route: the order id is
+a UUID, and the page shows nothing a stranger could use (no address in
+full, no email). It calls the existing confirm endpoint on load, so the
+"dev path" fulfillment still happens for a browser that returns.
+
+## What must be on it
+
+- **"Thank you — your order is in."** Plain, first, large. Then the state,
+  honestly: *confirmed and being made*, *payment received, sending to the
+  printer* (the seconds between confirm and Printful's answer), or *we hit a
+  problem and are on it* (a failed shipment — never "on its way" when it
+  isn't).
+- **The order reference**: the first 8 characters of the id, upper-case,
+  the thing they quote if they write in. Not the UUID, not Stripe's ids.
+- **What they bought**: the design's thumbnail (the rendering exists; show
+  it), the product's name and option (white glossy 11oz), quantity one.
+- **Where it's going**: the recipient line — *to the family* or *to you* —
+  and the address as city and state only. The full address is theirs
+  already and doesn't need to be on a screen someone else might see.
+- **What it cost**: item, postage, total, in that order, matching the
+  Stripe receipt to the cent. Not our costs.
+- **What happens next**: made to order, typical days to make and ship (the
+  quote already carries `min_days`/`max_days`), and that a receipt came
+  from Stripe by email. If the gift carried a message, show it back to them.
+- **Back to {child_name}'s page** — one button, and the page they came
+  from, not the home page.
+- If they arrive with a `session_id` that is still `pending` (Stripe not
+  settled yet), poll the confirm endpoint a few times before deciding what
+  to say; don't show "problem" for a two-second lag.
+
+## What should not be on it
+
+The buyer's email or phone, the full street address, Stripe or Printful
+identifiers, our costs, or another thing to buy.
+
+## Where it touches
+
+`payments.create_gift_checkout_session` (`success_url`), a new
+`GET /b/{slug}/orders/{order_id}` returning the safe subset above,
+`PublicBirthPage`'s `gift_session` effect (moves to the new page), the
+`frontend/src/App.jsx` route table, and `routeMeta` (noindex, like `/b`).
+
+---
+
 # The loop that already half exists
 
 *Written 2026-08-31. Not built — a thing to decide, not a task.*
