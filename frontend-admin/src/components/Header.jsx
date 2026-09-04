@@ -12,6 +12,7 @@ export default function Header({ children }) {
         <nav className="flex items-center gap-1 text-sm">
           {[
             { to: '/', label: 'Dashboard' },
+            { to: '/orders', label: 'Orders' },
             { to: '/logs', label: 'Logs' },
           ].map((item) => (
             <NavLink

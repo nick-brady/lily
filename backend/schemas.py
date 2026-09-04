@@ -356,6 +356,43 @@ class OrderReceiptLineOut(BaseModel):
     created_at: datetime
 
 
+class AdminOrderOut(BaseModel):
+    """One order as the operator sees it: everything the buyer sees plus
+    who bought it, what it cost us, where it is with the printer, and the
+    ids to find it in Stripe's and Printful's dashboards."""
+
+    id: uuid.UUID
+    reference: str
+    created_at: datetime
+    paid_at: Optional[datetime] = None
+    status: str
+    recipient_kind: str
+    slug: str
+    child_name: Optional[str] = None
+    item_display_name: str
+    product_display_name: Optional[str] = None
+    image_url: Optional[str] = None
+    destination: Optional[str] = None
+    buyer_name: Optional[str] = None
+    buyer_email: Optional[str] = None
+    gift_message: Optional[str] = None
+    product_price_cents: int
+    shipping_cents: int
+    amount_cents: int
+    payment_fee_cents: Optional[int] = None
+    total_cost_cents: Optional[int] = None
+    margin_cents: Optional[int] = None
+    fulfillment_status: str
+    fulfillment_failure: Optional[str] = None
+    printful_order_id: Optional[str] = None
+    carrier: Optional[str] = None
+    tracking_url: Optional[str] = None
+    shipped_at: Optional[datetime] = None
+    stripe_payment_intent_id: Optional[str] = None
+    stripe_url: Optional[str] = None
+    receipt_emailed_at: Optional[datetime] = None
+
+
 class MyOrderOut(OrderReceiptLineOut):
     """A past purchase on the buyer's own orders page: the receipt line,
     plus which page it was for."""

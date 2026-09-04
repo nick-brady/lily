@@ -3,6 +3,7 @@ import { AuthProvider, useAuth } from './auth';
 import DashboardPage from './pages/DashboardPage';
 import LoginPage from './pages/LoginPage';
 import LogsPage from './pages/LogsPage';
+import OrdersPage from './pages/OrdersPage';
 
 function RequireAuth({ children }) {
   const { isAuthenticated } = useAuth();
@@ -21,6 +22,14 @@ export default function App() {
             element={
               <RequireAuth>
                 <DashboardPage />
+              </RequireAuth>
+            }
+          />
+          <Route
+            path="/orders"
+            element={
+              <RequireAuth>
+                <OrdersPage />
               </RequireAuth>
             }
           />

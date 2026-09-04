@@ -528,6 +528,60 @@ def apply_partner_event(db: Session, event: dict) -> str:
     return "released"
 
 
+def admin_orders(db: Session, *, limit: int = 200) -> list[dict]:
+    """Every order, newest first, for the admin site: the buyer's line plus
+    who bought it, what it cost, where the printer has it, and the ids to
+    find it elsewhere. Abandoned checkouts are shown too — as `pending` — so
+    a payment that never confirmed is visible rather than lost."""
+    rows = db.execute(
+        select(GiftOrder, Birth)
+        .join(Birth, Birth.id == GiftOrder.birth_id)
+        .order_by(GiftOrder.created_at.desc())
+        .limit(limit)
+    ).all()
+    out = []
+    for o, b in rows:
+        line = receipt_line(db, o, b)
+        shipment = db.scalar(
+            select(GiftShipment).where(GiftShipment.gift_order_id == o.id).order_by(GiftShipment.created_at.desc())
+        )
+        buyer = db.get(User, o.purchased_by_user_id) if o.purchased_by_user_id else None
+        cost = shipment.total_cost_cents if shipment else None
+        margin = (
+            (o.amount_cents or 0) - (o.payment_fee_cents or 0) - cost
+            if o.status == "paid" and cost is not None and o.payment_fee_cents is not None
+            else None
+        )
+        out.append(
+            {
+                **line,
+                "paid_at": o.paid_at,
+                "slug": b.slug,
+                "child_name": b.child_name,
+                "buyer_name": buyer.display_name if buyer else None,
+                "buyer_email": o.buyer_email or (buyer.email if buyer else None),
+                "payment_fee_cents": o.payment_fee_cents,
+                "total_cost_cents": cost,
+                "margin_cents": margin,
+                "fulfillment_failure": shipment.failure_reason if shipment else None,
+                "printful_order_id": shipment.printful_order_id if shipment else None,
+                "stripe_payment_intent_id": o.stripe_payment_intent_id,
+                "stripe_url": stripe_dashboard_url(o.stripe_payment_intent_id),
+                "receipt_emailed_at": o.receipt_emailed_at,
+            }
+        )
+    return out
+
+
+def stripe_dashboard_url(payment_intent_id: str | None) -> str | None:
+    """Where to look this payment up. Test-mode keys open the sandbox side
+    of the dashboard; live keys the live side."""
+    if not payment_intent_id:
+        return None
+    test = (os.getenv("STRIPE_SECRET_KEY") or "").startswith("sk_test")
+    return f"https://dashboard.stripe.com/{'test/' if test else ''}payments/{payment_intent_id}"
+
+
 def partner_external_id(order_id: uuid.UUID) -> str:
     """Our order id as the partner will accept it. Printful caps external
     ids at 32 characters: the bare hex of the UUID fits exactly, and the
