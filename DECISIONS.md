@@ -574,6 +574,35 @@ geometry as every other clock template.
 
 ---
 
+### The clock's rings are calendar days, not 24-hour windows
+*2026-09-03*
+
+The radial "hours" artwork puts each day of labour on its own ring. Days are
+now local calendar days: a contraction at 3am sits on the ring for the day
+it says, and "the next day" is the next ring.
+
+> "definitely want it to match _actual_ days.. so that the time is
+> meaningful. otherwise its confusing as hell."
+
+**Supersedes** the rolling window (24 hours from the first contraction),
+chosen so an evening labour crossing midnight would stay one ring. On the
+real data it did the opposite of what anyone expected: a labour that began
+at 7:58am and ran to 8:41am the next morning put 87 contractions on "DAY 1"
+— including every one after midnight — and left "DAY 2" with the last ten.
+The cost of calendar days is that a 9pm–4am labour becomes two rings with a
+seam at midnight, which is at least the seam a person would draw.
+
+Alongside: a ring's **day label steps aside for a mark**. Both ride the same
+grey circle and the label was pinned to six o'clock, so a milestone near six
+sat on top of it. The mark's position means something and the label's does
+not, so the label moves (six, then twelve, then around; the clearest spot
+when a small ring has nothing fully clear).
+
+**Where:** `CLOCK_DAY_BOUNDARY`, `build_hours_clock`, `_clear_label_angle`
+in `backend/gift_artwork.py`.
+
+---
+
 ## Shipping address
 
 ### Framed prints in, announcement cards out

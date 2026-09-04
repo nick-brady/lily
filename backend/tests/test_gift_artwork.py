@@ -272,7 +272,9 @@ def _clock(durations, offsets, first_at=_FIRST_AT, born_at=_BORN_AT, **kw):
 
 
 def test_hours_clock_one_day_is_one_ring():
-    clock = _clock(_DURATIONS, _OFFSETS)
+    # the fixture is an evening labour that crosses midnight — two calendar
+    # days, so two rings; start it in the morning to get the one-day case
+    clock = _clock(_DURATIONS, _OFFSETS, first_at=datetime(2026, 6, 1, 8, 4))
     assert len(clock["clock_rings"]) == 1
     assert len(clock["clock_rings"][0]["strokes"]) == len(_DURATIONS)
     assert clock["clock_born_mark"] is not None
@@ -285,10 +287,11 @@ def test_hours_clock_one_day_is_one_ring():
 def test_hours_clock_rings_follow_the_days():
     """One ring per day of labor, newest outermost, and past three the oldest
     fold inward rather than being dropped."""
+    midnight = datetime(2026, 6, 1, 0, 0)  # so hourly offsets line up with days
     for days, expected in ((1, 1), (2, 2), (3, 3), (5, 3)):
         offsets = [i * 3600 for i in range(days * 24)]
         durations = [60] * len(offsets)
-        rings = _clock(durations, offsets)["clock_rings"]
+        rings = _clock(durations, offsets, first_at=midnight)["clock_rings"]
         assert len(rings) == expected, days
         # every contraction lands on a ring, whatever the fold
         assert sum(len(r["strokes"]) for r in rings) == len(offsets)
@@ -297,7 +300,7 @@ def test_hours_clock_rings_follow_the_days():
         assert bases == sorted(bases)
 
     # beyond three days the innermost stops claiming to be day one
-    labels = [r["label"] for r in _clock([60] * 120, [i * 3600 for i in range(120)])["clock_rings"]]
+    labels = [r["label"] for r in _clock([60] * 120, [i * 3600 for i in range(120)], first_at=midnight)["clock_rings"]]
     assert labels[0] == "EARLIER"
 
 
@@ -769,7 +772,7 @@ def test_hours_clock_day_label_steps_aside_for_a_mark():
     from gift_artwork import build_hours_clock
 
     start = datetime(2026, 8, 20, 9, 0, tzinfo=timezone.utc)   # 9am day one
-    offsets = [i * 1800 for i in range(2 * 48)]                # two days, every 30 min
+    offsets = [i * 1800 for i in range(60)]                    # to 3pm day two, every 30 min
     arrived = 9 * 3600                                          # 6pm on day one — six o'clock
     clock = build_hours_clock(
         durations=[60] * len(offsets),
@@ -802,7 +805,7 @@ def test_hours_clock_day_label_avoids_the_heart_too():
     from gift_artwork import build_hours_clock
 
     start = datetime(2026, 8, 20, 9, 0, tzinfo=timezone.utc)
-    offsets = [i * 1800 for i in range(2 * 48)]
+    offsets = [i * 1800 for i in range(72)]                     # to 8:30pm day two
     clock = build_hours_clock(
         durations=[60] * len(offsets),
         offsets_seconds=offsets,
@@ -813,3 +816,39 @@ def test_hours_clock_day_label_avoids_the_heart_too():
     )
     outer = clock["clock_rings"][-1]
     assert outer["label_y"] < 940, "moved off the heart at six"
+
+
+def test_hours_clock_rings_are_calendar_days():
+    """A labour that starts at 8am and runs past midnight: the contractions
+    after midnight belong to the next day's ring, because that is the day a
+    person would say they happened on. Under the old rolling window they sat
+    on day one until 8am and "DAY 2" was nearly empty."""
+    from datetime import datetime
+
+    from gift_artwork import build_hours_clock
+
+    start = datetime(2026, 4, 9, 8, 0)                        # naive = already local
+    # every 30 min from 8am to 8:30am the next morning
+    offsets = [i * 1800 for i in range(50)]
+    clock = build_hours_clock(
+        durations=[60] * len(offsets),
+        offsets_seconds=offsets,
+        first_contraction_at=start,
+        born_at=None,
+        cx=750, cy=940,
+    )
+    day1, day2 = clock["clock_rings"]
+    assert day1["label"] == "DAY 1" and day2["label"] == "DAY 2"
+    # 8:00 → 23:30 is 32 strokes; 00:00 → 08:30 is 18
+    assert (len(day1["strokes"]), len(day2["strokes"])) == (32, 18)
+
+    rolling = build_hours_clock(
+        durations=[60] * len(offsets),
+        offsets_seconds=offsets,
+        first_contraction_at=start,
+        born_at=None,
+        cx=750, cy=940,
+        day_boundary="rolling",
+    )
+    # the old rule: 48 on the first ring, and two left for "DAY 2"
+    assert [len(r["strokes"]) for r in rolling["clock_rings"]] == [48, 2]

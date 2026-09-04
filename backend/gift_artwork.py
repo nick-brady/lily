@@ -1299,6 +1299,13 @@ CLOCK_PHOTO_R = 195.0
 
 RING_GAP = 14.0        # keeps adjacent day rings from touching
 MAX_RINGS = 3
+# How a labour is cut into rings. "calendar": local calendar days, so "the
+# next day" is the next ring and a 3am contraction sits on the day it says.
+# "rolling": 24-hour windows from the first contraction — the original rule,
+# which put a 3am contraction on the previous day's ring because the labour
+# had started that morning, and left "DAY 2" nearly empty. Kept for the
+# comparison; see DECISIONS.
+CLOCK_DAY_BOUNDARY = "calendar"
 AM_ALPHA, PM_ALPHA = 0.34, 0.74
 AM_WIDTH, PM_WIDTH = 2.6, 4.2
 BUILD_ALPHA = 0.16     # late labor deepens, on top of the AM/PM tone
@@ -1364,6 +1371,7 @@ def build_hours_clock(
     len_hi: float = 225.0,
     milestones: list[dict] | None = None,
     canvas_w: float | None = None,
+    day_boundary: str | None = None,
 ) -> dict:
     """Geometry for the radial labor clock: one 12-hour dial, and a concentric
     ring for every day of labor. Each contraction is a stroke at the clock
@@ -1388,10 +1396,19 @@ def build_hours_clock(
     marks: list[dict] = []
 
     # ── which day each contraction belongs to ────────────────────────────
-    # Rolling 24h windows from the first contraction, not calendar dates: an
-    # evening labor that crosses midnight is one night, not two days.
+    # Calendar days in the render timezone (first_contraction_at arrives
+    # localised), so the ring a stroke sits on is the day a person would
+    # name. Rolling windows are still available for the comparison.
+    boundary = day_boundary or CLOCK_DAY_BOUNDARY
+
+    def day_index(offset: int) -> int:
+        if boundary == "calendar" and first_contraction_at is not None:
+            when = first_contraction_at + timedelta(seconds=offset)
+            return (when.date() - first_contraction_at.date()).days
+        return offset // 86400
+
     if offsets_seconds:
-        day_of = [o // 86400 for o in offsets_seconds]
+        day_of = [day_index(o) for o in offsets_seconds]
         total_days = max(day_of) + 1
     else:
         day_of, total_days = [], 1
@@ -1412,7 +1429,7 @@ def build_hours_clock(
     ]
 
     def ring_index(offset: int) -> int:
-        return max(0, min(n - 1, offset // 86400 - shift))
+        return max(0, min(n - 1, day_index(offset) - shift))
 
     def at(offset: int) -> datetime | None:
         if first_contraction_at is None:
