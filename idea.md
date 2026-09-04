@@ -293,99 +293,6 @@ with.
 
 ---
 
-# Register the Stripe webhook before the first real order
-
-*Written 2026-09-03. Not done — a dashboard task, ten minutes.*
-
-Stripe has no webhook endpoint registered for this account, in test or live
-mode (checked via the API on 2026-09-03: `webhook_endpoints` is empty). The
-first test order completed only because the buyer's browser came back to the
-page and called `/b/{slug}/gifts/confirm`. A buyer who closes the tab on
-Stripe's success screen, loses signal, or has the return blocked leaves a
-paid order sitting `pending` forever — money taken, nothing made.
-
-The code path is built and tested (`POST /api/webhooks/stripe`, verifies the
-signature, dispatches `checkout.session.completed`, idempotent against the
-confirm path via the CAS in `mark_paid`). It only needs the endpoint to exist.
-
-## Steps
-
-1. Stripe dashboard → Developers → Webhooks → Add endpoint:
-   `https://arrivalstory.com/api/webhooks/stripe`, event
-   `checkout.session.completed`. Do it in **test mode** now.
-2. Copy the signing secret (`whsec_…`) into `deploy/group_vars/secrets.yml`
-   as `stripe_webhook_secret`; deploy. The current value on the box is a
-   placeholder-era secret that matches no endpoint.
-3. Send a test event from the dashboard; it should answer 200 and the Logs
-   page should show the access line. A real test purchase should then show
-   the webhook arriving *before* the browser's confirm call.
-4. Repeat 1–2 in **live mode** when switching to `sk_live`; live and test
-   endpoints have different secrets.
-
----
-
-# An order confirmation page
-
-*Written 2026-09-03. Built 2026-09-04 — `/b/{slug}/order/{id}`, see the
-DECISIONS entry "Stripe sends the buyer back to a receipt, not the page".
-Kept for what it argued should and shouldn't be on it.*
-
-After Stripe, the buyer lands straight back on the birth page with a banner:
-"Your gift is on its way — thank you 🤍". It works, and it is confusing:
-
-> "I'm left kind of confused because I expected to see some sort of order
-> complete page after the stripe checkout."
-
-Stripe's own success screen is a flash; the page after it is the receipt
-the buyer remembers. Today there isn't one.
-
-## What the page is
-
-`/b/{slug}/order/{order_id}` — Stripe's `success_url` points here instead of
-the birth page. Unauthenticated read, like the confirm route: the order id is
-a UUID, and the page shows nothing a stranger could use (no address in
-full, no email). It calls the existing confirm endpoint on load, so the
-"dev path" fulfillment still happens for a browser that returns.
-
-## What must be on it
-
-- **"Thank you — your order is in."** Plain, first, large. Then the state,
-  honestly: *confirmed and being made*, *payment received, sending to the
-  printer* (the seconds between confirm and Printful's answer), or *we hit a
-  problem and are on it* (a failed shipment — never "on its way" when it
-  isn't).
-- **The order reference**: the first 8 characters of the id, upper-case,
-  the thing they quote if they write in. Not the UUID, not Stripe's ids.
-- **What they bought**: the design's thumbnail (the rendering exists; show
-  it), the product's name and option (white glossy 11oz), quantity one.
-- **Where it's going**: the recipient line — *to the family* or *to you* —
-  and the address as city and state only. The full address is theirs
-  already and doesn't need to be on a screen someone else might see.
-- **What it cost**: item, postage, total, in that order, matching the
-  Stripe receipt to the cent. Not our costs.
-- **What happens next**: made to order, typical days to make and ship (the
-  quote already carries `min_days`/`max_days`), and that a receipt came
-  from Stripe by email. If the gift carried a message, show it back to them.
-- **Back to {child_name}'s page** — one button, and the page they came
-  from, not the home page.
-- If they arrive with a `session_id` that is still `pending` (Stripe not
-  settled yet), poll the confirm endpoint a few times before deciding what
-  to say; don't show "problem" for a two-second lag.
-
-## What should not be on it
-
-The buyer's email or phone, the full street address, Stripe or Printful
-identifiers, our costs, or another thing to buy.
-
-## Where it touches
-
-`payments.create_gift_checkout_session` (`success_url`), a new
-`GET /b/{slug}/orders/{order_id}` returning the safe subset above,
-`PublicBirthPage`'s `gift_session` effect (moves to the new page), the
-`frontend/src/App.jsx` route table, and `routeMeta` (noindex, like `/b`).
-
----
-
 # Gaps that mark themselves
 
 *Written 2026-09-03. Not built.*
@@ -449,48 +356,54 @@ client draws rather than decides.
 
 ---
 
-# An order confirmation email
+# Approve orders automatically after a grace window
 
-*Written 2026-09-04. Built the same day — `gift_receipt_email.py`; see the
-DECISIONS entry "Arrival Story sends the receipt; Stripe's stays off". Kept
-for the reasoning.*
+*Written 2026-09-04. Not built — and deliberately not yet.*
 
-Arrival Story sends no email when someone buys a keepsake. The receipt page
-(built 2026-09-04) is only there while the tab is; the Stripe receipt is a
-dashboard setting ("email customers about successful payments"), off in the
-sandbox and easy to forget in live, and it says "Arrival Story $24.69" with
-none of the story.
+Every Printful order is a draft until someone approves it, and today that
+someone is Nick, from the admin Orders page. That is right for now: nobody
+has held a mug or a book from this pipeline yet, so every order is still a
+chance to catch a bad crop or the wrong product before money moves. It is
+also the only step in the whole flow that waits on a human, and if orders
+ever arrive faster than one person checks their phone, each one sits for a
+day for no reason a buyer would accept.
 
-> "do we send an email from arrival story saying pretty much the same
-> thing? thanks for your order, preview, cost, etc."
+## The shape
 
-## What it is
+A timer, not a flag. Approve at payment time and you lose the cancel path,
+the claim race for family gifts, and the veto; wait for a human and you lose
+the day. Thirty minutes buys all three for nothing.
 
-One email, sent when the order is confirmed (from `fulfill_gift_from_session`,
-after `mark_paid`, best-effort like the fee lookup — never a reason to fail
-fulfillment). Same content as the receipt page, same honesty: the design
-image, item and product option, to whom and where (city and state), item /
-postage / total, the reference, the gift message back to them, and a link to
-the receipt page. Sent by Resend, which already sends the sign-in codes, so
-there is a sender, a template style (`messenger._email_html`) and an env var.
+- **A grace window** (30 minutes, a setting) during which the buyer can
+  cancel from the receipt and the operator can still veto from the admin
+  page. That window already covers the two moments cancels actually happen:
+  "oops, wrong address" and "my sister just bought the same one".
+- **The worker approves when the window closes,** on the housekeeping tick
+  that already runs every five minutes: paid, draft at the printer,
+  `paid_at` older than the window, not on hold, not failed, not cancelled.
+  The same `approve_shipment` the admin button calls, recorded with no
+  `confirmed_by_user_id` — approved by the clock, and the log says so.
+- **Off by default.** An environment setting (`AUTO_APPROVE_AFTER_MINUTES`,
+  unset means never) turned on once enough real orders have come out right.
+  The admin button keeps working either way, for approving early while
+  watching, or for the one that needs a look.
+- **The buyer's copy gets a deadline.** "You can cancel until we send it to
+  print" becomes "You can cancel for the next 30 minutes", with the actual
+  time shown on the receipt page and in the receipt email. More honest than
+  the open-ended promise, and it explains the wait.
+- **Nothing on hold auto-approves.** Printful holds are questions; a person
+  answers them.
 
-If a shipment later fails, a second email is worth considering — but that is
-the operator's problem to fix first, and telling the buyer before there is
-anything to say is worse than a short delay.
+## When
 
-## What it needs
+After the first handful of orders have arrived looking right — the trigger
+is trust in the artwork pipeline, not order volume. Until then the manual
+step is the quality gate and costs a few minutes a day.
 
-- **The buyer's email.** The order has `purchased_by_user_id`; a phone-only
-  account has no address. Stripe collects one at checkout
-  (`customer_details.email` on the session) — record it on the order at
-  confirm, use it once for this, and treat it as the buyer's, not ours.
-- **A `messenger` method** beyond the three the ABC has, or a module-level
-  `send_email(to, subject, html, text)` — the Twilio and Console messengers
-  needn't grow an order-email method.
-- **Idempotency**: one email per order, keyed on the order id, so the
-  webhook and the confirm path can't both send it.
-
----
+**Where it would go:** `Housekeeping` in `backend/scripts/media_worker.py`
+(a fourth tick), `approve_shipment` in `backend/repositories/gift_orders.py`
+already does the work, `orderPresentation.js` and `gift_receipt_email.py`
+for the deadline copy. Record the decision in DECISIONS.md when it flips on.
 
 # Set up help@arrivalstory.com
 
