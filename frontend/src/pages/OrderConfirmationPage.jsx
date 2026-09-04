@@ -26,7 +26,7 @@ import { SUPPORT_EMAIL } from '../utils/support';
 export default function OrderConfirmationPage() {
   const { slug, orderId } = useParams();
   const [searchParams, setSearchParams] = useSearchParams();
-  const { isAuthenticated } = useAuth();
+  const { isAuthenticated, loading: authLoading } = useAuth();
   // Arriving from Stripe, the way back is the family's page; arriving from
   // Your orders, it's the list you were just reading.
   const fromOrders = useLocation().state?.from === 'orders';
@@ -51,8 +51,11 @@ export default function OrderConfirmationPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [slug, searchParams]);
 
-  // Load, and keep asking while a payment is still settling.
+  // Load once the session check has answered — so the card arrives knowing
+  // whether it's yours, rather than painting and then growing a cancel
+  // button a moment later — and keep asking while a payment is still settling.
   useEffect(() => {
+    if (authLoading) return undefined;
     let cancelled = false;
     let timer;
     const load = (attempt) => {
@@ -75,8 +78,7 @@ export default function OrderConfirmationPage() {
       cancelled = true;
       clearTimeout(timer);
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [slug, orderId, isAuthenticated]);
+  }, [slug, orderId, authLoading, isAuthenticated]);
 
   const settling = receipt ? paymentSettling(receipt.orders) && tries < POLL_TRIES : false;
   const childName = receipt?.child_name;
