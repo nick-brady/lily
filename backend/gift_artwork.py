@@ -1299,6 +1299,13 @@ CLOCK_PHOTO_R = 195.0
 
 RING_GAP = 14.0        # keeps adjacent day rings from touching
 MAX_RINGS = 3
+# How a labour is cut into rings. "calendar": local calendar days, so "the
+# next day" is the next ring and a 3am contraction sits on the day it says.
+# "rolling": 24-hour windows from the first contraction — the original rule,
+# which put a 3am contraction on the previous day's ring because the labour
+# had started that morning, and left "DAY 2" nearly empty. Kept for the
+# comparison; see DECISIONS.
+CLOCK_DAY_BOUNDARY = "calendar"
 AM_ALPHA, PM_ALPHA = 0.34, 0.74
 AM_WIDTH, PM_WIDTH = 2.6, 4.2
 BUILD_ALPHA = 0.16     # late labor deepens, on top of the AM/PM tone
@@ -1311,6 +1318,43 @@ def _ring_layout(n: int, r_in: float, r_out: float) -> tuple[float, float, float
     inner = r_in / (n ** 0.75)
     band = (r_out - inner) / n
     return inner, band, band - (RING_GAP if n > 1 else 0.0)
+
+
+# The label pill is 124 wide (see _clock.svg.j2); a mark's halo is up to 26.
+LABEL_HALF_W = 62.0
+LABEL_CLEARANCE = 26.0 + 10.0
+# six o'clock first (the habit), then twelve, then stepping out from six on
+# alternating sides, so the label stays low on the dial when it can
+_LABEL_ANGLES = (
+    math.pi / 2,
+    -math.pi / 2,
+    *(math.pi / 2 + sign * step * 0.31 for step in range(1, 9) for sign in (1, -1)),
+)
+
+
+def _angular_gap(a: float, b: float) -> float:
+    return abs((a - b + math.pi) % (2 * math.pi) - math.pi)
+
+
+def _clear_label_angle(taken: list[float], ring_r: float) -> float:
+    """Where to put a ring's name so it does not sit on a mark.
+
+    The first candidate whose pill clears every mark wins, in preference
+    order. On a small inner ring the pill can be wider than the free arc,
+    so when nothing clears, the candidate farthest from any mark is taken —
+    a label brushing a halo beats one drawn straight over a hospital.
+    """
+    if not taken:
+        return _LABEL_ANGLES[0]
+    need = (LABEL_HALF_W + LABEL_CLEARANCE) / max(ring_r, 1.0)
+    best, best_gap = _LABEL_ANGLES[0], -1.0
+    for cand in _LABEL_ANGLES:
+        gap = min(_angular_gap(cand, a) for a in taken)
+        if gap >= need:
+            return cand
+        if gap > best_gap:
+            best, best_gap = cand, gap
+    return best
 
 
 def build_hours_clock(
@@ -1327,6 +1371,7 @@ def build_hours_clock(
     len_hi: float = 225.0,
     milestones: list[dict] | None = None,
     canvas_w: float | None = None,
+    day_boundary: str | None = None,
 ) -> dict:
     """Geometry for the radial labor clock: one 12-hour dial, and a concentric
     ring for every day of labor. Each contraction is a stroke at the clock
@@ -1351,10 +1396,19 @@ def build_hours_clock(
     marks: list[dict] = []
 
     # ── which day each contraction belongs to ────────────────────────────
-    # Rolling 24h windows from the first contraction, not calendar dates: an
-    # evening labor that crosses midnight is one night, not two days.
+    # Calendar days in the render timezone (first_contraction_at arrives
+    # localised), so the ring a stroke sits on is the day a person would
+    # name. Rolling windows are still available for the comparison.
+    boundary = day_boundary or CLOCK_DAY_BOUNDARY
+
+    def day_index(offset: int) -> int:
+        if boundary == "calendar" and first_contraction_at is not None:
+            when = first_contraction_at + timedelta(seconds=offset)
+            return (when.date() - first_contraction_at.date()).days
+        return offset // 86400
+
     if offsets_seconds:
-        day_of = [o // 86400 for o in offsets_seconds]
+        day_of = [day_index(o) for o in offsets_seconds]
         total_days = max(day_of) + 1
     else:
         day_of, total_days = [], 1
@@ -1375,7 +1429,7 @@ def build_hours_clock(
     ]
 
     def ring_index(offset: int) -> int:
-        return max(0, min(n - 1, offset // 86400 - shift))
+        return max(0, min(n - 1, day_index(offset) - shift))
 
     def at(offset: int) -> datetime | None:
         if first_contraction_at is None:
@@ -1482,6 +1536,21 @@ def build_hours_clock(
             "transform": None, "rule": "nonzero",
             "stroke": BORN_STROKE, "halo": BORN_HALO_R,
         }
+
+    # ── where each ring's name goes ──────────────────────────────────────
+    # The label rides the same grey circle as the marks, at six o'clock by
+    # habit — and a hospital at 5:58pm sat straight on top of "DAY 1". The
+    # mark's position means something (when it happened); the label's does
+    # not, so the label is the one that moves: six o'clock if it is clear,
+    # else twelve, else a little to either side of six.
+    for k, ring in enumerate(rings):
+        taken = [a for pk, a in placed if pk == k]
+        if born_mark is not None and k == n - 1:
+            taken.append(_clock_angle(born_at))
+        ring_r = ring["base"]
+        ang = _clear_label_angle(taken, ring_r)
+        ring["label_x"] = round(cx + ring_r * math.cos(ang), 1)
+        ring["label_y"] = round(cy + ring_r * math.sin(ang), 1)
 
     # ── the legend ───────────────────────────────────────────────────────
     # The two tones need naming or they read as texture. This only decides

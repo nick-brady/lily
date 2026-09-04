@@ -44,9 +44,9 @@
 
   {% if clock_day_labels and day_labels %}
   {% for ring in clock_rings %}
-  <rect x="{{ clock_cx - 62 }}" y="{{ clock_cy + ring.base - 19 }}"
+  <rect x="{{ ring.label_x - 62 }}" y="{{ ring.label_y - 19 }}"
         width="124" height="34" rx="17" fill="{{ p.bg }}" opacity="0.92"/>
-  <text x="{{ clock_cx }}" y="{{ clock_cy + ring.base + 4 }}" text-anchor="middle"
+  <text x="{{ ring.label_x }}" y="{{ ring.label_y + 4 }}" text-anchor="middle"
         font-family="{{ p.body_font }}" font-size="{{ label_size - 9 }}"
         letter-spacing="3" fill="{{ p.ink }}" opacity="0.55">{{ ring.label }}</text>
   {% endfor %}
