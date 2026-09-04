@@ -486,6 +486,33 @@ anything to say is worse than a short delay.
 
 ---
 
+# Set up help@arrivalstory.com
+
+*Written 2026-09-04. Not done — a mailbox task, not code.*
+
+The receipt page and the receipt email now say "Questions? Email
+help@arrivalstory.com", and replies to any Arrival Story email are addressed
+there (`reply_to` on every Resend send). The address does not exist yet.
+
+## What to set up
+
+1. **Receiving.** Cheapest: Cloudflare Email Routing (the domain's DNS is
+   already there for the site) forwarding `help@arrivalstory.com` to a
+   personal inbox — free, five minutes, and replies can still be sent
+   from the personal account with a "send as" alias. Or a Google Workspace
+   seat if a real shared inbox is wanted later.
+2. **Sending.** `RESEND_FROM` is `hello@arrivalstory.com`. Confirm the domain
+   is verified in Resend (SPF, DKIM, DMARC records) so receipts don't land in
+   spam; the sign-in codes have been going out from it, so this is probably
+   done — check the Resend dashboard says "verified".
+3. **The address in the app** is one constant in each codebase:
+   `frontend/src/utils/support.js` and `messenger.SUPPORT_EMAIL` (env
+   `SUPPORT_EMAIL` overrides). Change it in both if the address changes.
+4. **Who reads it, and how fast.** A buyer quoting a reference expects an
+   answer within a day. Decide where it forwards and that it is watched.
+
+---
+
 # The loop that already half exists
 
 *Written 2026-08-31. Not built — a thing to decide, not a task.*

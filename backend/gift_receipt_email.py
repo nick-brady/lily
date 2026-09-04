@@ -126,7 +126,8 @@ def build(lines: list[dict], *, birth: Birth, url: str) -> tuple[str, str, str]:
             text-decoration: none; padding: 12px 24px; border-radius: 8px;
             font-size: 16px; margin-top: 8px;">View your order</a>
   <p style="font-size: 13px; color: #6d6076; margin: 24px 0 0;">
-    Questions? Reply to this email and quote the reference.
+    Questions? Email <a href="mailto:{messenger.SUPPORT_EMAIL}" style="color: #a21caf;">{messenger.SUPPORT_EMAIL}</a>
+    and quote the reference.
   </p>
 </div>
 """
@@ -151,7 +152,7 @@ def build(lines: list[dict], *, birth: Birth, url: str) -> tuple[str, str, str]:
         "Thank you — your order is in.\n"
         "It's made to order and usually ships within a few business days.\n\n"
         + "\n\n".join(line_text(l) for l in lines)
-        + f"\n\nView your order: {url}\n\nQuestions? Reply to this email and quote the reference.\n"
+        + f"\n\nView your order: {url}\n\nQuestions? Email {messenger.SUPPORT_EMAIL} and quote the reference.\n"
     )
     return subject, body_html, text
 

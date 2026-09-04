@@ -38,6 +38,10 @@ _RESEND_DEFAULT_FROM = "Arrival Story <onboarding@resend.dev>"
 
 _TWILIO_URL = "https://api.twilio.com/2010-04-01/Accounts/{sid}/Messages.json"
 
+# Where a person writes when something is wrong. Replies to transactional
+# mail land here too. (The mailbox itself is a setup task — see idea.md.)
+SUPPORT_EMAIL = os.getenv("SUPPORT_EMAIL", "help@arrivalstory.com")
+
 
 class ChallengeDeliveryError(Exception):
     """The provider couldn't deliver the message — worth a 503, not a 500."""
@@ -387,6 +391,7 @@ def send_email(*, to: str, subject: str, html: str, text: str) -> bool:
             json={
                 "from": os.getenv("RESEND_FROM") or _RESEND_DEFAULT_FROM,
                 "to": [to],
+                "reply_to": SUPPORT_EMAIL,
                 "subject": subject,
                 "html": html,
                 "text": text,

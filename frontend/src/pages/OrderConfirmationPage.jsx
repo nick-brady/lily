@@ -10,6 +10,7 @@ import {
   presentOrder,
   stillSettling,
 } from '../utils/orderPresentation';
+import { SUPPORT_EMAIL } from '../utils/support';
 import { getTheme, themeVars } from '../utils/themes';
 
 // The page after Stripe. Stripe's success screen is a flash; this is the
@@ -85,7 +86,8 @@ export default function OrderConfirmationPage() {
           <div role="alert" className="card">
             <h1 className="text-xl font-semibold t-ink">We couldn't find that order.</h1>
             <p className="text-sm t-muted mt-2">
-              If you just paid, the receipt from Stripe is in your email. Nothing is lost.
+              If you just paid, your receipt is on its way by email and nothing is lost.
+              Email <a href={`mailto:${SUPPORT_EMAIL}`} className="underline underline-offset-2">{SUPPORT_EMAIL}</a> if it doesn't arrive.
             </p>
             <Link to={`/b/${slug}`} className="btn-primary inline-block mt-5 px-6 py-3">
               Back to {pageName}
@@ -111,8 +113,14 @@ export default function OrderConfirmationPage() {
                   It's made to order and usually ships within a few business days.
                 </p>
               )}
-              <p>Your receipt from Stripe is on its way by email.</p>
-              <p>Questions? Quote the reference above.</p>
+              <p>Your receipt is on its way by email.</p>
+              <p>
+                Questions? Email{' '}
+                <a href={`mailto:${SUPPORT_EMAIL}?subject=Order%20${receipt.orders[0]?.reference ?? ''}`} className="underline underline-offset-2 t-ink">
+                  {SUPPORT_EMAIL}
+                </a>{' '}
+                and quote the reference above.
+              </p>
             </div>
 
             <div className="pt-2 text-center">
