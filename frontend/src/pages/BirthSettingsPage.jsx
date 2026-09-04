@@ -495,7 +495,7 @@ function GiftsReceivedCard({ birthId }) {
                     ? (o.tracking_url
                         ? <a href={o.tracking_url} target="_blank" rel="noreferrer" className="underline underline-offset-2">shipped · track</a>
                         : 'shipped')
-                    : o.fulfillment_status === 'submitted'
+                    : o.fulfillment_status === 'submitted' || o.fulfillment_status === 'confirmed'
                       ? 'being made'
                       : o.fulfillment_status === 'failed' || o.fulfillment_status === 'on_hold'
                         ? 'needs attention'

@@ -16,6 +16,13 @@ export const POLL_TRIES = 6; // ~12s: Stripe can settle a couple of seconds afte
 export function presentOrder(line, settling = false) {
   if (!line) return null;
   if (line.status === 'refunded') {
+    if (line.fulfillment_status === 'canceled') {
+      return {
+        tone: 'neutral',
+        headline: 'This order was cancelled and refunded.',
+        detail: 'The refund goes back to the card that paid and usually shows within a few days.',
+      };
+    }
     return {
       tone: 'warn',
       headline: 'Someone beat you to this gift.',
@@ -53,6 +60,20 @@ export function presentOrder(line, settling = false) {
       tone: 'warn',
       headline: 'Your payment went through, but we hit a problem sending it to the printer.',
       detail: "We've been notified and will sort it out. There's nothing more for you to do.",
+    };
+  }
+  if (line.fulfillment_status === 'confirmed') {
+    return {
+      tone: 'good',
+      headline: "It's being made.",
+      detail: `Sent to print${line.confirmed_at ? ` on ${shortDate(line.confirmed_at)}` : ''}. It usually ships within a few business days.`,
+    };
+  }
+  if (line.fulfillment_status === 'submitted') {
+    return {
+      tone: 'good',
+      headline: 'Thank you — your order is in.',
+      detail: "It's with the printer, waiting for us to check it over and send it to print.",
     };
   }
   return { tone: 'good', headline: 'Thank you — your order is in.', detail: null };

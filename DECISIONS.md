@@ -677,6 +677,63 @@ the Stripe payment and Printful's orders dashboard. The one place to stand
 when a buyer writes in quoting a reference. `GET /admin/orders`, gated like
 the rest of the admin API.
 
+### Drafts are approved, or cancelled and refunded, from our own Orders page
+*2026-09-04*
+
+Every Printful order is still created as a draft (`PRINTFUL_CONFIRM_ORDERS`
+stays off), so nothing is charged to us until someone looks at it. That
+look now happens on the admin Orders page instead of Printful's dashboard.
+A draft row says "draft — approve?"; opening it offers **Approve · send to
+print** and **Cancel & refund**. Each opens a dialog that shows the design,
+the destination, and the money — what Printful will charge, what we keep,
+or what goes back to the buyer — and asks once.
+
+- **Approve** is `POST /orders/{id}/confirm` at Printful: the draft leaves
+  draft, our account is charged, production starts. The shipment records
+  `confirmed_at` and who did it. Buyers see nothing new — "being made"
+  already covered this — and a second click is a no-op.
+- **Cancel** deletes the Printful draft, refunds the Stripe payment in full
+  (idempotent key, Stripe keeps its fee), and marks the order refunded,
+  which also releases a family claim. It refuses once the draft has been
+  confirmed or shipped — that's the Terms' "in production" line, and a
+  refund at that point is a decision to eat the cost, made at Stripe by
+  hand. The buyer's receipt page and order list say "cancelled and
+  refunded" rather than the claim-race message.
+- Approving is deliberate and never automatic: it is the moment our money
+  moves, and reviewing the artwork once is the only quality gate there is.
+
+**Where:** `backend/fulfillment/printful.py` (`confirm_order`,
+`cancel_order`), `backend/repositories/gift_orders.py`
+(`approve_shipment`, `cancel_and_refund`), `POST /admin/orders/{id}/approve`
+and `/cancel` in `backend/routes/checkout.py`, migration 0047,
+`frontend-admin/src/pages/OrdersPage.jsx`. Needs `orders/write` on the
+Printful API token.
+
+### The buyer can cancel from the receipt, until we send it to print
+*2026-09-04*
+
+The Terms promise a full refund any time before the order goes to print.
+Nothing has happened in that window that a person would need to undo — the
+draft sits at Printful unpaid — so making the buyer email us to ask would be
+a form of friction dressed up as process. The receipt page offers **Cancel
+this order** to the signed-in buyer (the receipt itself stays public by
+order id; the button appears only when the viewer is the buyer), asks once,
+and does it: the draft is deleted, Stripe refunds in full, a family claim
+is released. It is a cancel, not a "request cancellation" — a request is
+only right when someone has to act on it.
+
+The window is exactly the admin's: not while the worker is mid-submit, not
+on hold, never once approved or shipped. After approval the page says so
+("It's already being made, so it can't be cancelled from here") and points
+at help@. The receipt also now says where the order stands in words: "with
+the printer, waiting for us to check it over", then "It's being made —
+sent to print on the 5th", then "It's on its way".
+
+**Where:** `POST /me/orders/{id}/cancel` in `backend/routes/checkout.py`,
+`buyer_can_cancel` in `backend/repositories/gift_orders.py` (also the
+`can_cancel` flag on every receipt line, and `yours` on the receipt),
+`frontend/src/pages/OrderConfirmationPage.jsx`, `orderPresentation.js`.
+
 ### The printer tells us when it ships, and when it doesn't
 *2026-09-04*
 

@@ -1017,6 +1017,11 @@ class GiftShipment(Base):
     shipped_emailed_at: Mapped[datetime | None] = mapped_column(
         sa.DateTime(timezone=True), nullable=True
     )
+    # The draft's fate, decided from our admin page: sent to print (money
+    # moves at the partner) or cancelled (and the buyer refunded).
+    confirmed_at: Mapped[datetime | None] = mapped_column(sa.DateTime(timezone=True), nullable=True)
+    confirmed_by_user_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True)
+    canceled_at: Mapped[datetime | None] = mapped_column(sa.DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = _created_at()
 
     __table_args__ = (sa.Index("ix_gift_shipments_order", "gift_order_id"),)

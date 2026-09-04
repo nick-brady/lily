@@ -324,6 +324,15 @@ def _destination(address: dict | None) -> str | None:
     return ", ".join(p for p in (city, state) if p) or None
 
 
+def buyer_can_cancel(status: str, fulfillment_status: str) -> bool:
+    """The Terms' window: a full refund any time before we send it to print.
+    A draft at the printer, or nothing there yet, or a failed submission —
+    all still ours to undo. Not while the worker is mid-submit (a second's
+    race), not on hold (the printer is asking us something), and never once
+    approved or shipped."""
+    return status == "paid" and fulfillment_status in ("none", "submitted", "failed")
+
+
 def receipt_line(db: Session, o: GiftOrder, birth: Birth) -> dict:
     """One order as its buyer may see it (see OrderReceiptLineOut)."""
     item = db.get(GiftCatalogItem, o.gift_catalog_item_id)
@@ -361,6 +370,8 @@ def receipt_line(db: Session, o: GiftOrder, birth: Birth) -> dict:
         "carrier": shipment.carrier if shipment else None,
         "tracking_url": shipment.tracking_url if shipment else None,
         "shipped_at": shipment.shipped_at if shipment else None,
+        "confirmed_at": shipment.confirmed_at if shipment else None,
+        "can_cancel": buyer_can_cancel(o.status, shipment.fulfillment_status if shipment else "none"),
         "created_at": o.created_at,
     }
 
@@ -508,6 +519,8 @@ def apply_partner_event(db: Session, event: dict) -> str:
         shipment.failure_reason = None
         db.commit()
         return "shipped"
+    if kind == "order_canceled" and shipment.fulfillment_status == "canceled":
+        return "ignored"  # the echo of our own cancel from the admin page
     if kind in ("order_failed", "order_canceled"):
         shipment.fulfillment_status = "failed"
         shipment.failure_reason = f"printful {kind.split('_')[1]}: {reason}"[:500]
@@ -522,10 +535,59 @@ def apply_partner_event(db: Session, event: dict) -> str:
         return "held"
     # order_remove_hold
     if shipment.fulfillment_status == "on_hold":
-        shipment.fulfillment_status = "submitted"
+        # back to where it was: in production if we had approved it, else a draft
+        shipment.fulfillment_status = "confirmed" if shipment.confirmed_at else "submitted"
         shipment.failure_reason = None
         db.commit()
     return "released"
+
+
+class NotADraft(Exception):
+    """The shipment isn't in a state this action applies to."""
+
+
+def approve_shipment(db: Session, shipment: GiftShipment, *, adapter, by_user_id: uuid.UUID) -> None:
+    """Send the draft to print. Money moves at the partner here, so this is
+    only ever a deliberate act from the admin page. Idempotent: a shipment
+    already confirmed is left alone."""
+    if shipment.fulfillment_status == "confirmed":
+        return
+    if shipment.fulfillment_status != "submitted" or not shipment.printful_order_id:
+        raise NotADraft(f"shipment is {shipment.fulfillment_status}, not a draft at the printer")
+    result = adapter.confirm_order(shipment.printful_order_id)
+    shipment.fulfillment_status = "confirmed"
+    shipment.confirmed_at = datetime.now(timezone.utc)
+    shipment.confirmed_by_user_id = by_user_id
+    shipment.failure_reason = None
+    if result.costs:
+        shipment.product_cost_cents = result.costs.get("product")
+        shipment.shipping_cost_cents = result.costs.get("shipping")
+        shipment.tax_cost_cents = result.costs.get("tax")
+        shipment.total_cost_cents = result.costs.get("total")
+        shipment.costs_recorded_at = datetime.now(timezone.utc)
+    db.commit()
+    logger.info("gift shipment %s approved; printful order %s confirmed", shipment.id, shipment.printful_order_id)
+
+
+def cancel_and_refund(db: Session, order: GiftOrder, shipment: GiftShipment | None, *, adapter, stripe) -> None:
+    """The Terms' promise: a full refund any time before we send it to
+    print. Cancels the partner's draft (if there is one), refunds the Stripe
+    payment, and marks the order refunded — which also releases a family
+    claim. Refuses once the draft has been confirmed or shipped."""
+    if order.status == "refunded":
+        return
+    if shipment is not None and shipment.fulfillment_status in ("confirmed", "shipped"):
+        raise NotADraft(f"already {shipment.fulfillment_status}; refund at the partner first")
+    if shipment is not None and shipment.printful_order_id and adapter is not None:
+        adapter.cancel_order(shipment.printful_order_id)
+    if order.stripe_payment_intent_id and stripe is not None:
+        stripe.create_refund(payment_intent_id=order.stripe_payment_intent_id, kind="gift", key_suffix="-cancel")
+    if shipment is not None:
+        shipment.fulfillment_status = "canceled"
+        shipment.canceled_at = datetime.now(timezone.utc)
+    order.status = "refunded"
+    db.commit()
+    logger.info("gift order %s cancelled and refunded", order.id)
 
 
 def admin_orders(db: Session, *, limit: int = 200) -> list[dict]:
@@ -568,6 +630,8 @@ def admin_orders(db: Session, *, limit: int = 200) -> list[dict]:
                 "stripe_payment_intent_id": o.stripe_payment_intent_id,
                 "stripe_url": stripe_dashboard_url(o.stripe_payment_intent_id),
                 "receipt_emailed_at": o.receipt_emailed_at,
+                "confirmed_at": shipment.confirmed_at if shipment else None,
+                "canceled_at": shipment.canceled_at if shipment else None,
             }
         )
     return out

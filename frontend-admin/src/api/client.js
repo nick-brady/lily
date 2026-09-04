@@ -106,6 +106,18 @@ export const api = {
     return jsonOrThrow(res);
   },
 
+  // Send a draft to print (our money moves at the partner), or cancel it and
+  // refund the buyer. Both return the updated order row.
+  async approveOrder(orderId) {
+    const res = await fetch(`${API_URL}/admin/orders/${orderId}/approve`, { method: 'POST', headers: authHeaders() });
+    return jsonOrThrow(res);
+  },
+
+  async cancelOrder(orderId) {
+    const res = await fetch(`${API_URL}/admin/orders/${orderId}/cancel`, { method: 'POST', headers: authHeaders() });
+    return jsonOrThrow(res);
+  },
+
   // Public. Answers 503 with the same body when something is down, so read
   // the body either way rather than throwing on status.
   async getHealth() {

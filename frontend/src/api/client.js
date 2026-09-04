@@ -354,6 +354,13 @@ export const api = {
     return jsonOrThrow(res);
   },
 
+  // Call off an order before it goes to print: full refund, the printer's
+  // draft deleted, a family claim released. Returns the updated line.
+  async cancelMyOrder(orderId) {
+    const res = await fetch(`${API_URL}/me/orders/${orderId}/cancel`, { method: 'POST' });
+    return jsonOrThrow(res);
+  },
+
   async getShippingAddress(birthId) {
     const res = await fetch(`${API_URL}/birth/${birthId}/shipping-address`, {});
     return jsonOrThrow(res);

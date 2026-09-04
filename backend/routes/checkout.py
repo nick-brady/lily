@@ -19,18 +19,21 @@ from fastapi import (
     Request,
     Response,
 )
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 import address_validation
 import admin as admin_mod
+import fulfillment
 import gift_fulfillment
 import gift_receipt_email
 import gift_shipping
 import payments
-from auth import get_current_user
+from auth import get_current_user, get_optional_current_user
 from db import get_db
 from fulfillment import products as fulfillment_products
-from models import GiftCatalogItem, GiftKind, GiftOrder, GiftRenderingStatus, User
+from fulfillment.base import OrderError
+from models import Birth, GiftCatalogItem, GiftKind, GiftOrder, GiftRenderingStatus, GiftShipment, User
 from repositories import gift_orders as gift_orders_repo
 from routes.deps import (
     BirthAccess,
@@ -491,6 +494,66 @@ def admin_orders(
     return [AdminOrderOut(**row) for row in gift_orders_repo.admin_orders(db)]
 
 
+def _admin_order_row(db: Session, order_id: uuid.UUID) -> AdminOrderOut:
+    for row in gift_orders_repo.admin_orders(db, limit=1000):
+        if row["id"] == order_id:
+            return AdminOrderOut(**row)
+    raise HTTPException(status_code=404, detail="Order not found")
+
+
+@router.post("/admin/orders/{order_id}/approve", response_model=AdminOrderOut)
+def admin_approve_order(
+    order_id: uuid.UUID,
+    admin_user: User = Depends(admin_mod.get_admin_user),
+    db: Session = Depends(get_db),
+) -> AdminOrderOut:
+    """Send the draft to print. This is where our money moves at the
+    partner, so it is a deliberate act from the admin page, never a flag."""
+    order = db.get(GiftOrder, order_id)
+    if order is None or order.status != "paid":
+        raise HTTPException(status_code=404, detail="No paid order")
+    shipment = db.scalar(
+        select(GiftShipment).where(GiftShipment.gift_order_id == order_id).order_by(GiftShipment.created_at.desc())
+    )
+    adapter = fulfillment.get_adapter()
+    if shipment is None or adapter is None:
+        raise HTTPException(status_code=409, detail="Nothing at the printer to approve")
+    try:
+        gift_orders_repo.approve_shipment(db, shipment, adapter=adapter, by_user_id=admin_user.id)
+    except gift_orders_repo.NotADraft as exc:
+        raise HTTPException(status_code=409, detail=str(exc))
+    except OrderError as exc:
+        logger.error("approve failed for shipment %s: %s", shipment.id, exc)
+        raise HTTPException(status_code=502, detail=str(exc))
+    return _admin_order_row(db, order_id)
+
+
+@router.post("/admin/orders/{order_id}/cancel", response_model=AdminOrderOut)
+def admin_cancel_order(
+    order_id: uuid.UUID,
+    admin_user: User = Depends(admin_mod.get_admin_user),
+    db: Session = Depends(get_db),
+) -> AdminOrderOut:
+    """Cancel the draft and refund the buyer in full — the Terms' promise
+    for any order not yet sent to print."""
+    order = db.get(GiftOrder, order_id)
+    if order is None or order.status not in ("paid", "refunded"):
+        raise HTTPException(status_code=404, detail="No paid order")
+    shipment = db.scalar(
+        select(GiftShipment).where(GiftShipment.gift_order_id == order_id).order_by(GiftShipment.created_at.desc())
+    )
+    try:
+        gift_orders_repo.cancel_and_refund(
+            db, order, shipment, adapter=fulfillment.get_adapter(), stripe=payments.get_stripe()
+        )
+    except gift_orders_repo.NotADraft as exc:
+        raise HTTPException(status_code=409, detail=str(exc))
+    except (OrderError, payments.StripeError) as exc:
+        logger.error("cancel failed for order %s: %s", order_id, exc)
+        raise HTTPException(status_code=502, detail=str(exc))
+    return _admin_order_row(db, order_id)
+
+
 @router.get("/me/orders", response_model=list[MyOrderOut])
 def my_orders(
     current_user: User = Depends(get_current_user),
@@ -506,6 +569,7 @@ def gift_order_receipt(
     slug: str,
     order_id: uuid.UUID,
     response: Response,
+    viewer: User | None = Depends(get_optional_current_user),
     db: Session = Depends(get_db),
 ) -> OrderReceiptOut:
     """The page after Stripe: what was bought, where it's going, what it
@@ -525,7 +589,40 @@ def gift_order_receipt(
             OrderReceiptLineOut(**line)
             for line in gift_orders_repo.receipt(db, order, birth)
         ],
+        yours=viewer is not None and order.purchased_by_user_id == viewer.id,
     )
+
+
+@router.post("/me/orders/{order_id}/cancel", response_model=OrderReceiptLineOut)
+def cancel_my_order(
+    order_id: uuid.UUID,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> OrderReceiptLineOut:
+    """The buyer calls it off, any time before we send it to print — the
+    Terms' promise, self-service because nothing has happened yet that a
+    person would need to undo. Cancels the printer's draft, refunds in
+    full, releases a family claim. Idempotent; 409 once it's too late."""
+    order = db.get(GiftOrder, order_id)
+    if order is None or order.purchased_by_user_id != current_user.id or order.status == "pending":
+        raise HTTPException(status_code=404, detail="Unknown order")
+    birth = db.get(Birth, order.birth_id)
+    shipment = db.scalar(
+        select(GiftShipment).where(GiftShipment.gift_order_id == order_id).order_by(GiftShipment.created_at.desc())
+    )
+    fulfillment_status = shipment.fulfillment_status if shipment else "none"
+    if order.status != "refunded" and not gift_orders_repo.buyer_can_cancel(order.status, fulfillment_status):
+        raise HTTPException(status_code=409, detail="This order has already been sent to print and can't be cancelled here.")
+    try:
+        gift_orders_repo.cancel_and_refund(
+            db, order, shipment, adapter=fulfillment.get_adapter(), stripe=payments.get_stripe()
+        )
+    except gift_orders_repo.NotADraft as exc:
+        raise HTTPException(status_code=409, detail=str(exc))
+    except (OrderError, payments.StripeError) as exc:
+        logger.error("buyer cancel failed for order %s: %s", order_id, exc)
+        raise HTTPException(status_code=502, detail="We couldn't cancel it just now. Email us and we'll sort it out.")
+    return OrderReceiptLineOut(**gift_orders_repo.receipt_line(db, order, birth))
 
 
 @router.get(

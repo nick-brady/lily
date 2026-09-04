@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
 import { Link, useParams, useSearchParams } from 'react-router-dom';
 import { api } from '../api/client';
+import { useAuth } from '../contexts/AuthContext';
+import useDialog from '../hooks/useDialog';
 import { formatPrice } from '../utils/money';
 import {
   POLL_EVERY_MS,
@@ -19,13 +21,20 @@ import { SUPPORT_EMAIL } from '../utils/support';
 //
 // Unauthenticated, like the confirm route: the order id is the key, and
 // nothing here is a secret — no email, no street, no payment or partner ids.
+// The one action, cancelling, is offered only to the signed-in buyer and
+// only until we send the order to print — the Terms' window.
 export default function OrderConfirmationPage() {
   const { slug, orderId } = useParams();
   const [searchParams, setSearchParams] = useSearchParams();
+  const { isAuthenticated } = useAuth();
   const [receipt, setReceipt] = useState(null);
   const [error, setError] = useState(null);
   const [tries, setTries] = useState(0);
+  const [cancelling, setCancelling] = useState(null); // the line being cancelled
   const confirmed = useRef(false);
+
+  const replaceLine = (line) =>
+    setReceipt((prev) => prev && { ...prev, orders: prev.orders.map((o) => (o.id === line.id ? line : o)) });
 
   // Confirm the session once, then strip the param so a reload doesn't.
   useEffect(() => {
@@ -63,7 +72,8 @@ export default function OrderConfirmationPage() {
       cancelled = true;
       clearTimeout(timer);
     };
-  }, [slug, orderId]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [slug, orderId, isAuthenticated]);
 
   const settling = receipt ? paymentSettling(receipt.orders) && tries < POLL_TRIES : false;
   const childName = receipt?.child_name;
@@ -96,7 +106,14 @@ export default function OrderConfirmationPage() {
         {receipt && (
           <>
             {receipt.orders.map((line, i) => (
-              <OrderCard key={line.id} line={line} settling={settling} first={i === 0} childName={childName} />
+              <OrderCard
+                key={line.id}
+                line={line}
+                settling={settling}
+                first={i === 0}
+                childName={childName}
+                onCancel={receipt.yours && line.can_cancel ? () => setCancelling(line) : null}
+              />
             ))}
 
             <div className="card text-sm text-gray-500 dark:text-gray-400 space-y-2">
@@ -104,6 +121,9 @@ export default function OrderConfirmationPage() {
                 <p>
                   It's made to order and usually ships within a few business days.
                 </p>
+              )}
+              {receipt.yours && receipt.orders.some((o) => o.status === 'paid' && o.fulfillment_status === 'confirmed') && (
+                <p>It's already being made, so it can't be cancelled from here.</p>
               )}
               <p>Your receipt is on its way by email.</p>
               <p>
@@ -123,11 +143,67 @@ export default function OrderConfirmationPage() {
           </>
         )}
       </main>
+
+      {cancelling && (
+        <CancelDialog
+          line={cancelling}
+          onDone={(updated) => {
+            replaceLine(updated);
+            setCancelling(null);
+          }}
+          onClose={() => setCancelling(null)}
+        />
+      )}
     </div>
   );
 }
 
-function OrderCard({ line, settling, first, childName }) {
+// Asks once, says what happens, then does it. The refund is automatic —
+// nothing has been made yet — so this is a cancel, not a request to cancel.
+function CancelDialog({ line, onDone, onClose }) {
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState(null);
+  const panelRef = useDialog(() => !busy && onClose());
+
+  const cancel = () => {
+    setBusy(true);
+    setError(null);
+    api
+      .cancelMyOrder(line.id)
+      .then(onDone)
+      .catch((err) => {
+        setError(err.message || "We couldn't cancel it just now.");
+        setBusy(false);
+      });
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4" onClick={() => !busy && onClose()}>
+      <div ref={panelRef} className="card max-w-sm w-full space-y-4" onClick={(e) => e.stopPropagation()}>
+        <h2 className="text-lg font-semibold text-gray-800 dark:text-white">Cancel this order?</h2>
+        <p className="text-sm text-gray-600 dark:text-gray-300">
+          The {line.item_display_name.toLowerCase()} won't be made, and {formatPrice(line.amount_cents)} goes back to
+          the card you paid with, usually within a few days.
+        </p>
+        {error && (
+          <p role="alert" className="text-sm text-amber-700 dark:text-amber-400">
+            {error} Email <a href={`mailto:${SUPPORT_EMAIL}`} className="underline underline-offset-2">{SUPPORT_EMAIL}</a> and we'll sort it out.
+          </p>
+        )}
+        <div className="flex gap-3 justify-end">
+          <button type="button" onClick={onClose} disabled={busy} className="px-4 py-2 text-sm rounded-xl text-gray-600 dark:text-gray-300 hover:bg-black/5 disabled:opacity-50">
+            Keep it
+          </button>
+          <button type="button" onClick={cancel} disabled={busy} className="btn-primary px-4 py-2 text-sm disabled:opacity-50">
+            {busy ? 'Cancelling…' : 'Cancel and refund'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function OrderCard({ line, settling, first, childName, onCancel }) {
   const says = presentOrder(line, settling);
   const tone = {
     good: '#a21caf',
@@ -221,6 +297,16 @@ function OrderCard({ line, settling, first, childName }) {
             printed on the packing slip{childName ? ` for ${childName}'s family` : ''}
           </footer>
         </blockquote>
+      )}
+
+      {onCancel && (
+        <p className="text-sm text-gray-500 dark:text-gray-400 border-t pt-4">
+          Changed your mind?{' '}
+          <button type="button" onClick={onCancel} className="underline underline-offset-2 text-gray-800 dark:text-white hover:text-primary-600">
+            Cancel this order
+          </button>{' '}
+          for a full refund — you can until we send it to print.
+        </p>
       )}
     </section>
   );

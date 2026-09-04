@@ -4,6 +4,7 @@ webhook dispatch, and the Printful order call. All DB-free."""
 from __future__ import annotations
 
 import asyncio
+from datetime import datetime, timezone
 import uuid
 from types import SimpleNamespace
 from urllib.parse import parse_qs
@@ -950,7 +951,8 @@ def test_failed_canceled_and_hold_are_recorded_honestly(caplog):
 
     def fresh():
         return SimpleNamespace(id=uuid.uuid4(), gift_order_id=uuid.uuid4(), fulfillment_status="submitted",
-                               failure_reason=None, carrier=None, tracking_number=None, tracking_url=None, shipped_at=None)
+                               failure_reason=None, carrier=None, tracking_number=None, tracking_url=None, shipped_at=None,
+                               confirmed_at=None)
 
     s = fresh()
     caplog.set_level(logging.INFO)
@@ -963,6 +965,20 @@ def test_failed_canceled_and_hold_are_recorded_honestly(caplog):
     assert s.fulfillment_status == "on_hold"
     assert apply_partner_event(_ShipmentDb(s), {"type": "order_remove_hold", "data": {"order": {"external_id": s.gift_order_id.hex}}}) == "released"
     assert s.fulfillment_status == "submitted" and s.failure_reason is None
+
+    # a hold lifted from an order we had approved goes back to production, not to "approve?"
+    s = fresh()
+    s.fulfillment_status, s.confirmed_at = "confirmed", datetime.now(timezone.utc)
+    apply_partner_event(_ShipmentDb(s), {"type": "order_put_hold", "data": {"order": {"external_id": s.gift_order_id.hex}}})
+    apply_partner_event(_ShipmentDb(s), {"type": "order_remove_hold", "data": {"order": {"external_id": s.gift_order_id.hex}}})
+    assert s.fulfillment_status == "confirmed"
+
+    # Printful echoes our own cancel back as order_canceled; that is not a failure
+    s = fresh()
+    s.fulfillment_status = "canceled"
+    caplog.clear()
+    assert apply_partner_event(_ShipmentDb(s), {"type": "order_canceled", "data": {"order": {"external_id": s.gift_order_id.hex}}}) == "ignored"
+    assert s.fulfillment_status == "canceled" and not any(r.levelno == logging.ERROR for r in caplog.records)
 
     assert apply_partner_event(_ShipmentDb(fresh()), {"type": "product_synced", "data": {}}) == "ignored"
 
@@ -1005,3 +1021,106 @@ def test_stripe_dashboard_url_follows_the_key_mode(monkeypatch):
     monkeypatch.setenv("STRIPE_SECRET_KEY", "sk_live_x")
     assert stripe_dashboard_url("pi_1") == "https://dashboard.stripe.com/payments/pi_1"
     assert stripe_dashboard_url(None) is None
+
+
+# ── approving and cancelling drafts ───────────────────────────────────────
+
+
+def test_printful_confirm_and_cancel():
+    calls = []
+
+    def handler(req: httpx.Request) -> httpx.Response:
+        calls.append((req.method, req.url.path))
+        if req.method == "POST":
+            return httpx.Response(200, json={"result": {"id": 175025879, "status": "pending", "costs": {"subtotal": "6.07", "shipping": "6.69", "tax": "0.93", "total": "13.69"}}})
+        return httpx.Response(200, json={"result": {"id": 175025879, "status": "canceled"}})
+
+    a = PrintfulAdapter(api_key="k", client=_client(handler, base="https://api.printful.com"))
+    result = a.confirm_order("175025879")
+    assert result.status == "pending" and result.costs["total"] == 1369
+    a.cancel_order("175025879")
+    assert calls == [("POST", "/orders/175025879/confirm"), ("DELETE", "/orders/175025879")]
+
+
+def test_approve_and_cancel_are_deliberate_and_idempotent():
+    import uuid
+
+    from repositories import gift_orders as repo
+
+    class Adapter:
+        def __init__(self):
+            self.confirmed = []
+            self.canceled = []
+
+        def confirm_order(self, oid):
+            self.confirmed.append(oid)
+            return SimpleNamespace(order_id=oid, status="pending", costs={"product": 607, "shipping": 669, "tax": 93, "total": 1369})
+
+        def cancel_order(self, oid):
+            self.canceled.append(oid)
+
+    class Stripe:
+        def __init__(self):
+            self.refunds = []
+
+        def create_refund(self, **kw):
+            self.refunds.append(kw)
+
+    db = _FakeCommitSession()
+    adapter, stripe = Adapter(), Stripe()
+    shipment = SimpleNamespace(id=uuid.uuid4(), fulfillment_status="submitted", printful_order_id="175025879",
+                               failure_reason=None, product_cost_cents=None, shipping_cost_cents=None, tax_cost_cents=None,
+                               total_cost_cents=None, costs_recorded_at=None, confirmed_at=None, confirmed_by_user_id=None, canceled_at=None)
+    admin = uuid.uuid4()
+    repo.approve_shipment(db, shipment, adapter=adapter, by_user_id=admin)
+    assert shipment.fulfillment_status == "confirmed" and shipment.confirmed_by_user_id == admin
+    assert shipment.total_cost_cents == 1369
+    repo.approve_shipment(db, shipment, adapter=adapter, by_user_id=admin)  # a second click does nothing
+    assert adapter.confirmed == ["175025879"]
+
+    # once confirmed, cancelling here is refused — the money has moved at the partner
+    order = SimpleNamespace(id=uuid.uuid4(), status="paid", stripe_payment_intent_id="pi_1")
+    with pytest.raises(repo.NotADraft):
+        repo.cancel_and_refund(db, order, shipment, adapter=adapter, stripe=stripe)
+    assert stripe.refunds == []
+
+    # a draft cancels at the partner, refunds in full, and the order is refunded
+    draft = SimpleNamespace(id=uuid.uuid4(), fulfillment_status="submitted", printful_order_id="175025880", canceled_at=None)
+    repo.cancel_and_refund(db, order, draft, adapter=adapter, stripe=stripe)
+    assert adapter.canceled == ["175025880"]
+    assert stripe.refunds == [{"payment_intent_id": "pi_1", "kind": "gift", "key_suffix": "-cancel"}]
+    assert order.status == "refunded" and draft.fulfillment_status == "canceled"
+    # and again does nothing
+    repo.cancel_and_refund(db, order, draft, adapter=adapter, stripe=stripe)
+    assert len(stripe.refunds) == 1
+
+
+def test_admin_order_actions_require_an_admin():
+    import uuid
+
+    from fastapi.testclient import TestClient
+    import main
+
+    c = TestClient(main.app)
+    assert c.post(f"/admin/orders/{uuid.uuid4()}/approve").status_code == 401
+    assert c.post(f"/admin/orders/{uuid.uuid4()}/cancel").status_code == 401
+
+
+def test_the_buyers_cancel_window_is_before_print():
+    from repositories.gift_orders import buyer_can_cancel
+
+    assert buyer_can_cancel("paid", "none")
+    assert buyer_can_cancel("paid", "submitted")
+    assert buyer_can_cancel("paid", "failed")
+    for too_late in ("submitting", "on_hold", "confirmed", "shipped", "canceled"):
+        assert not buyer_can_cancel("paid", too_late)
+    assert not buyer_can_cancel("pending", "none") and not buyer_can_cancel("refunded", "canceled")
+
+
+def test_buyer_cancel_needs_a_signed_in_buyer():
+    import uuid
+
+    from fastapi.testclient import TestClient
+    import main
+
+    assert TestClient(main.app).post(f"/me/orders/{uuid.uuid4()}/cancel").status_code == 401

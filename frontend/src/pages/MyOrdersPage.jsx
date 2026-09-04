@@ -121,10 +121,12 @@ export default function MyOrdersPage() {
 
 // One word on the row; the receipt has the sentence.
 function statusWord(o) {
-  if (o.status === 'refunded') return 'Refunded';
+  if (o.status === 'refunded') return o.fulfillment_status === 'canceled' ? 'Cancelled · refunded' : 'Refunded';
   if (o.status === 'pending') return 'Confirming payment';
   if (o.fulfillment_status === 'failed') return 'Problem — we are on it';
   if (o.fulfillment_status === 'on_hold') return 'On hold — we are on it';
   if (o.fulfillment_status === 'shipped') return `Shipped${o.carrier ? ` with ${o.carrier}` : ''}`;
-  return 'Being made';
+  if (o.fulfillment_status === 'confirmed') return 'Being made';
+  if (o.fulfillment_status === 'submitted') return 'Waiting to be sent to print';
+  return 'Order received';
 }
