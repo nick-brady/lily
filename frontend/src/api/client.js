@@ -341,6 +341,13 @@ export const api = {
     return jsonOrThrow(res);
   },
 
+  // The receipt after Stripe: this order and any companion paid in the
+  // same session. Unauthenticated; the order id is the key.
+  async getOrderReceipt(slug, orderId) {
+    const res = await fetch(`${API_URL}/b/${slug}/orders/${orderId}`);
+    return jsonOrThrow(res);
+  },
+
   async getShippingAddress(birthId) {
     const res = await fetch(`${API_URL}/birth/${birthId}/shipping-address`, {});
     return jsonOrThrow(res);

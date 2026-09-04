@@ -320,7 +320,9 @@ confirm path via the CAS in `mark_paid`). It only needs the endpoint to exist.
 
 # An order confirmation page
 
-*Written 2026-09-03. Not built.*
+*Written 2026-09-03. Built 2026-09-04 — `/b/{slug}/order/{id}`, see the
+DECISIONS entry "Stripe sends the buyer back to a receipt, not the page".
+Kept for what it argued should and shouldn't be on it.*
 
 After Stripe, the buyer lands straight back on the birth page with a banner:
 "Your gift is on its way — thank you 🤍". It works, and it is confusing:
