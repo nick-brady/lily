@@ -17,6 +17,8 @@ gift). They skip shipping/fulfillment entirely; see `grant_storage_gift`.
 """
 from __future__ import annotations
 
+import logging
+
 import os
 import uuid
 from datetime import datetime, timedelta, timezone
@@ -52,6 +54,8 @@ _DAYS_PER_YEAR = 365
 
 MarkPaidOutcome = Literal["paid", "already_paid", "already_refunded", "claim_lost"]
 
+
+logger = logging.getLogger(__name__)
 
 def create_pending_order(
     db: Session,
@@ -276,6 +280,14 @@ def _printful_confirm_enabled() -> bool:
     return os.getenv("PRINTFUL_CONFIRM_ORDERS", "").lower() in ("1", "true", "yes")
 
 
+def partner_external_id(order_id: uuid.UUID) -> str:
+    """Our order id as the partner will accept it. Printful caps external
+    ids at 32 characters: the bare hex of the UUID fits exactly, and the
+    hyphenated form — 36 — was rejected with "Invalid External ID" on the
+    very first real order (2026-09-03)."""
+    return order_id.hex
+
+
 def submit_shipment(shipment_id: uuid.UUID) -> None:
     """Submit one shipment to the fulfillment partner as a (default: draft)
     order. Runs as a BackgroundTask after the response, so it owns its own
@@ -301,6 +313,9 @@ def submit_shipment(shipment_id: uuid.UUID) -> None:
         rendering = db.get(GiftRendering, order.gift_rendering_id)
 
         def fail(reason: str) -> None:
+            # a paid order that will not ship is the one failure that must
+            # never be quiet: the row records it, and so does the log
+            logger.error("gift shipment %s failed: %s", shipment_id, reason)
             shipment.fulfillment_status = "failed"
             shipment.failure_reason = reason[:500]
             db.commit()
@@ -347,7 +362,7 @@ def submit_shipment(shipment_id: uuid.UUID) -> None:
                         "files": files,
                     }
                 ],
-                external_id=str(order.id),
+                external_id=partner_external_id(order.id),
                 confirm=_printful_confirm_enabled(),
                 gift=(
                     {"subject": "A gift for you", "message": order.gift_message}
@@ -360,6 +375,7 @@ def submit_shipment(shipment_id: uuid.UUID) -> None:
             db.commit()
         except Exception as exc:  # OrderError or any transport/storage error
             db.rollback()
+            logger.error("gift shipment %s failed: %s", shipment_id, exc, exc_info=True)
             shipment = db.get(GiftShipment, shipment_id)
             if shipment is not None:
                 shipment.fulfillment_status = "failed"

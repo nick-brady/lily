@@ -657,10 +657,26 @@ def test_printful_create_order_confirm_flag_and_error():
     a = PrintfulAdapter(
         api_key="k", client=_client(handler, base="https://api.printful.com")
     )
-    with pytest.raises(OrderError):
+    with pytest.raises(OrderError) as exc:
         a.create_order(
             recipient={}, items=[], external_id="x", confirm=True
         )
+    # the partner's own words, not just the status line — "400 Bad Request"
+    # on its own cost an evening's debugging on the first real order
+    assert "400" in str(exc.value) and "bad" in str(exc.value)
+
+
+def test_partner_external_id_fits_printful():
+    import uuid
+
+    from repositories.gift_orders import partner_external_id
+
+    oid = uuid.UUID("638659f9-b331-4d03-b7c2-93578c233519")
+    ext = partner_external_id(oid)
+    assert len(ext) <= 32
+    assert "-" not in ext
+    # and it still round-trips to the order
+    assert uuid.UUID(ext) == oid
 
 
 # ── webhook dispatch ──────────────────────────────────────────────────────
