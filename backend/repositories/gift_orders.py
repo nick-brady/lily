@@ -508,6 +508,8 @@ def apply_partner_event(db: Session, event: dict) -> str:
         shipment.failure_reason = None
         db.commit()
         return "shipped"
+    if kind == "order_canceled" and shipment.fulfillment_status == "canceled":
+        return "ignored"  # the echo of our own cancel from the admin page
     if kind in ("order_failed", "order_canceled"):
         shipment.fulfillment_status = "failed"
         shipment.failure_reason = f"printful {kind.split('_')[1]}: {reason}"[:500]
@@ -522,7 +524,8 @@ def apply_partner_event(db: Session, event: dict) -> str:
         return "held"
     # order_remove_hold
     if shipment.fulfillment_status == "on_hold":
-        shipment.fulfillment_status = "submitted"
+        # back to where it was: in production if we had approved it, else a draft
+        shipment.fulfillment_status = "confirmed" if shipment.confirmed_at else "submitted"
         shipment.failure_reason = None
         db.commit()
     return "released"

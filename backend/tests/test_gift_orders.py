@@ -4,6 +4,7 @@ webhook dispatch, and the Printful order call. All DB-free."""
 from __future__ import annotations
 
 import asyncio
+from datetime import datetime, timezone
 import uuid
 from types import SimpleNamespace
 from urllib.parse import parse_qs
@@ -950,7 +951,8 @@ def test_failed_canceled_and_hold_are_recorded_honestly(caplog):
 
     def fresh():
         return SimpleNamespace(id=uuid.uuid4(), gift_order_id=uuid.uuid4(), fulfillment_status="submitted",
-                               failure_reason=None, carrier=None, tracking_number=None, tracking_url=None, shipped_at=None)
+                               failure_reason=None, carrier=None, tracking_number=None, tracking_url=None, shipped_at=None,
+                               confirmed_at=None)
 
     s = fresh()
     caplog.set_level(logging.INFO)
@@ -963,6 +965,20 @@ def test_failed_canceled_and_hold_are_recorded_honestly(caplog):
     assert s.fulfillment_status == "on_hold"
     assert apply_partner_event(_ShipmentDb(s), {"type": "order_remove_hold", "data": {"order": {"external_id": s.gift_order_id.hex}}}) == "released"
     assert s.fulfillment_status == "submitted" and s.failure_reason is None
+
+    # a hold lifted from an order we had approved goes back to production, not to "approve?"
+    s = fresh()
+    s.fulfillment_status, s.confirmed_at = "confirmed", datetime.now(timezone.utc)
+    apply_partner_event(_ShipmentDb(s), {"type": "order_put_hold", "data": {"order": {"external_id": s.gift_order_id.hex}}})
+    apply_partner_event(_ShipmentDb(s), {"type": "order_remove_hold", "data": {"order": {"external_id": s.gift_order_id.hex}}})
+    assert s.fulfillment_status == "confirmed"
+
+    # Printful echoes our own cancel back as order_canceled; that is not a failure
+    s = fresh()
+    s.fulfillment_status = "canceled"
+    caplog.clear()
+    assert apply_partner_event(_ShipmentDb(s), {"type": "order_canceled", "data": {"order": {"external_id": s.gift_order_id.hex}}}) == "ignored"
+    assert s.fulfillment_status == "canceled" and not any(r.levelno == logging.ERROR for r in caplog.records)
 
     assert apply_partner_event(_ShipmentDb(fresh()), {"type": "product_synced", "data": {}}) == "ignored"
 
