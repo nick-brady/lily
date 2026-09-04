@@ -178,6 +178,12 @@ class PrintfulAdapter(FulfillmentAdapter):
             if order_id is None:
                 raise OrderError("printful order response missing id")
             return OrderResult(order_id=str(order_id), status=result.get("status", ""))
+        except httpx.HTTPStatusError as exc:
+            # the status line alone ("400 Bad Request") says nothing; the
+            # partner's own words are in the body
+            raise OrderError(
+                f"printful order: {exc.response.status_code} {_error_text(exc.response)}"
+            ) from exc
         except httpx.HTTPError as exc:
             raise OrderError(f"printful order: {exc}") from exc
 
@@ -326,6 +332,18 @@ class PrintfulAdapter(FulfillmentAdapter):
         return MockupResult(
             image_bytes=image_bytes, content_type=content_type, source_url=url
         )
+
+
+def _error_text(resp: httpx.Response) -> str:
+    """Printful's explanation from an error response, or the raw body."""
+    try:
+        data = resp.json()
+    except ValueError:
+        return resp.text[:300]
+    err = data.get("error") if isinstance(data, dict) else None
+    if isinstance(err, dict):
+        return str(err.get("message") or err.get("reason") or err)[:300]
+    return str(data.get("result") or data)[:300]
 
 
 def _int_or_none(value) -> int | None:
