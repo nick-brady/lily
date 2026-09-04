@@ -22,6 +22,7 @@ from fastapi import (
 from sqlalchemy.orm import Session
 
 import address_validation
+import admin as admin_mod
 import gift_fulfillment
 import gift_receipt_email
 import gift_shipping
@@ -39,6 +40,7 @@ from routes.deps import (
 )
 from routes.gifts import load_rendering_for_products
 from schemas import (
+    AdminOrderOut,
     MyOrderOut,
     OrderReceiptLineOut,
     OrderReceiptOut,
@@ -477,6 +479,16 @@ def put_shipping_address(
     }
     db.commit()
     return ShippingAddressOut(address=access.birth.shipping_address)
+
+
+@router.get("/admin/orders", response_model=list[AdminOrderOut])
+def admin_orders(
+    admin_user: User = Depends(admin_mod.get_admin_user),
+    db: Session = Depends(get_db),
+) -> list[AdminOrderOut]:
+    """Every order, for the operator: buyer, item, money in and out, where
+    the printer has it, and the ids to find it in Stripe and Printful."""
+    return [AdminOrderOut(**row) for row in gift_orders_repo.admin_orders(db)]
 
 
 @router.get("/me/orders", response_model=list[MyOrderOut])

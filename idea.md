@@ -205,6 +205,12 @@ what was filed.
   it's set on every path that stores a number, and that clearing the number
   clears it.
 
+- **The Terms' "Text messaging terms" section** promises two texts the app
+  does not send — "a single 'first day' memory update after a birth" and "a
+  yearly memory message about your own page" — and omits the invitation
+  text it does send. The registered campaign, the Terms and the code have to
+  say the same three or four things.
+
 ## How to do it
 
 Sit with the Twilio console open on the campaign page and a phone in hand.

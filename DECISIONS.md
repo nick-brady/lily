@@ -640,6 +640,43 @@ called the whole $24.69 revenue.
 
 ---
 
+### Keepsakes are made to order: cancel before print, replaced if wrong, no refund for a change of mind
+*2026-09-04*
+
+Not "all sales are final" — off-brand for a product whose whole tone is
+generosity, and unenforceable for a defective item anyway. The Terms'
+Purchases section now says what print-on-demand shops actually do:
+
+- **Cancel for a full refund any time before we send it to print.** Every
+  Printful draft is approved by hand, so this window already exists; it
+  costs nothing but Stripe's fee (about a dollar).
+- **Once it's in production, no refund for a change of mind.** The item
+  exists and has one family's baby on it.
+- **Damaged, defective or wrong: replaced or refunded, no argument.** Photo
+  within 30 days. Printful reimburses its own errors, so this rarely costs us.
+- **The address is the buyer's responsibility**, with help offered.
+
+> "I'm happy to issue refunds, but the reality is, like, if they order
+> something on Printful and I have to eat the costs, that kind of sucks."
+
+The only cases that cost us are change-of-mind after production and a wrong
+address, and the policy puts both on the buyer while staying kind. Refunds
+go back to the card; Stripe keeps its fee either way.
+
+**Where:** `frontend/src/pages/TermsPage.jsx` (Purchases), updated
+2026-09-04; `help@arrivalstory.com` is the contact.
+
+### The admin site has an Orders page
+*2026-09-04*
+
+Every order, newest first: reference, item, which page, buyer, charged, kept,
+and one word of state — red when the operator must act. A row opens to the
+money split (item/postage, Stripe fee, Printful cost), the printer's state
+and reason, tracking, the buyer's email, the gift message, and doors into
+the Stripe payment and Printful's orders dashboard. The one place to stand
+when a buyer writes in quoting a reference. `GET /admin/orders`, gated like
+the rest of the admin API.
+
 ### The printer tells us when it ships, and when it doesn't
 *2026-09-04*
 

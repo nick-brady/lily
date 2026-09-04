@@ -1,10 +1,10 @@
 import LegalLayout, { LegalSection } from '../components/LegalLayout';
 
-const SUPPORT_EMAIL = 'nicholas.aaron.brady@gmail.com';
+const SUPPORT_EMAIL = 'help@arrivalstory.com';
 
 export default function TermsPage() {
   return (
-    <LegalLayout title="Terms of Service" updated="July 5, 2026">
+    <LegalLayout title="Terms of Service" updated="September 4, 2026">
       <LegalSection heading="Agreement">
         <p>
           These terms are an agreement between you and Arrival Story ("we", "us") covering
@@ -74,12 +74,40 @@ export default function TermsPage() {
 
       <LegalSection heading="Purchases">
         <p>
-          Payments are processed by Stripe. Storage plans keep a page live for the period
-          purchased; when a plan lapses the page moves to archived storage and can be
-          reactivated. Physical keepsakes are custom-made from your page's content, so
-          they generally can't be returned — but if an order arrives damaged or defective,
-          email us and we'll replace it. Prices are shown before you pay; taxes and
-          shipping may apply to physical goods.
+          Payments are processed by Stripe. Prices are shown before you pay; postage is
+          quoted for the address at checkout and charged on top. Storage plans keep a page
+          live for the period purchased; when a plan lapses the page moves to archived
+          storage and can be reactivated.
+        </p>
+        <p>
+          <strong>Keepsakes are made to order</strong>, each one from a single family's
+          page, so they can't be resold and generally can't be returned. What that means
+          in practice:
+        </p>
+        <ul className="list-disc pl-5 space-y-1">
+          <li>
+            <strong>Cancelling.</strong> You can cancel for a full refund any time before we
+            send your order to print — usually within a day of ordering. Email{' '}
+            <a href="mailto:help@arrivalstory.com" className="underline underline-offset-2">help@arrivalstory.com</a>{' '}
+            with your order reference.
+          </li>
+          <li>
+            <strong>Once it's in production</strong>, we can't refund a change of mind: the
+            item already exists, and it's yours.
+          </li>
+          <li>
+            <strong>Damaged, defective or wrong.</strong> If it arrives broken, misprinted, or
+            not what you ordered, we replace it or refund you, no argument. Email us a photo
+            within 30 days of delivery.
+          </li>
+          <li>
+            <strong>Addresses.</strong> Orders ship to the address given at checkout, or the
+            family's saved address. Please check it; we can't recover a parcel sent to a wrong
+            address, though we'll help however we can.
+          </li>
+        </ul>
+        <p>
+          Refunds go back to the card that paid and usually appear within a few days.
         </p>
       </LegalSection>
 

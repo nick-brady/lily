@@ -100,6 +100,12 @@ export const api = {
     return jsonOrThrow(res);
   },
 
+  // Every order, newest first, with money in and out and the printer's state.
+  async getOrders() {
+    const res = await fetch(`${API_URL}/admin/orders`, { headers: authHeaders() });
+    return jsonOrThrow(res);
+  },
+
   // Public. Answers 503 with the same body when something is down, so read
   // the body either way rather than throwing on status.
   async getHealth() {

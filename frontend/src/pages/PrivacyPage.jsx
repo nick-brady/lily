@@ -1,6 +1,6 @@
 import LegalLayout, { LegalSection } from '../components/LegalLayout';
 
-const SUPPORT_EMAIL = 'nicholas.aaron.brady@gmail.com';
+const SUPPORT_EMAIL = 'help@arrivalstory.com';
 
 export default function PrivacyPage() {
   return (

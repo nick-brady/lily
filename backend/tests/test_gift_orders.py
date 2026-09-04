@@ -988,3 +988,20 @@ def test_shipped_email_tracks_the_parcel():
     assert "shipped with USPS" in body_html and "Track the parcel" in body_html
     assert 'href="https://tools.usps.com/go/x?tLabels=1&amp;y=2"' in body_html
     assert "Track the parcel: https://tools.usps.com/go/x?tLabels=1&y=2" in text
+
+
+def test_admin_orders_requires_an_admin():
+    from fastapi.testclient import TestClient
+    import main
+
+    assert TestClient(main.app).get("/admin/orders").status_code == 401
+
+
+def test_stripe_dashboard_url_follows_the_key_mode(monkeypatch):
+    from repositories.gift_orders import stripe_dashboard_url
+
+    monkeypatch.setenv("STRIPE_SECRET_KEY", "sk_test_x")
+    assert stripe_dashboard_url("pi_1") == "https://dashboard.stripe.com/test/payments/pi_1"
+    monkeypatch.setenv("STRIPE_SECRET_KEY", "sk_live_x")
+    assert stripe_dashboard_url("pi_1") == "https://dashboard.stripe.com/payments/pi_1"
+    assert stripe_dashboard_url(None) is None
