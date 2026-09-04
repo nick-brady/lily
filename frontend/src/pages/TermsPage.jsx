@@ -87,7 +87,8 @@ export default function TermsPage() {
         <ul className="list-disc pl-5 space-y-1">
           <li>
             <strong>Cancelling.</strong> You can cancel for a full refund any time before we
-            send your order to print — usually within a day of ordering. Email{' '}
+            send your order to print — usually within a day of ordering. Your receipt page
+            has a cancel button until then; after that, email{' '}
             <a href="mailto:help@arrivalstory.com" className="underline underline-offset-2">help@arrivalstory.com</a>{' '}
             with your order reference.
           </li>

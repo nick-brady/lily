@@ -296,7 +296,7 @@ function OrderRow({ o, st, isOpen, onToggle, onApprove, onCancel }) {
 
 function Detail({ o, onApprove, onCancel }) {
   const isDraft = o.status === 'paid' && o.fulfillment_status === 'submitted' && o.printful_order_id;
-  const canCancel = o.status === 'paid' && ['none', 'submitting', 'submitted', 'failed', 'on_hold'].includes(o.fulfillment_status);
+  const canCancel = o.status === 'paid' && ['none', 'submitted', 'failed', 'on_hold'].includes(o.fulfillment_status);
   const rows = [
     ['destination', o.destination && `${o.recipient_kind === 'family' ? 'family' : 'buyer'} · ${o.destination}`],
     ['product', o.product_display_name],

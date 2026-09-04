@@ -324,6 +324,15 @@ def _destination(address: dict | None) -> str | None:
     return ", ".join(p for p in (city, state) if p) or None
 
 
+def buyer_can_cancel(status: str, fulfillment_status: str) -> bool:
+    """The Terms' window: a full refund any time before we send it to print.
+    A draft at the printer, or nothing there yet, or a failed submission —
+    all still ours to undo. Not while the worker is mid-submit (a second's
+    race), not on hold (the printer is asking us something), and never once
+    approved or shipped."""
+    return status == "paid" and fulfillment_status in ("none", "submitted", "failed")
+
+
 def receipt_line(db: Session, o: GiftOrder, birth: Birth) -> dict:
     """One order as its buyer may see it (see OrderReceiptLineOut)."""
     item = db.get(GiftCatalogItem, o.gift_catalog_item_id)
@@ -361,6 +370,8 @@ def receipt_line(db: Session, o: GiftOrder, birth: Birth) -> dict:
         "carrier": shipment.carrier if shipment else None,
         "tracking_url": shipment.tracking_url if shipment else None,
         "shipped_at": shipment.shipped_at if shipment else None,
+        "confirmed_at": shipment.confirmed_at if shipment else None,
+        "can_cancel": buyer_can_cancel(o.status, shipment.fulfillment_status if shipment else "none"),
         "created_at": o.created_at,
     }
 

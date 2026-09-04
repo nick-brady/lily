@@ -29,11 +29,11 @@ import gift_fulfillment
 import gift_receipt_email
 import gift_shipping
 import payments
-from auth import get_current_user
+from auth import get_current_user, get_optional_current_user
 from db import get_db
 from fulfillment import products as fulfillment_products
 from fulfillment.base import OrderError
-from models import GiftCatalogItem, GiftKind, GiftOrder, GiftRenderingStatus, GiftShipment, User
+from models import Birth, GiftCatalogItem, GiftKind, GiftOrder, GiftRenderingStatus, GiftShipment, User
 from repositories import gift_orders as gift_orders_repo
 from routes.deps import (
     BirthAccess,
@@ -569,6 +569,7 @@ def gift_order_receipt(
     slug: str,
     order_id: uuid.UUID,
     response: Response,
+    viewer: User | None = Depends(get_optional_current_user),
     db: Session = Depends(get_db),
 ) -> OrderReceiptOut:
     """The page after Stripe: what was bought, where it's going, what it
@@ -588,7 +589,40 @@ def gift_order_receipt(
             OrderReceiptLineOut(**line)
             for line in gift_orders_repo.receipt(db, order, birth)
         ],
+        yours=viewer is not None and order.purchased_by_user_id == viewer.id,
     )
+
+
+@router.post("/me/orders/{order_id}/cancel", response_model=OrderReceiptLineOut)
+def cancel_my_order(
+    order_id: uuid.UUID,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> OrderReceiptLineOut:
+    """The buyer calls it off, any time before we send it to print — the
+    Terms' promise, self-service because nothing has happened yet that a
+    person would need to undo. Cancels the printer's draft, refunds in
+    full, releases a family claim. Idempotent; 409 once it's too late."""
+    order = db.get(GiftOrder, order_id)
+    if order is None or order.purchased_by_user_id != current_user.id or order.status == "pending":
+        raise HTTPException(status_code=404, detail="Unknown order")
+    birth = db.get(Birth, order.birth_id)
+    shipment = db.scalar(
+        select(GiftShipment).where(GiftShipment.gift_order_id == order_id).order_by(GiftShipment.created_at.desc())
+    )
+    fulfillment_status = shipment.fulfillment_status if shipment else "none"
+    if order.status != "refunded" and not gift_orders_repo.buyer_can_cancel(order.status, fulfillment_status):
+        raise HTTPException(status_code=409, detail="This order has already been sent to print and can't be cancelled here.")
+    try:
+        gift_orders_repo.cancel_and_refund(
+            db, order, shipment, adapter=fulfillment.get_adapter(), stripe=payments.get_stripe()
+        )
+    except gift_orders_repo.NotADraft as exc:
+        raise HTTPException(status_code=409, detail=str(exc))
+    except (OrderError, payments.StripeError) as exc:
+        logger.error("buyer cancel failed for order %s: %s", order_id, exc)
+        raise HTTPException(status_code=502, detail="We couldn't cancel it just now. Email us and we'll sort it out.")
+    return OrderReceiptLineOut(**gift_orders_repo.receipt_line(db, order, birth))
 
 
 @router.get(

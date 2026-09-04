@@ -1104,3 +1104,23 @@ def test_admin_order_actions_require_an_admin():
     c = TestClient(main.app)
     assert c.post(f"/admin/orders/{uuid.uuid4()}/approve").status_code == 401
     assert c.post(f"/admin/orders/{uuid.uuid4()}/cancel").status_code == 401
+
+
+def test_the_buyers_cancel_window_is_before_print():
+    from repositories.gift_orders import buyer_can_cancel
+
+    assert buyer_can_cancel("paid", "none")
+    assert buyer_can_cancel("paid", "submitted")
+    assert buyer_can_cancel("paid", "failed")
+    for too_late in ("submitting", "on_hold", "confirmed", "shipped", "canceled"):
+        assert not buyer_can_cancel("paid", too_late)
+    assert not buyer_can_cancel("pending", "none") and not buyer_can_cancel("refunded", "canceled")
+
+
+def test_buyer_cancel_needs_a_signed_in_buyer():
+    import uuid
+
+    from fastapi.testclient import TestClient
+    import main
+
+    assert TestClient(main.app).post(f"/me/orders/{uuid.uuid4()}/cancel").status_code == 401

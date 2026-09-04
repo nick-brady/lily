@@ -11,13 +11,20 @@ describe('presentOrder', () => {
     expect(p.detail).toMatch(/nothing more for you to do/i);
   });
 
-  it('thanks them and says nothing more while the printer has not refused it', () => {
-    for (const state of ['none', 'submitting', 'submitted']) {
+  it('thanks them and says nothing more until the printer has it', () => {
+    for (const state of ['none', 'submitting']) {
       const p = presentOrder(paid(state));
       expect(p.headline).toMatch(/Thank you/);
       expect(p.detail).toBeNull();
       expect(p.tone).toBe('good');
     }
+  });
+
+  it('says where it stands: waiting on us, then being made', () => {
+    expect(presentOrder(paid('submitted')).detail).toMatch(/waiting for us/);
+    const made = presentOrder({ status: 'paid', fulfillment_status: 'confirmed', confirmed_at: '2026-09-05T12:00:00Z' });
+    expect(made.headline).toMatch(/being made/);
+    expect(made.detail).toMatch(/Sent to print on/);
   });
 
   it('waits before worrying about a pending payment', () => {

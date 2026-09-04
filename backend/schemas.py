@@ -339,7 +339,7 @@ class OrderReceiptLineOut(BaseModel):
     id: uuid.UUID
     reference: str  # eight characters of the id, what they quote
     status: str  # pending | paid | refunded
-    fulfillment_status: str  # none | submitting | submitted | failed
+    fulfillment_status: str  # none | submitting | submitted | confirmed | on_hold | shipped | failed | canceled
     recipient_kind: str  # family | self
     item_display_name: str
     product_display_name: Optional[str] = None
@@ -353,6 +353,9 @@ class OrderReceiptLineOut(BaseModel):
     carrier: Optional[str] = None
     tracking_url: Optional[str] = None
     shipped_at: Optional[datetime] = None
+    # when we sent it to print, and whether the buyer may still call it off
+    confirmed_at: Optional[datetime] = None
+    can_cancel: bool = False
     created_at: datetime
 
 
@@ -408,6 +411,7 @@ class OrderReceiptOut(BaseModel):
     child_name: Optional[str] = None
     theme: str = "lily"
     orders: list[OrderReceiptLineOut]
+    yours: bool = False  # the signed-in viewer is the buyer, so the page may offer to cancel
 
 
 class ReactionCountOut(BaseModel):
