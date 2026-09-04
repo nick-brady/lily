@@ -443,6 +443,47 @@ client draws rather than decides.
 
 ---
 
+# An order confirmation email
+
+*Written 2026-09-04. Not built.*
+
+Arrival Story sends no email when someone buys a keepsake. The receipt page
+(built 2026-09-04) is only there while the tab is; the Stripe receipt is a
+dashboard setting ("email customers about successful payments"), off in the
+sandbox and easy to forget in live, and it says "Arrival Story $24.69" with
+none of the story.
+
+> "do we send an email from arrival story saying pretty much the same
+> thing? thanks for your order, preview, cost, etc."
+
+## What it is
+
+One email, sent when the order is confirmed (from `fulfill_gift_from_session`,
+after `mark_paid`, best-effort like the fee lookup — never a reason to fail
+fulfillment). Same content as the receipt page, same honesty: the design
+image, item and product option, to whom and where (city and state), item /
+postage / total, the reference, the gift message back to them, and a link to
+the receipt page. Sent by Resend, which already sends the sign-in codes, so
+there is a sender, a template style (`messenger._email_html`) and an env var.
+
+If a shipment later fails, a second email is worth considering — but that is
+the operator's problem to fix first, and telling the buyer before there is
+anything to say is worse than a short delay.
+
+## What it needs
+
+- **The buyer's email.** The order has `purchased_by_user_id`; a phone-only
+  account has no address. Stripe collects one at checkout
+  (`customer_details.email` on the session) — record it on the order at
+  confirm, use it once for this, and treat it as the buyer's, not ours.
+- **A `messenger` method** beyond the three the ABC has, or a module-level
+  `send_email(to, subject, html, text)` — the Twilio and Console messengers
+  needn't grow an order-email method.
+- **Idempotency**: one email per order, keyed on the order id, so the
+  webhook and the confirm path can't both send it.
+
+---
+
 # The loop that already half exists
 
 *Written 2026-08-31. Not built — a thing to decide, not a task.*

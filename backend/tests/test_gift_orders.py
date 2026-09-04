@@ -761,6 +761,8 @@ def test_destination_is_city_and_state_only():
     assert _destination({"name": "J", "line1": "1 St", "city": "Raleigh", "state": "NC", "postal_code": "27601"}) == "Raleigh, NC"
     # a partner-shaped address (state_code) reads the same
     assert _destination({"city": "Raleigh", "state_code": "NC"}) == "Raleigh, NC"
+    # the partner stores it shouting; the buyer shouldn't read it that way
+    assert _destination({"city": "RALEIGH", "state": "NC"}) == "Raleigh, NC"
     assert _destination(None) is None
     assert _destination({"line1": "1 St"}) is None
 

@@ -11,10 +11,13 @@ describe('presentOrder', () => {
     expect(p.detail).toMatch(/nothing more for you to do/i);
   });
 
-  it('thanks them once the order is with the printer, and while it is being sent', () => {
-    expect(presentOrder(paid('submitted')).headline).toMatch(/Thank you/);
-    expect(presentOrder(paid('none')).detail).toMatch(/Sending/);
-    expect(presentOrder(paid('submitting')).tone).toBe('good');
+  it('thanks them and says nothing more while the printer has not refused it', () => {
+    for (const state of ['none', 'submitting', 'submitted']) {
+      const p = presentOrder(paid(state));
+      expect(p.headline).toMatch(/Thank you/);
+      expect(p.detail).toBeNull();
+      expect(p.tone).toBe('good');
+    }
   });
 
   it('waits before worrying about a pending payment', () => {
@@ -35,8 +38,10 @@ describe('destinationLine', () => {
 });
 
 describe('stillSettling', () => {
-  it('is true while any order is pending', () => {
-    expect(stillSettling([{ status: 'paid' }, { status: 'pending' }])).toBe(true);
-    expect(stillSettling([{ status: 'paid' }, { status: 'refunded' }])).toBe(false);
+  it('keeps asking while a payment is pending or the printer has not answered', () => {
+    expect(stillSettling([{ status: 'paid', fulfillment_status: 'submitted' }, { status: 'pending' }])).toBe(true);
+    expect(stillSettling([{ status: 'paid', fulfillment_status: 'none' }])).toBe(true);
+    expect(stillSettling([{ status: 'paid', fulfillment_status: 'submitted' }, { status: 'refunded' }])).toBe(false);
+    expect(stillSettling([{ status: 'paid', fulfillment_status: 'failed' }])).toBe(false);
   });
 });

@@ -315,6 +315,8 @@ def _destination(address: dict | None) -> str | None:
     if not address:
         return None
     city = address.get("city")
+    if city and city.isupper():
+        city = city.title()  # "RALEIGH" as the partner stores it → "Raleigh"
     state = address.get("state") or address.get("state_code")
     return ", ".join(p for p in (city, state) if p) or None
 
@@ -391,6 +393,42 @@ def my_orders(db: Session, *, user_id: uuid.UUID) -> list[dict]:
         {**receipt_line(db, o, b), "slug": b.slug, "child_name": b.child_name}
         for o, b in rows
     ]
+
+
+def backfill_payment_fees(db: Session, stripe, *, limit: int = 20) -> int:
+    """Stripe's balance transaction can trail the payment by a few seconds,
+    so the fee is sometimes not there when the order is confirmed. The
+    worker calls this on its housekeeping tick to fill in the gaps. Returns
+    how many orders were filled."""
+    if stripe is None:
+        return 0
+    orders = list(
+        db.scalars(
+            select(GiftOrder)
+            .where(
+                GiftOrder.status == "paid",
+                GiftOrder.payment_fee_cents.is_(None),
+                GiftOrder.stripe_payment_intent_id.isnot(None),
+            )
+            .order_by(GiftOrder.paid_at.desc())
+            .limit(limit)
+        )
+    )
+    by_intent: dict[str, list[GiftOrder]] = {}
+    for o in orders:
+        by_intent.setdefault(o.stripe_payment_intent_id, []).append(o)
+    filled = 0
+    for pi, group in by_intent.items():
+        # every order this payment covered shares the fee, in proportion
+        siblings = list(
+            db.scalars(select(GiftOrder).where(GiftOrder.stripe_payment_intent_id == pi, GiftOrder.status == "paid"))
+        )
+        fee = stripe.payment_fee_cents(pi)
+        if fee is None:
+            continue
+        record_payment_fees(db, orders=siblings, fee_cents=fee)
+        filled += len(group)
+    return filled
 
 
 def partner_external_id(order_id: uuid.UUID) -> str:

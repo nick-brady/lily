@@ -6,6 +6,7 @@ import {
   POLL_EVERY_MS,
   POLL_TRIES,
   destinationLine,
+  paymentSettling,
   presentOrder,
   stillSettling,
 } from '../utils/orderPresentation';
@@ -65,7 +66,7 @@ export default function OrderConfirmationPage() {
   }, [slug, orderId]);
 
   const theme = getTheme(receipt?.theme);
-  const settling = receipt ? stillSettling(receipt.orders) && tries < POLL_TRIES : false;
+  const settling = receipt ? paymentSettling(receipt.orders) && tries < POLL_TRIES : false;
   const childName = receipt?.child_name;
   const pageName = childName ? `${childName}'s page` : 'the page';
 
@@ -142,9 +143,11 @@ function OrderCard({ line, settling, first, childName }) {
         ) : (
           <h2 className="text-xl font-semibold t-ink leading-snug">{says.headline}</h2>
         )}
-        <p className="mt-2 text-sm" style={{ color: tone }}>
-          {says.detail}
-        </p>
+        {says.detail && (
+          <p className="mt-2 text-sm" style={{ color: tone }}>
+            {says.detail}
+          </p>
+        )}
       </header>
 
       <div className="flex gap-4 items-start">
