@@ -937,9 +937,11 @@ function GiftCheckoutSheet({
     </div>
   );
 
-  if (embedded) return content;
-
+  // embedded (inside the gift editor) it is a panel, not a dialog: the ref
+  // attaches to nothing and the hook does nothing
   const panelRef = useDialog(onClose);
+
+  if (embedded) return content;
 
   return (
     <div

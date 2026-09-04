@@ -67,8 +67,6 @@ export default function PoolPill({
     label = "🎈 guess the baby's size & arrival day";
   }
 
-  const panelRef = useDialog(() => setOpen(false), { label: 'The guessing jar' });
-
   return (
     <>
       {renderTrigger ? renderTrigger(board, () => setOpen(true)) : (
@@ -93,24 +91,7 @@ export default function PoolPill({
           descendants — without the portal the "full-screen" sheet pins
           itself inside the header's box. */}
       {open && createPortal(
-        <div
-          className="fixed inset-0 z-50 bg-black/40 flex items-end sm:items-center justify-center"
-          onClick={() => setOpen(false)}
-        >
-          <div
-            // Widens with the screen. The board is a six-column table whose
-            // cells don't wrap, so a phone-width cap on a desktop squeezed
-            // every guess into two cramped lines while the page sat empty
-            // behind it. Still a bottom sheet on a phone, where full-width is
-            // the right shape.
-            className="animate-slide-up w-full sm:max-w-xl lg:max-w-3xl max-h-[85vh] overflow-y-auto
-                       bg-white dark:bg-gray-900 rounded-t-2xl sm:rounded-2xl shadow-xl p-2"
-            // The portal escapes the themed page root, so the theme's CSS
-            // variables ride along explicitly.
-            style={themeStyle}
-            ref={panelRef}
-            onClick={(e) => e.stopPropagation()}
-          >
+        <PoolSheet onClose={() => setOpen(false)} themeStyle={themeStyle}>
             <Predictions
               slug={slug}
               birthId={birthId}
@@ -125,10 +106,39 @@ export default function PoolPill({
             >
               Close
             </button>
-          </div>
-        </div>,
+        </PoolSheet>,
         document.body,
       )}
     </>
+  );
+}
+
+// The sheet is its own component so the dialog hook mounts with it: PoolPill
+// stays on the page whether the sheet is open or not, and a hook there would
+// sit after its early returns and attach to nothing.
+function PoolSheet({ onClose, themeStyle, children }) {
+  const panelRef = useDialog(onClose, { label: 'The guessing jar' });
+  return (
+    <div
+      className="fixed inset-0 z-50 bg-black/40 flex items-end sm:items-center justify-center"
+      onClick={onClose}
+    >
+      <div
+        // Widens with the screen. The board is a six-column table whose
+        // cells don't wrap, so a phone-width cap on a desktop squeezed
+        // every guess into two cramped lines while the page sat empty
+        // behind it. Still a bottom sheet on a phone, where full-width is
+        // the right shape.
+        className="animate-slide-up w-full sm:max-w-xl lg:max-w-3xl max-h-[85vh] overflow-y-auto
+                   bg-white dark:bg-gray-900 rounded-t-2xl sm:rounded-2xl shadow-xl p-2 outline-none"
+        // The portal escapes the themed page root, so the theme's CSS
+        // variables ride along explicitly.
+        style={themeStyle}
+        ref={panelRef}
+        onClick={(e) => e.stopPropagation()}
+      >
+        {children}
+      </div>
+    </div>
   );
 }
