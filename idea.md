@@ -370,6 +370,69 @@ identifiers, our costs, or another thing to buy.
 
 ---
 
+# Gaps that mark themselves
+
+*Written 2026-09-03. Not built.*
+
+When contractions weren't recorded for a stretch — sleep, a car ride, the
+walk in from the parking garage — the parent has to tap the little clock on
+the next contraction to mark a "gap before" it. That flag
+(`ignore_interval_before` on the payload) is what keeps the stats honest:
+the interval chart and the keepsakes skip that span rather than drawing a
+two-hour-forty-minute "interval". It works, and nobody in labour is going to
+remember to do it.
+
+> "if there's a very high statistical probability there's a gap, then just
+> assume there is … it should appear different than a gap that they manually
+> assigned."
+
+## The rule
+
+A contraction's interval is a gap when it is wildly out of step with the
+ones around it — say more than five times the median of the previous few
+intervals, and at least twenty minutes. Lily's real data has two: 2h40m and
+3h05m, in a night where contractions were three to five minutes apart.
+Nothing near the boundary; the threshold can be generous.
+
+Three states per contraction, not two:
+
+| `ignore_interval_before` | means | drawn as |
+| --- | --- | --- |
+| `true` | the parent marked it | the gap pill as today |
+| absent, and the rule fires | assumed | the same pill, lighter, "gap before?" |
+| `false` | the parent said *no gap* | nothing; the interval counts |
+
+Absent-and-quiet is the common case and draws nothing. The parent's answer,
+either way, is stored so it never gets asked twice and never gets re-inferred
+after a "no".
+
+## The interaction
+
+Tap the lighter pill: *"We assumed a gap here — 2h 40m after the previous
+contraction, when they'd been about four minutes apart. Is that right?"*
+**Yes, there was a gap** writes `true`. **No, they kept coming** writes
+`false`. Tapping outside cancels and leaves it assumed. The existing clock
+button still toggles a manual mark for the cases the rule misses.
+
+## What treats it as a gap
+
+Everything that reads the flag today — `gift_stats`, `export.py`, the stats
+panel — reads one function instead: *is there a gap before this contraction*,
+which returns the explicit flag when present and the inference otherwise. So
+an assumed gap is a gap for the charts and the keepsakes from the moment it
+appears, and confirming it changes only how it's drawn. The inference lives
+in one place, server-side, and rides out on the event as `gap_assumed` so the
+client draws rather than decides.
+
+## Worth deciding
+
+- Whether the assumed state should also be shown to viewers, or only to the
+  parents who can answer the question. Probably parents only.
+- Whether a *manual* mark should suppress the question on neighbours — a
+  parent who marked one gap has shown they know the control exists.
+
+---
+
 # The loop that already half exists
 
 *Written 2026-08-31. Not built — a thing to decide, not a task.*
