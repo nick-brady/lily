@@ -45,6 +45,9 @@ class MockupResult:
 class OrderResult:
     order_id: str
     status: str
+    # what the partner will bill for this order, in cents, when they said:
+    # {"product", "shipping", "tax", "total"}
+    costs: dict | None = None
 
 
 @dataclass

@@ -177,7 +177,11 @@ class PrintfulAdapter(FulfillmentAdapter):
             order_id = result.get("id")
             if order_id is None:
                 raise OrderError("printful order response missing id")
-            return OrderResult(order_id=str(order_id), status=result.get("status", ""))
+            return OrderResult(
+                order_id=str(order_id),
+                status=result.get("status", ""),
+                costs=_costs_cents(result.get("costs")),
+            )
         except httpx.HTTPStatusError as exc:
             # the status line alone ("400 Bad Request") says nothing; the
             # partner's own words are in the body
@@ -332,6 +336,26 @@ class PrintfulAdapter(FulfillmentAdapter):
         return MockupResult(
             image_bytes=image_bytes, content_type=content_type, source_url=url
         )
+
+
+def _costs_cents(costs: dict | None) -> dict | None:
+    """Printful's `costs` block — dollar strings like "6.07" — as cents.
+    None when the response carried no costs (it always should)."""
+    if not isinstance(costs, dict):
+        return None
+
+    def cents(key: str) -> int:
+        try:
+            return int(round(float(costs.get(key) or 0) * 100))
+        except (TypeError, ValueError):
+            return 0
+
+    return {
+        "product": cents("subtotal"),
+        "shipping": cents("shipping"),
+        "tax": cents("tax") + cents("vat"),
+        "total": cents("total"),
+    }
 
 
 def _error_text(resp: httpx.Response) -> str:

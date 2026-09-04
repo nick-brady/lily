@@ -629,7 +629,10 @@ def test_printful_create_order_draft():
     def handler(req: httpx.Request) -> httpx.Response:
         seen["url"] = str(req.url)
         seen["json"] = req.read().decode()
-        return httpx.Response(200, json={"result": {"id": 4242, "status": "draft"}})
+        return httpx.Response(200, json={"result": {
+            "id": 4242, "status": "draft",
+            "costs": {"currency": "USD", "subtotal": "6.07", "shipping": "6.69", "tax": "0.93", "vat": "0.00", "total": "13.69"},
+        }})
 
     a = PrintfulAdapter(
         api_key="k", client=_client(handler, base="https://api.printful.com")
@@ -643,6 +646,8 @@ def test_printful_create_order_draft():
         gift={"subject": "A gift for you", "message": "love, mom"},
     )
     assert result.order_id == "4242" and result.status == "draft"
+    # what the partner will bill, in cents — the margin's other half
+    assert result.costs == {"product": 607, "shipping": 669, "tax": 93, "total": 1369}
     assert "confirm=0" in seen["url"]
     assert '"external_id":"order-1"' in seen["json"]
     assert '"variant_id":1320' in seen["json"]
@@ -725,3 +730,14 @@ def test_webhook_dispatches_gift_kind(monkeypatch):
     r = client.post("/webhooks/stripe", content=body, headers=signed(body))
     assert r.status_code == 200
     assert called == {"gift": 1}
+
+
+def test_split_fee_shares_by_amount_and_sums_exactly():
+    from repositories.gift_orders import split_fee
+
+    assert split_fee(102, [2469]) == [102]
+    # a "both" purchase: two copies at different postage, one fee
+    shares = split_fee(150, [2469, 3199])
+    assert sum(shares) == 150 and shares[0] < shares[1]
+    assert split_fee(30, [0, 0]) == [30, 0]
+    assert split_fee(30, []) == []

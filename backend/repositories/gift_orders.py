@@ -84,6 +84,7 @@ def create_pending_order(
         shipping_address=shipping_address,
         amount_cents=(item.base_price_cents if item_cents is None else item_cents)
         + shipping_cents,
+        product_price_cents=item.base_price_cents if item_cents is None else item_cents,
         shipping_cents=shipping_cents,
         shipping_estimated=shipping_estimated,
     )
@@ -280,6 +281,27 @@ def _printful_confirm_enabled() -> bool:
     return os.getenv("PRINTFUL_CONFIRM_ORDERS", "").lower() in ("1", "true", "yes")
 
 
+def split_fee(total_fee_cents: int, amounts_cents: list[int]) -> list[int]:
+    """One payment's processing fee shared across the orders it paid for, in
+    proportion to what each charged, summing exactly to the fee. A single
+    order takes the whole fee."""
+    total = sum(amounts_cents)
+    if not amounts_cents:
+        return []
+    if total <= 0:
+        return [total_fee_cents] + [0] * (len(amounts_cents) - 1)
+    shares = [total_fee_cents * a // total for a in amounts_cents]
+    shares[0] += total_fee_cents - sum(shares)  # rounding remainder to the first
+    return shares
+
+
+def record_payment_fees(db: Session, *, orders: list[GiftOrder], fee_cents: int) -> None:
+    """Write each order's share of the payment's fee."""
+    for order, share in zip(orders, split_fee(fee_cents, [o.amount_cents or 0 for o in orders])):
+        order.payment_fee_cents = share
+    db.commit()
+
+
 def partner_external_id(order_id: uuid.UUID) -> str:
     """Our order id as the partner will accept it. Printful caps external
     ids at 32 characters: the bare hex of the UUID fits exactly, and the
@@ -372,6 +394,12 @@ def submit_shipment(shipment_id: uuid.UUID) -> None:
             )
             shipment.printful_order_id = result.order_id
             shipment.fulfillment_status = "submitted"
+            if result.costs:
+                shipment.product_cost_cents = result.costs.get("product")
+                shipment.shipping_cost_cents = result.costs.get("shipping")
+                shipment.tax_cost_cents = result.costs.get("tax")
+                shipment.total_cost_cents = result.costs.get("total")
+                shipment.costs_recorded_at = datetime.now(timezone.utc)
             db.commit()
         except Exception as exc:  # OrderError or any transport/storage error
             db.rollback()

@@ -211,3 +211,28 @@ def test_webhook_fulfills_signed_gift_event(client_app, monkeypatch):
     )
     assert r.status_code == 200
     assert called == [("cs_1", True)]
+
+
+# ── the processing fee ────────────────────────────────────────────────────
+
+
+def test_payment_fee_comes_from_the_balance_transaction():
+    seen = {}
+
+    def handler(req: httpx.Request) -> httpx.Response:
+        seen["url"] = str(req.url)
+        return httpx.Response(200, json={
+            "id": "pi_1", "latest_charge": {"id": "ch_1", "balance_transaction": {
+                "amount": 2469, "fee": 102, "net": 2367}}})
+
+    c = StripeClient(secret_key="sk", client=_client(handler))
+    assert c.payment_fee_cents("pi_1") == 102
+    assert "expand" in seen["url"] and "balance_transaction" in seen["url"]
+
+
+def test_payment_fee_is_none_until_the_charge_settles():
+    c = StripeClient(
+        secret_key="sk",
+        client=_client(lambda r: httpx.Response(200, json={"id": "pi_1", "latest_charge": "ch_1"})),
+    )
+    assert c.payment_fee_cents("pi_1") is None

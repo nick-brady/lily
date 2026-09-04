@@ -117,6 +117,25 @@ class StripeClient:
         except httpx.HTTPError as exc:
             raise StripeError(f"retrieve checkout session: {exc}") from exc
 
+    def payment_fee_cents(self, payment_intent_id: str) -> int | None:
+        """What Stripe kept of a payment, from the balance transaction behind
+        its charge. None when Stripe has no answer yet (the charge can settle
+        a moment after the session says paid) or the call fails — the caller
+        records nothing rather than a guess."""
+        try:
+            resp = self._client.get(
+                f"/v1/payment_intents/{payment_intent_id}",
+                params={"expand[]": "latest_charge.balance_transaction"},
+            )
+            resp.raise_for_status()
+        except httpx.HTTPError as exc:
+            raise StripeError(f"retrieve payment fee: {exc}") from exc
+        charge = (resp.json() or {}).get("latest_charge") or {}
+        txn = charge.get("balance_transaction") if isinstance(charge, dict) else None
+        if not isinstance(txn, dict) or txn.get("fee") is None:
+            return None
+        return int(txn["fee"])
+
     def create_refund(
         self,
         *,

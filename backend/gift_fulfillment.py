@@ -41,6 +41,7 @@ async def fulfill_gift_from_session(
     if metadata.get("order_id_2"):  # a "both" purchase — two copies, one session
         order_ids.append(uuid.UUID(metadata["order_id_2"]))
     statuses = []
+    paid_orders = []
     for order_id in order_ids:
         # each order records its own share of the charge, not the session total
         outcome, order = gift_orders_repo.mark_paid(
@@ -50,6 +51,7 @@ async def fulfill_gift_from_session(
             orders_in_session=len(order_ids),
         )
         if outcome == "paid":
+            paid_orders.append(order)
             birth = db.get(Birth, order.birth_id)
             item = db.get(GiftCatalogItem, order.gift_catalog_item_id)
             if item.kind == GiftKind.storage_gift:
@@ -107,9 +109,31 @@ async def fulfill_gift_from_session(
         else:
             statuses.append("already_processed")
 
+    if paid_orders:
+        _record_fee(db, stripe, session_obj, paid_orders)
+
     # the session-level status: any fulfillment wins, then any refund
     for status in ("fulfilled", "refunded"):
         if status in statuses:
             return status
     return "already_processed"
 
+
+
+def _record_fee(db: Session, stripe, session_obj: dict, orders: list) -> None:
+    """What Stripe kept, written onto the orders this payment covered. Best
+    effort: the money has moved either way, and a fee we couldn't read is a
+    gap in the dashboard, not a reason to fail fulfillment."""
+    pi = session_obj.get("payment_intent")
+    lookup = getattr(stripe, "payment_fee_cents", None)
+    if not pi or lookup is None:
+        return
+    try:
+        fee = lookup(pi)
+    except Exception:  # noqa: BLE001 - see docstring
+        logger.warning("payment fee not recorded for %s", pi, exc_info=True)
+        return
+    if fee is None:
+        logger.warning("payment fee not available yet for %s", pi)
+        return
+    gift_orders_repo.record_payment_fees(db, orders=orders, fee_cents=fee)
