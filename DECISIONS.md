@@ -640,6 +640,41 @@ called the whole $24.69 revenue.
 
 ---
 
+### The printer tells us when it ships, and when it doesn't
+*2026-09-04*
+
+A shipped mug used to look exactly like one still on the press, and an
+order Printful failed or held sat only in their dashboard. Printful's
+webhooks now reach `POST /api/webhooks/printful/{token}`:
+
+- **`package_shipped`** → the shipment records carrier, tracking number,
+  tracking URL and ship date, becomes `shipped`, and the buyer gets one
+  "It's on its way" email with a Track button — the only moment that phrase
+  is true, which is why the receipt never said it before.
+- **`order_failed` / `order_canceled`** → `failed` with Printful's reason,
+  logged as an ERROR so it lands on the Logs page. **`order_put_hold`** →
+  `on_hold` (a WARNING); `order_remove_hold` → back to `submitted`.
+- The receipt page, the buyer's orders list and the parents' "Gifts
+  received" all show the state and the tracking link.
+
+> "does Printful provide tracking info to a webhook that we can get, and
+> then update this later down the road?"
+
+**Printful does not sign its webhooks**, so the URL carries a random token
+(`PRINTFUL_WEBHOOK_TOKEN`); a wrong one is a 404 that says nothing. Events
+are matched to our order by `external_id` (the order UUID's hex we send
+when creating the draft), falling back to Printful's order id. Handling is
+idempotent because Printful retries. Registration is one script,
+`scripts/register_printful_webhook.py`, run on the box after deploy;
+Printful keeps one webhook config per store, so re-running replaces it.
+
+**The receipt page wears no theme.** It is ours, not the family's page, so
+it uses the plain gradient `/account` uses rather than the birth's pattern.
+
+**Where:** `repositories/gift_orders.apply_partner_event`,
+`routes/checkout.printful_webhook`, `gift_receipt_email.send_shipped`,
+migration 0046.
+
 ### Arrival Story sends the receipt; Stripe's stays off
 *2026-09-04*
 

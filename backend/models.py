@@ -1007,6 +1007,16 @@ class GiftShipment(Base):
     costs_recorded_at: Mapped[datetime | None] = mapped_column(
         sa.DateTime(timezone=True), nullable=True
     )
+    # What the partner's webhook told us once the parcel left: how to follow
+    # it. `fulfillment_status` becomes "shipped" at the same moment.
+    carrier: Mapped[str | None] = mapped_column(sa.Text, nullable=True)
+    tracking_number: Mapped[str | None] = mapped_column(sa.Text, nullable=True)
+    tracking_url: Mapped[str | None] = mapped_column(sa.Text, nullable=True)
+    shipped_at: Mapped[datetime | None] = mapped_column(sa.DateTime(timezone=True), nullable=True)
+    # the "it's on its way" email's claim, like the receipt's
+    shipped_emailed_at: Mapped[datetime | None] = mapped_column(
+        sa.DateTime(timezone=True), nullable=True
+    )
     created_at: Mapped[datetime] = _created_at()
 
     __table_args__ = (sa.Index("ix_gift_shipments_order", "gift_order_id"),)

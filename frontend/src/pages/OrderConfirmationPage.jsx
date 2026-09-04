@@ -11,7 +11,6 @@ import {
   stillSettling,
 } from '../utils/orderPresentation';
 import { SUPPORT_EMAIL } from '../utils/support';
-import { getTheme, themeVars } from '../utils/themes';
 
 // The page after Stripe. Stripe's success screen is a flash; this is the
 // receipt the buyer remembers. It confirms the checkout session on load (the
@@ -66,26 +65,19 @@ export default function OrderConfirmationPage() {
     };
   }, [slug, orderId]);
 
-  const theme = getTheme(receipt?.theme);
   const settling = receipt ? paymentSettling(receipt.orders) && tries < POLL_TRIES : false;
   const childName = receipt?.child_name;
   const pageName = childName ? `${childName}'s page` : 'the page';
 
   return (
-    <div
-      className="min-h-screen transition-colors"
-      style={{
-        ...themeVars(theme, false),
-        backgroundColor: 'var(--t-page-bg)',
-        backgroundImage: 'var(--t-page-pattern)',
-        backgroundSize: 'var(--t-pattern-size)',
-      }}
-    >
+    // The plain Arrival Story gradient, like /account — a receipt is ours,
+    // not the family's page, so it doesn't wear the birth's theme.
+    <div className="min-h-screen bg-gradient-to-b from-primary-50 to-white dark:from-gray-900 dark:to-gray-950">
       <main className="max-w-lg mx-auto px-4 py-10 space-y-4">
         {error && (
           <div role="alert" className="card">
-            <h1 className="text-xl font-semibold t-ink">We couldn't find that order.</h1>
-            <p className="text-sm t-muted mt-2">
+            <h1 className="text-xl font-semibold text-gray-800 dark:text-white">We couldn't find that order.</h1>
+            <p className="text-sm text-gray-500 dark:text-gray-400 mt-2">
               If you just paid, your receipt is on its way by email and nothing is lost.
               Email <a href={`mailto:${SUPPORT_EMAIL}`} className="underline underline-offset-2">{SUPPORT_EMAIL}</a> if it doesn't arrive.
             </p>
@@ -97,7 +89,7 @@ export default function OrderConfirmationPage() {
 
         {!receipt && !error && (
           <div className="card" role="status">
-            <p className="t-muted">Loading your order…</p>
+            <p className="text-gray-500 dark:text-gray-400">Loading your order…</p>
           </div>
         )}
 
@@ -107,8 +99,8 @@ export default function OrderConfirmationPage() {
               <OrderCard key={line.id} line={line} settling={settling} first={i === 0} childName={childName} />
             ))}
 
-            <div className="card text-sm t-muted space-y-2">
-              {receipt.orders.some((o) => o.status === 'paid' && o.fulfillment_status !== 'failed') && (
+            <div className="card text-sm text-gray-500 dark:text-gray-400 space-y-2">
+              {receipt.orders.some((o) => o.status === 'paid' && !['failed', 'on_hold', 'shipped'].includes(o.fulfillment_status)) && (
                 <p>
                   It's made to order and usually ships within a few business days.
                 </p>
@@ -116,7 +108,7 @@ export default function OrderConfirmationPage() {
               <p>Your receipt is on its way by email.</p>
               <p>
                 Questions? Email{' '}
-                <a href={`mailto:${SUPPORT_EMAIL}?subject=Order%20${receipt.orders[0]?.reference ?? ''}`} className="underline underline-offset-2 t-ink">
+                <a href={`mailto:${SUPPORT_EMAIL}?subject=Order%20${receipt.orders[0]?.reference ?? ''}`} className="underline underline-offset-2 text-gray-800 dark:text-white">
                   {SUPPORT_EMAIL}
                 </a>{' '}
                 and quote the reference above.
@@ -138,18 +130,18 @@ export default function OrderConfirmationPage() {
 function OrderCard({ line, settling, first, childName }) {
   const says = presentOrder(line, settling);
   const tone = {
-    good: 'var(--t-accent)',
+    good: '#a21caf',
     warn: '#b45309',
-    neutral: 'var(--t-ink-muted)',
+    neutral: '#6b7280',
   }[says.tone];
 
   return (
     <section className="card space-y-5" aria-live={first ? 'polite' : undefined}>
       <header>
         {first ? (
-          <h1 className="text-2xl font-semibold t-ink leading-snug">{says.headline}</h1>
+          <h1 className="text-2xl font-semibold text-gray-800 dark:text-white leading-snug">{says.headline}</h1>
         ) : (
-          <h2 className="text-xl font-semibold t-ink leading-snug">{says.headline}</h2>
+          <h2 className="text-xl font-semibold text-gray-800 dark:text-white leading-snug">{says.headline}</h2>
         )}
         {says.detail && (
           <p className="mt-2 text-sm" style={{ color: tone }}>
@@ -164,58 +156,68 @@ function OrderCard({ line, settling, first, childName }) {
             src={line.image_url}
             alt={`${line.item_display_name} design`}
             className="w-24 h-24 rounded-xl object-cover flex-shrink-0"
-            style={{ backgroundColor: 'var(--t-note-bg)' }}
+            style={{ backgroundColor: 'rgb(0 0 0 / 0.04)' }}
           />
         ) : (
           <div
             aria-hidden="true"
             className="w-24 h-24 rounded-xl flex-shrink-0"
-            style={{ backgroundColor: 'var(--t-note-bg)' }}
+            style={{ backgroundColor: 'rgb(0 0 0 / 0.04)' }}
           />
         )}
         <dl className="flex-1 text-sm space-y-1.5">
           <div>
             <dt className="sr-only">Item</dt>
-            <dd className="font-medium t-ink">
+            <dd className="font-medium text-gray-800 dark:text-white">
               {line.item_display_name}
               {line.product_display_name && (
-                <span className="t-muted font-normal"> · {line.product_display_name}</span>
+                <span className="text-gray-500 dark:text-gray-400 font-normal"> · {line.product_display_name}</span>
               )}
             </dd>
           </div>
           <div className="flex gap-2">
-            <dt className="t-muted">Going</dt>
-            <dd className="t-ink">{destinationLine(line)}</dd>
+            <dt className="text-gray-500 dark:text-gray-400">Going</dt>
+            <dd className="text-gray-800 dark:text-white">{destinationLine(line)}</dd>
           </div>
           <div className="flex gap-2">
-            <dt className="t-muted">Reference</dt>
-            <dd className="t-ink font-mono tracking-wider">{line.reference}</dd>
+            <dt className="text-gray-500 dark:text-gray-400">Reference</dt>
+            <dd className="text-gray-800 dark:text-white font-mono tracking-wider">{line.reference}</dd>
           </div>
+          {line.tracking_url && (
+            <div className="flex gap-2">
+              <dt className="text-gray-500 dark:text-gray-400">Tracking</dt>
+              <dd>
+                <a href={line.tracking_url} target="_blank" rel="noreferrer" className="underline underline-offset-2 text-gray-800 dark:text-white">
+                  Track the parcel{line.carrier ? ` with ${line.carrier}` : ''}
+                </a>
+              </dd>
+            </div>
+          )}
         </dl>
       </div>
 
-      <dl className="text-sm border-t pt-4 space-y-1" style={{ borderColor: 'var(--t-soft-ring)' }}>
+      <dl className="text-sm border-t pt-4 space-y-1" >
         <div className="flex justify-between">
-          <dt className="t-muted">{line.item_display_name}</dt>
-          <dd className="t-ink tabular-nums">{formatPrice(line.product_price_cents)}</dd>
+          <dt className="text-gray-500 dark:text-gray-400">{line.item_display_name}</dt>
+          <dd className="text-gray-800 dark:text-white tabular-nums">{formatPrice(line.product_price_cents)}</dd>
         </div>
         <div className="flex justify-between">
-          <dt className="t-muted">Postage</dt>
-          <dd className="t-ink tabular-nums">{formatPrice(line.shipping_cents)}</dd>
+          <dt className="text-gray-500 dark:text-gray-400">Postage</dt>
+          <dd className="text-gray-800 dark:text-white tabular-nums">{formatPrice(line.shipping_cents)}</dd>
         </div>
         <div className="flex justify-between font-medium pt-1">
-          <dt className="t-ink">Total</dt>
-          <dd className="t-ink tabular-nums">{formatPrice(line.amount_cents)}</dd>
+          <dt className="text-gray-800 dark:text-white">Total</dt>
+          <dd className="text-gray-800 dark:text-white tabular-nums">{formatPrice(line.amount_cents)}</dd>
         </div>
       </dl>
 
       {line.gift_message && (
         <blockquote
-          className="text-sm italic t-ink rounded-xl px-4 py-3"
-          style={{ backgroundColor: 'var(--t-note-bg)' }}
+          className="text-sm italic text-gray-800 dark:text-white rounded-xl px-4 py-3"
+          style={{ backgroundColor: 'rgb(0 0 0 / 0.04)' }}
         >
           “{line.gift_message}”
-          <footer className="not-italic t-muted text-xs mt-1">
+          <footer className="not-italic text-gray-500 dark:text-gray-400 text-xs mt-1">
             printed on the packing slip{childName ? ` for ${childName}'s family` : ''}
           </footer>
         </blockquote>

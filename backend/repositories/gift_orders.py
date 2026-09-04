@@ -272,6 +272,9 @@ def list_orders_for_birth(db: Session, *, birth_id: uuid.UUID) -> list[dict]:
                 if shipment
                 else "none",
                 "fulfillment_failure": shipment.failure_reason if shipment else None,
+                "carrier": shipment.carrier if shipment else None,
+                "tracking_url": shipment.tracking_url if shipment else None,
+                "shipped_at": shipment.shipped_at if shipment else None,
                 "created_at": order.created_at,
             }
         )
@@ -355,6 +358,9 @@ def receipt_line(db: Session, o: GiftOrder, birth: Birth) -> dict:
         "shipping_cents": o.shipping_cents or 0,
         "amount_cents": o.amount_cents or 0,
         "gift_message": o.gift_message,
+        "carrier": shipment.carrier if shipment else None,
+        "tracking_url": shipment.tracking_url if shipment else None,
+        "shipped_at": shipment.shipped_at if shipment else None,
         "created_at": o.created_at,
     }
 
@@ -429,6 +435,97 @@ def backfill_payment_fees(db: Session, stripe, *, limit: int = 20) -> int:
         record_payment_fees(db, orders=siblings, fee_cents=fee)
         filled += len(group)
     return filled
+
+
+# Printful webhook event types we act on. Everything else is acknowledged.
+PARTNER_EVENTS = ("package_shipped", "order_failed", "order_canceled", "order_put_hold", "order_remove_hold")
+
+
+def _parse_ship_date(value) -> datetime:
+    """Printful sends ship_date as YYYY-MM-DD and shipped_at as a unix
+    timestamp; take what's there, else now."""
+    if isinstance(value, (int, float)):
+        return datetime.fromtimestamp(value, tz=timezone.utc)
+    if isinstance(value, str) and value:
+        try:
+            parsed = datetime.fromisoformat(value)
+        except ValueError:
+            parsed = None
+        if parsed is not None:
+            if parsed.tzinfo is None:
+                # a bare calendar date: pin it to midday UTC so it reads as the
+                # same day in every US timezone rather than the evening before
+                if len(value) == 10:
+                    parsed = parsed.replace(hour=12)
+                parsed = parsed.replace(tzinfo=timezone.utc)
+            return parsed
+    return datetime.now(timezone.utc)
+
+
+def shipment_for_partner_order(db: Session, order_ref: dict) -> GiftShipment | None:
+    """The shipment a Printful order refers to: by our external id (the
+    order UUID's hex) first, by Printful's own order id second."""
+    external = order_ref.get("external_id")
+    if external:
+        try:
+            order_id = uuid.UUID(hex=str(external))
+        except ValueError:
+            order_id = None
+        if order_id is not None:
+            found = db.scalar(
+                select(GiftShipment)
+                .where(GiftShipment.gift_order_id == order_id)
+                .order_by(GiftShipment.created_at.desc())
+            )
+            if found is not None:
+                return found
+    partner_id = order_ref.get("id")
+    if partner_id is not None:
+        return db.scalar(select(GiftShipment).where(GiftShipment.printful_order_id == str(partner_id)))
+    return None
+
+
+def apply_partner_event(db: Session, event: dict) -> str:
+    """Update a shipment from a Printful webhook event. Returns what
+    happened, for the log and the tests: "shipped" | "failed" | "held" |
+    "released" | "ignored" | "unknown_order". Idempotent — Printful retries."""
+    kind = event.get("type")
+    if kind not in PARTNER_EVENTS:
+        return "ignored"
+    data = event.get("data") or {}
+    shipment = shipment_for_partner_order(db, data.get("order") or {})
+    if shipment is None:
+        return "unknown_order"
+    reason = data.get("reason") or (data.get("order") or {}).get("notes") or kind.replace("_", " ")
+
+    if kind == "package_shipped":
+        parcel = data.get("shipment") or {}
+        shipment.carrier = parcel.get("carrier") or shipment.carrier
+        shipment.tracking_number = parcel.get("tracking_number") or shipment.tracking_number
+        shipment.tracking_url = parcel.get("tracking_url") or shipment.tracking_url
+        shipment.shipped_at = shipment.shipped_at or _parse_ship_date(parcel.get("shipped_at") or parcel.get("ship_date"))
+        shipment.fulfillment_status = "shipped"
+        shipment.failure_reason = None
+        db.commit()
+        return "shipped"
+    if kind in ("order_failed", "order_canceled"):
+        shipment.fulfillment_status = "failed"
+        shipment.failure_reason = f"printful {kind.split('_')[1]}: {reason}"[:500]
+        db.commit()
+        logger.error("gift shipment %s %s at the printer: %s", shipment.id, kind.split("_")[1], reason)
+        return "failed"
+    if kind == "order_put_hold":
+        shipment.fulfillment_status = "on_hold"
+        shipment.failure_reason = f"printful hold: {reason}"[:500]
+        db.commit()
+        logger.warning("gift shipment %s put on hold at the printer: %s", shipment.id, reason)
+        return "held"
+    # order_remove_hold
+    if shipment.fulfillment_status == "on_hold":
+        shipment.fulfillment_status = "submitted"
+        shipment.failure_reason = None
+        db.commit()
+    return "released"
 
 
 def partner_external_id(order_id: uuid.UUID) -> str:

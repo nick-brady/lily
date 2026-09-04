@@ -891,3 +891,100 @@ def test_send_email_uses_resend_and_never_raises(monkeypatch):
 
     monkeypatch.setattr(messenger.httpx, "post", failing_post)
     assert messenger.send_email(to="a@example.com", subject="s", html="h", text="t") is False
+
+
+# ── what the printer tells us afterwards ─────────────────────────────────
+
+
+class _ShipmentDb:
+    """A db that knows one shipment, found by its order's external id."""
+
+    def __init__(self, shipment):
+        self.shipment = shipment
+        self.commits = 0
+
+    def scalar(self, stmt):
+        return self.shipment
+
+    def commit(self):
+        self.commits += 1
+
+
+def _shipped_event(external_id, **parcel):
+    return {
+        "type": "package_shipped",
+        "data": {
+            "order": {"id": 175025879, "external_id": external_id, "status": "fulfilled"},
+            "shipment": {"carrier": "USPS", "service": "First Class", "tracking_number": "9400 1111",
+                         "tracking_url": "https://tools.usps.com/go/TrackConfirmAction?tLabels=94001111",
+                         "ship_date": "2026-09-08", **parcel},
+        },
+    }
+
+
+def test_package_shipped_records_tracking_and_is_idempotent():
+    import uuid
+
+    from repositories.gift_orders import apply_partner_event
+
+    order_id = uuid.uuid4()
+    shipment = SimpleNamespace(id=uuid.uuid4(), gift_order_id=order_id, fulfillment_status="submitted",
+                               failure_reason=None, carrier=None, tracking_number=None, tracking_url=None, shipped_at=None)
+    db = _ShipmentDb(shipment)
+    assert apply_partner_event(db, _shipped_event(order_id.hex)) == "shipped"
+    assert shipment.fulfillment_status == "shipped"
+    assert shipment.carrier == "USPS" and shipment.tracking_number == "9400 1111"
+    assert shipment.tracking_url.startswith("https://tools.usps.com/")
+    assert shipment.shipped_at.date().isoformat() == "2026-09-08"
+    first = shipment.shipped_at
+    # Printful retries; the second delivery changes nothing
+    assert apply_partner_event(db, _shipped_event(order_id.hex)) == "shipped"
+    assert shipment.shipped_at == first
+
+
+def test_failed_canceled_and_hold_are_recorded_honestly(caplog):
+    import logging
+    import uuid
+
+    from repositories.gift_orders import apply_partner_event
+
+    def fresh():
+        return SimpleNamespace(id=uuid.uuid4(), gift_order_id=uuid.uuid4(), fulfillment_status="submitted",
+                               failure_reason=None, carrier=None, tracking_number=None, tracking_url=None, shipped_at=None)
+
+    s = fresh()
+    caplog.set_level(logging.INFO)
+    assert apply_partner_event(_ShipmentDb(s), {"type": "order_failed", "data": {"order": {"external_id": s.gift_order_id.hex}, "reason": "Print file too small"}}) == "failed"
+    assert s.fulfillment_status == "failed" and "Print file too small" in s.failure_reason
+    assert any(r.levelno == logging.ERROR for r in caplog.records)
+
+    s = fresh()
+    assert apply_partner_event(_ShipmentDb(s), {"type": "order_put_hold", "data": {"order": {"external_id": s.gift_order_id.hex}, "reason": "Address check"}}) == "held"
+    assert s.fulfillment_status == "on_hold"
+    assert apply_partner_event(_ShipmentDb(s), {"type": "order_remove_hold", "data": {"order": {"external_id": s.gift_order_id.hex}}}) == "released"
+    assert s.fulfillment_status == "submitted" and s.failure_reason is None
+
+    assert apply_partner_event(_ShipmentDb(fresh()), {"type": "product_synced", "data": {}}) == "ignored"
+
+
+def test_printful_webhook_needs_the_token(monkeypatch):
+    from fastapi.testclient import TestClient
+    import main
+
+    client = TestClient(main.app)
+    monkeypatch.delenv("PRINTFUL_WEBHOOK_TOKEN", raising=False)
+    assert client.post("/webhooks/printful/whatever", json={"type": "x"}).status_code == 503
+    monkeypatch.setenv("PRINTFUL_WEBHOOK_TOKEN", "right")
+    assert client.post("/webhooks/printful/wrong", json={"type": "x"}).status_code == 404
+
+
+def test_shipped_email_tracks_the_parcel():
+    import gift_receipt_email as rcpt
+
+    line = {"item_display_name": "Birth Story Mug", "reference": "9B2D3281", "carrier": "USPS",
+            "tracking_url": "https://tools.usps.com/go/x?tLabels=1&y=2"}
+    subject, body_html, text = rcpt.build_shipped(line, birth=SimpleNamespace(child_name="Lily Wren"), url="https://arrivalstory.com/b/lily-wren/order/abc")
+    assert subject == "It's on its way — Birth Story Mug for Lily Wren"
+    assert "shipped with USPS" in body_html and "Track the parcel" in body_html
+    assert 'href="https://tools.usps.com/go/x?tLabels=1&amp;y=2"' in body_html
+    assert "Track the parcel: https://tools.usps.com/go/x?tLabels=1&y=2" in text

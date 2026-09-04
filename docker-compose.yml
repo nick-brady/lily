@@ -86,6 +86,7 @@ services:
       STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY:-}
       STRIPE_WEBHOOK_SECRET: ${STRIPE_WEBHOOK_SECRET:-}
       PRINTFUL_CONFIRM_ORDERS: ${PRINTFUL_CONFIRM_ORDERS:-}
+      PRINTFUL_WEBHOOK_TOKEN: ${PRINTFUL_WEBHOOK_TOKEN:-dev-printful-token}
       GIFT_SHIPPING_COUNTRIES: ${GIFT_SHIPPING_COUNTRIES:-US}
       ADMIN_EMAILS: ${ADMIN_EMAILS:-}
       # JSON log files land in ./backend/logs (gitignored) via the bind mount
@@ -148,6 +149,7 @@ services:
       STRIPE_SECRET_KEY: ${STRIPE_SECRET_KEY:-}
       STRIPE_WEBHOOK_SECRET: ${STRIPE_WEBHOOK_SECRET:-}
       PRINTFUL_CONFIRM_ORDERS: ${PRINTFUL_CONFIRM_ORDERS:-}
+      PRINTFUL_WEBHOOK_TOKEN: ${PRINTFUL_WEBHOOK_TOKEN:-dev-printful-token}
       GIFT_SHIPPING_COUNTRIES: ${GIFT_SHIPPING_COUNTRIES:-US}
       ADMIN_EMAILS: ${ADMIN_EMAILS:-}
       # JSON log files land in ./backend/logs (gitignored) via the bind mount

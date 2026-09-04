@@ -24,7 +24,7 @@ import artwork_links
 import messenger
 import payments
 from db import SessionLocal
-from models import Birth, GiftOrder, User
+from models import Birth, GiftOrder, GiftShipment, User
 from repositories import gift_orders as gift_orders_repo
 
 logger = logging.getLogger(__name__)
@@ -155,6 +155,82 @@ def build(lines: list[dict], *, birth: Birth, url: str) -> tuple[str, str, str]:
         + f"\n\nView your order: {url}\n\nQuestions? Email {messenger.SUPPORT_EMAIL} and quote the reference.\n"
     )
     return subject, body_html, text
+
+
+def build_shipped(line: dict, *, birth: Birth, url: str) -> tuple[str, str, str]:
+    """(subject, html, text) for the parcel leaving — the one time "on its
+    way" is true."""
+    child = birth.child_name or "the baby"
+    item = html.escape(line["item_display_name"])
+    carrier = html.escape(line.get("carrier") or "the carrier")
+    track = line.get("tracking_url")
+    subject = f"It's on its way — {line['item_display_name']} for {child}"
+    button = (
+        f'<a href="{html.escape(track)}" style="display: inline-block; background: #a21caf; color: #ffffff; '
+        f'text-decoration: none; padding: 12px 24px; border-radius: 8px; font-size: 16px; margin-top: 8px;">Track the parcel</a>'
+        if track
+        else ""
+    )
+    body_html = f"""\
+<div style="font-family: Georgia, 'Times New Roman', serif; max-width: 460px;
+            margin: 0 auto; padding: 32px 24px; color: #44364a;">
+  <p style="font-size: 14px; letter-spacing: 2px; color: #a21caf;
+            text-transform: uppercase; margin: 0 0 16px;">Arrival Story</p>
+  <p style="font-size: 22px; margin: 0 0 8px;">It&rsquo;s on its way.</p>
+  <p style="font-size: 15px; color: #6d6076; margin: 0 0 20px;">
+    Your <strong style="color: #44364a;">{item}</strong> has shipped with {carrier}.
+    Reference <span style="font-family: Menlo, Consolas, monospace; letter-spacing: 1px; color: #44364a;">{line['reference']}</span>.
+  </p>
+  {button}
+  <p style="font-size: 13px; color: #6d6076; margin: 24px 0 0;">
+    <a href="{html.escape(url)}" style="color: #a21caf;">Your order</a> &middot;
+    Questions? Email <a href="mailto:{messenger.SUPPORT_EMAIL}" style="color: #a21caf;">{messenger.SUPPORT_EMAIL}</a>
+    and quote the reference.
+  </p>
+</div>
+"""
+    text = (
+        f"It's on its way.\n\nYour {line['item_display_name']} has shipped with {line.get('carrier') or 'the carrier'}. "
+        f"Reference {line['reference']}.\n"
+        + (f"\nTrack the parcel: {track}\n" if track else "")
+        + f"\nYour order: {url}\n\nQuestions? Email {messenger.SUPPORT_EMAIL} and quote the reference.\n"
+    )
+    return subject, body_html, text
+
+
+def send_shipped(shipment_id: uuid.UUID) -> None:
+    """BackgroundTask after a Printful package_shipped event: one email per
+    shipment, to the address the receipt went to."""
+    db = SessionLocal()
+    try:
+        shipment = db.get(GiftShipment, shipment_id)
+        if shipment is None:
+            return
+        order = db.get(GiftOrder, shipment.gift_order_id)
+        birth = db.get(Birth, order.birth_id) if order else None
+        if order is None or birth is None or not order.buyer_email:
+            return
+        claimed = db.execute(
+            update(GiftShipment)
+            .where(GiftShipment.id == shipment_id, GiftShipment.shipped_emailed_at.is_(None))
+            .values(shipped_emailed_at=datetime.now(timezone.utc))
+        )
+        db.commit()
+        if not (claimed.rowcount or 0):
+            return
+        line = gift_orders_repo.receipt_line(db, order, birth)
+        subject, body_html, text = build_shipped(line, birth=birth, url=receipt_url(birth.slug, order.id))
+        if not messenger.send_email(to=order.buyer_email, subject=subject, html=body_html, text=text):
+            db.execute(update(GiftShipment).where(GiftShipment.id == shipment_id).values(shipped_emailed_at=None))
+            db.commit()
+            logger.warning("shipped email failed for shipment %s", shipment_id)
+        else:
+            logger.info("shipped email sent for shipment %s", shipment_id)
+    except Exception:  # noqa: BLE001 - best effort, see module docstring
+        logger.warning("shipped email crashed for %s", shipment_id, exc_info=True)
+        db.rollback()
+    finally:
+        db.close()
 
 
 def send_for_orders(order_ids: list[uuid.UUID], session_obj: dict | None) -> None:

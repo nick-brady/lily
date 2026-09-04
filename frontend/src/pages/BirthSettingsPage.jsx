@@ -491,11 +491,15 @@ function GiftsReceivedCard({ birthId }) {
               <span className="text-xs t-muted">
                 {o.status === 'refunded'
                   ? 'refunded'
-                  : o.fulfillment_status === 'submitted'
-                    ? 'on its way'
-                    : o.fulfillment_status === 'failed'
-                      ? 'needs attention'
-                      : 'processing'}
+                  : o.fulfillment_status === 'shipped'
+                    ? (o.tracking_url
+                        ? <a href={o.tracking_url} target="_blank" rel="noreferrer" className="underline underline-offset-2">shipped · track</a>
+                        : 'shipped')
+                    : o.fulfillment_status === 'submitted'
+                      ? 'being made'
+                      : o.fulfillment_status === 'failed' || o.fulfillment_status === 'on_hold'
+                        ? 'needs attention'
+                        : 'processing'}
               </span>
             </div>
             {o.purchased_by && (
