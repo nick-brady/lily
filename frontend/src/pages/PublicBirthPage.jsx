@@ -1,7 +1,8 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useParams, useSearchParams } from 'react-router-dom';
 import { api } from '../api/client';
 import Modal from '../components/Modal';
+import { NO_TAPS, recordSilentStop, secondsSince } from '../utils/stopTaps';
 import { useAuth } from '../contexts/AuthContext';
 import { useSSE } from '../hooks/useSSE';
 import { useDarkMode } from '../hooks/useDarkMode';
@@ -237,6 +238,11 @@ export default function PublicBirthPage() {
   // The cancel × used to delete a running contraction outright, from a 40px
   // target, with no confirmation.
   const [confirmCancel, setConfirmCancel] = useState(false);
+  // STOP taps the server quietly declined (a contraction under five seconds
+  // old). The third one on the same contraction opens the dialog above, so
+  // someone who started it by accident isn't left hammering a button that
+  // seems to do nothing. See utils/stopTaps.js.
+  const silentStops = useRef(NO_TAPS);
 
   // The server's own answer, applied at once rather than waited for over the
   // event stream. Not an optimistic guess — the same object SSE would bring,
@@ -273,7 +279,16 @@ export default function PublicBirthPage() {
     if (!activeContraction || contractionPending) return;
     setContractionPending(true);
     try {
-      applyEvent(await api.stopContraction(birth.id, activeContraction.id));
+      const result = await api.stopContraction(birth.id, activeContraction.id);
+      applyEvent(result);
+      if (!result?.payload?.end_time) {
+        // still running: the server treated the tap as a no-op
+        const next = recordSilentStop(silentStops.current, result.id);
+        silentStops.current = next.tally;
+        if (next.prompt) {
+          setJustStarted({ startedSecondsAgo: secondsSince(result.occurred_at) });
+        }
+      }
     } catch (err) {
       if (err.code === 'just_started') {
         setJustStarted({ startedSecondsAgo: err.detail?.started_seconds_ago ?? 0 });
