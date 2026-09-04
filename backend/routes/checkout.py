@@ -4,7 +4,9 @@ and the parents' order list."""
 from __future__ import annotations
 
 import json
+import logging
 import os
+import secrets
 import uuid
 
 from fastapi import (
@@ -21,6 +23,7 @@ from sqlalchemy.orm import Session
 
 import address_validation
 import gift_fulfillment
+import gift_receipt_email
 import gift_shipping
 import payments
 from auth import get_current_user
@@ -52,6 +55,8 @@ from schemas import (
     ShippingQuoteOut,
     StorageGiftCheckoutIn,
 )
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -89,6 +94,37 @@ async def stripe_webhook(
         db, stripe, obj, background_tasks, raise_on_refund_error=True
     )
     return {"received": True}
+
+
+@router.post("/webhooks/printful/{token}")
+async def printful_webhook(
+    token: str,
+    request: Request,
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db),
+) -> dict:
+    """What the printer tells us after the draft: shipped (with tracking),
+    failed, canceled, held. Printful doesn't sign its webhooks, so the URL
+    carries a secret; a wrong one is a 404 that says nothing. Always 200 for
+    a recognised caller — Printful retries anything else, and a shipment we
+    can't match is our problem to look into, not theirs to resend."""
+    expected = os.getenv("PRINTFUL_WEBHOOK_TOKEN")
+    if not expected:
+        raise HTTPException(status_code=503, detail="Webhook not configured")
+    if not secrets.compare_digest(token, expected):
+        raise HTTPException(status_code=404, detail="Not found")
+    try:
+        event = json.loads(await request.body())
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Bad body")
+    outcome = gift_orders_repo.apply_partner_event(db, event)
+    if outcome == "unknown_order":
+        logger.warning("printful %s for an order we don't know", event.get("type"))
+    elif outcome == "shipped":
+        shipment = gift_orders_repo.shipment_for_partner_order(db, (event.get("data") or {}).get("order") or {})
+        if shipment is not None:
+            background_tasks.add_task(gift_receipt_email.send_shipped, shipment.id)
+    return {"received": True, "outcome": outcome}
 
 
 def _checked(address, whose: str) -> dict:

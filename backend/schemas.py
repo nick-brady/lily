@@ -324,6 +324,9 @@ class GiftOrderAdminOut(BaseModel):
     item_display_name: str
     fulfillment_status: str = "none"
     fulfillment_failure: Optional[str] = None
+    carrier: Optional[str] = None
+    tracking_url: Optional[str] = None
+    shipped_at: Optional[datetime] = None
     created_at: datetime
 
 
@@ -346,6 +349,10 @@ class OrderReceiptLineOut(BaseModel):
     shipping_cents: int
     amount_cents: int
     gift_message: Optional[str] = None
+    # once the printer's webhook says the parcel left
+    carrier: Optional[str] = None
+    tracking_url: Optional[str] = None
+    shipped_at: Optional[datetime] = None
     created_at: datetime
 
 

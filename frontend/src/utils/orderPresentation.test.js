@@ -30,6 +30,19 @@ describe('presentOrder', () => {
   });
 });
 
+describe('presentOrder, once the parcel has left', () => {
+  it('is the one time it says "on its way", and names the carrier', () => {
+    const p = presentOrder({ status: 'paid', fulfillment_status: 'shipped', carrier: 'USPS', shipped_at: '2026-09-08T12:00:00Z' });
+    expect(p.headline).toBe("It's on its way.");
+    expect(p.detail).toMatch(/^Shipped with USPS on /);
+    expect(p.tone).toBe('good');
+  });
+
+  it('says so when the printer put it on hold', () => {
+    expect(presentOrder({ status: 'paid', fulfillment_status: 'on_hold' }).tone).toBe('warn');
+  });
+});
+
 describe('destinationLine', () => {
   it('names who and where, and copes without a city', () => {
     expect(destinationLine({ recipient_kind: 'family', destination: 'Raleigh, NC' })).toBe('to the family, in Raleigh, NC');
