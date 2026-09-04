@@ -25,8 +25,9 @@ describe('presentOrder', () => {
     expect(presentOrder({ status: 'pending' }, false).detail).toMatch(/wasn't charged/);
   });
 
-  it('explains a refund as the claim race it is', () => {
+  it('explains a refund as the claim race it is, unless we cancelled it', () => {
     expect(presentOrder({ status: 'refunded' }).headline).toMatch(/beat you/);
+    expect(presentOrder({ status: 'refunded', fulfillment_status: 'canceled' }).headline).toMatch(/cancelled and refunded/);
   });
 });
 

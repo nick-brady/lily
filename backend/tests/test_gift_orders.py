@@ -1005,3 +1005,86 @@ def test_stripe_dashboard_url_follows_the_key_mode(monkeypatch):
     monkeypatch.setenv("STRIPE_SECRET_KEY", "sk_live_x")
     assert stripe_dashboard_url("pi_1") == "https://dashboard.stripe.com/payments/pi_1"
     assert stripe_dashboard_url(None) is None
+
+
+# ── approving and cancelling drafts ───────────────────────────────────────
+
+
+def test_printful_confirm_and_cancel():
+    calls = []
+
+    def handler(req: httpx.Request) -> httpx.Response:
+        calls.append((req.method, req.url.path))
+        if req.method == "POST":
+            return httpx.Response(200, json={"result": {"id": 175025879, "status": "pending", "costs": {"subtotal": "6.07", "shipping": "6.69", "tax": "0.93", "total": "13.69"}}})
+        return httpx.Response(200, json={"result": {"id": 175025879, "status": "canceled"}})
+
+    a = PrintfulAdapter(api_key="k", client=_client(handler, base="https://api.printful.com"))
+    result = a.confirm_order("175025879")
+    assert result.status == "pending" and result.costs["total"] == 1369
+    a.cancel_order("175025879")
+    assert calls == [("POST", "/orders/175025879/confirm"), ("DELETE", "/orders/175025879")]
+
+
+def test_approve_and_cancel_are_deliberate_and_idempotent():
+    import uuid
+
+    from repositories import gift_orders as repo
+
+    class Adapter:
+        def __init__(self):
+            self.confirmed = []
+            self.canceled = []
+
+        def confirm_order(self, oid):
+            self.confirmed.append(oid)
+            return SimpleNamespace(order_id=oid, status="pending", costs={"product": 607, "shipping": 669, "tax": 93, "total": 1369})
+
+        def cancel_order(self, oid):
+            self.canceled.append(oid)
+
+    class Stripe:
+        def __init__(self):
+            self.refunds = []
+
+        def create_refund(self, **kw):
+            self.refunds.append(kw)
+
+    db = _FakeCommitSession()
+    adapter, stripe = Adapter(), Stripe()
+    shipment = SimpleNamespace(id=uuid.uuid4(), fulfillment_status="submitted", printful_order_id="175025879",
+                               failure_reason=None, product_cost_cents=None, shipping_cost_cents=None, tax_cost_cents=None,
+                               total_cost_cents=None, costs_recorded_at=None, confirmed_at=None, confirmed_by_user_id=None, canceled_at=None)
+    admin = uuid.uuid4()
+    repo.approve_shipment(db, shipment, adapter=adapter, by_user_id=admin)
+    assert shipment.fulfillment_status == "confirmed" and shipment.confirmed_by_user_id == admin
+    assert shipment.total_cost_cents == 1369
+    repo.approve_shipment(db, shipment, adapter=adapter, by_user_id=admin)  # a second click does nothing
+    assert adapter.confirmed == ["175025879"]
+
+    # once confirmed, cancelling here is refused — the money has moved at the partner
+    order = SimpleNamespace(id=uuid.uuid4(), status="paid", stripe_payment_intent_id="pi_1")
+    with pytest.raises(repo.NotADraft):
+        repo.cancel_and_refund(db, order, shipment, adapter=adapter, stripe=stripe)
+    assert stripe.refunds == []
+
+    # a draft cancels at the partner, refunds in full, and the order is refunded
+    draft = SimpleNamespace(id=uuid.uuid4(), fulfillment_status="submitted", printful_order_id="175025880", canceled_at=None)
+    repo.cancel_and_refund(db, order, draft, adapter=adapter, stripe=stripe)
+    assert adapter.canceled == ["175025880"]
+    assert stripe.refunds == [{"payment_intent_id": "pi_1", "kind": "gift", "key_suffix": "-cancel"}]
+    assert order.status == "refunded" and draft.fulfillment_status == "canceled"
+    # and again does nothing
+    repo.cancel_and_refund(db, order, draft, adapter=adapter, stripe=stripe)
+    assert len(stripe.refunds) == 1
+
+
+def test_admin_order_actions_require_an_admin():
+    import uuid
+
+    from fastapi.testclient import TestClient
+    import main
+
+    c = TestClient(main.app)
+    assert c.post(f"/admin/orders/{uuid.uuid4()}/approve").status_code == 401
+    assert c.post(f"/admin/orders/{uuid.uuid4()}/cancel").status_code == 401

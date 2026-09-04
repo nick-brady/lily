@@ -23,12 +23,14 @@ function when(iso) {
 // One word per order, and a colour: red for anything the operator must act on.
 function state(o) {
   if (o.status === 'pending') return { word: 'unpaid', tone: 'INFO' };
-  if (o.status === 'refunded') return { word: 'refunded', tone: 'INFO' };
+  if (o.status === 'refunded') return { word: o.fulfillment_status === 'canceled' ? 'cancelled' : 'refunded', tone: 'INFO' };
   switch (o.fulfillment_status) {
     case 'shipped':
       return { word: 'shipped', tone: null };
+    case 'confirmed':
+      return { word: 'in production', tone: null };
     case 'submitted':
-      return { word: 'at printer', tone: null };
+      return { word: 'draft — approve?', tone: 'WARNING' };
     case 'failed':
       return { word: 'failed', tone: 'ERROR' };
     case 'on_hold':
@@ -43,6 +45,25 @@ export default function OrdersPage() {
   const [orders, setOrders] = useState(null);
   const [error, setError] = useState(null);
   const [open, setOpen] = useState(null);
+  const [acting, setActing] = useState(null); // { id, kind: 'approve' | 'cancel' }
+  const [busy, setBusy] = useState(false);
+  const [actError, setActError] = useState(null);
+
+  const replaceRow = (row) => setOrders((prev) => prev.map((o) => (o.id === row.id ? row : o)));
+  const perform = async () => {
+    if (!acting) return;
+    setBusy(true);
+    setActError(null);
+    try {
+      const row = acting.kind === 'approve' ? await api.approveOrder(acting.id) : await api.cancelOrder(acting.id);
+      replaceRow(row);
+      setActing(null);
+    } catch (err) {
+      setActError(err.message || 'That did not go through.');
+    } finally {
+      setBusy(false);
+    }
+  };
 
   useEffect(() => {
     let cancelled = false;
@@ -130,7 +151,15 @@ export default function OrdersPage() {
                   const st = state(o);
                   const isOpen = open === o.id;
                   return (
-                    <OrderRow key={o.id} o={o} st={st} isOpen={isOpen} onToggle={() => setOpen(isOpen ? null : o.id)} />
+                    <OrderRow
+                      key={o.id}
+                      o={o}
+                      st={st}
+                      isOpen={isOpen}
+                      onToggle={() => setOpen(isOpen ? null : o.id)}
+                      onApprove={() => setActing({ id: o.id, kind: 'approve' })}
+                      onCancel={() => setActing({ id: o.id, kind: 'cancel' })}
+                    />
                   );
                 })}
               </tbody>
@@ -138,11 +167,83 @@ export default function OrdersPage() {
           </div>
         )}
       </div>
+
+      {acting && (
+        <ActionDialog
+          o={orders.find((x) => x.id === acting.id)}
+          kind={acting.kind}
+          busy={busy}
+          error={actError}
+          onConfirm={perform}
+          onClose={() => !busy && setActing(null)}
+        />
+      )}
     </div>
   );
 }
 
-function OrderRow({ o, st, isOpen, onToggle }) {
+// The moment money moves (approve) or comes back (cancel). Says exactly what
+// will happen, shows the design and the destination, and asks once.
+function ActionDialog({ o, kind, busy, error, onConfirm, onClose }) {
+  if (!o) return null;
+  const approve = kind === 'approve';
+  return (
+    <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4" onClick={onClose}>
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="order-action-title"
+        className="card max-w-md w-full space-y-4"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <h2 id="order-action-title" className="text-lg font-semibold text-gray-900">
+          {approve ? 'Send this to print?' : 'Cancel and refund this order?'}
+        </h2>
+        <div className="flex gap-4 items-start text-sm">
+          {o.image_url && <img src={o.image_url} alt="" className="w-20 h-20 rounded-lg object-cover bg-gray-100" />}
+          <div className="space-y-1 text-gray-700">
+            <p className="font-medium text-gray-900">
+              {o.item_display_name}
+              {o.product_display_name && <span className="text-gray-500 font-normal"> · {o.product_display_name}</span>}
+            </p>
+            <p>{o.recipient_kind === 'family' ? 'To the family' : 'To the buyer'}{o.destination ? `, ${o.destination}` : ''}</p>
+            <p className="text-gray-500">Ref {o.reference} · Printful {o.printful_order_id || '—'}</p>
+          </div>
+        </div>
+        <p className="text-sm text-gray-700">
+          {approve ? (
+            <>
+              Printful will charge <strong>{usd(o.total_cost_cents)}</strong> to your account and start production.
+              The buyer paid {usd(o.amount_cents)}; you keep about {usd((o.amount_cents || 0) - (o.payment_fee_cents || 0) - (o.total_cost_cents || 0))}.
+              This can't be undone from here.
+            </>
+          ) : (
+            <>
+              The Printful draft is deleted and <strong>{usd(o.amount_cents)}</strong> goes back to the buyer's card.
+              Stripe keeps its {usd(o.payment_fee_cents)} fee. A family-bound gift becomes available again.
+            </>
+          )}
+        </p>
+        {error && <p role="alert" className="text-sm text-red-600">{error}</p>}
+        <div className="flex gap-3 justify-end">
+          <button type="button" onClick={onClose} disabled={busy} className="px-4 py-2 text-sm rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-50 disabled:opacity-50">
+            Keep as is
+          </button>
+          <button
+            type="button"
+            onClick={onConfirm}
+            disabled={busy}
+            className={`px-4 py-2 text-sm rounded-lg font-medium text-white disabled:opacity-50 ${approve ? 'bg-primary-600 hover:bg-primary-700' : 'bg-red-600 hover:bg-red-700'}`}
+          >
+            {busy ? 'Working…' : approve ? 'Send to print' : 'Cancel & refund'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function OrderRow({ o, st, isOpen, onToggle, onApprove, onCancel }) {
   return (
     <>
       <tr
@@ -185,7 +286,7 @@ function OrderRow({ o, st, isOpen, onToggle }) {
       {isOpen && (
         <tr className="border-b border-gray-100 bg-gray-50">
           <td colSpan={8} className="px-4 py-4">
-            <Detail o={o} />
+            <Detail o={o} onApprove={onApprove} onCancel={onCancel} />
           </td>
         </tr>
       )}
@@ -193,7 +294,9 @@ function OrderRow({ o, st, isOpen, onToggle }) {
   );
 }
 
-function Detail({ o }) {
+function Detail({ o, onApprove, onCancel }) {
+  const isDraft = o.status === 'paid' && o.fulfillment_status === 'submitted' && o.printful_order_id;
+  const canCancel = o.status === 'paid' && ['none', 'submitting', 'submitted', 'failed', 'on_hold'].includes(o.fulfillment_status);
   const rows = [
     ['destination', o.destination && `${o.recipient_kind === 'family' ? 'family' : 'buyer'} · ${o.destination}`],
     ['product', o.product_display_name],
@@ -204,6 +307,8 @@ function Detail({ o }) {
     ['shipped', o.shipped_at && `${when(o.shipped_at)}${o.carrier ? ` · ${o.carrier}` : ''}`],
     ['gift message', o.gift_message],
     ['receipt emailed', o.receipt_emailed_at && when(o.receipt_emailed_at)],
+    ['approved', o.confirmed_at && when(o.confirmed_at)],
+    ['cancelled', o.canceled_at && when(o.canceled_at)],
     ['buyer email', o.buyer_email],
     ['order id', o.id],
   ].filter(([, v]) => v != null && v !== '');
@@ -221,6 +326,20 @@ function Detail({ o }) {
           ))}
         </dl>
       </div>
+      {(isDraft || canCancel) && (
+        <div className="flex gap-3">
+          {isDraft && (
+            <button type="button" onClick={onApprove} className="px-3 py-1.5 text-sm rounded-lg bg-primary-600 text-white font-medium hover:bg-primary-700">
+              Approve · send to print
+            </button>
+          )}
+          {canCancel && (
+            <button type="button" onClick={onCancel} className="px-3 py-1.5 text-sm rounded-lg border border-red-200 text-red-700 hover:bg-red-50">
+              Cancel &amp; refund
+            </button>
+          )}
+        </div>
+      )}
       <div className="flex gap-4 text-xs">
         {o.stripe_url && (
           <a href={o.stripe_url} target="_blank" rel="noreferrer" className="text-gray-700 underline underline-offset-2">

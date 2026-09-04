@@ -80,6 +80,15 @@ class FulfillmentAdapter(ABC):
         must stay publicly reachable long enough for a draft to be confirmed.
         Raises OrderError on failure."""
 
+    def confirm_order(self, order_id: str) -> OrderResult:
+        """Send a draft to production — the partner charges us now. Raises
+        OrderError. Not abstract so a partner without drafts needn't lie."""
+        raise OrderError(f"{self.name}: confirming drafts is not supported")
+
+    def cancel_order(self, order_id: str) -> None:
+        """Cancel a draft (or an unstarted order). Raises OrderError."""
+        raise OrderError(f"{self.name}: cancelling is not supported")
+
     @abstractmethod
     def shipping_rate(self, *, recipient: dict, items: list[dict]) -> ShippingRate:
         """The cheapest way to post `items` to `recipient` (same shapes as

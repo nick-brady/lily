@@ -391,6 +391,8 @@ class AdminOrderOut(BaseModel):
     stripe_payment_intent_id: Optional[str] = None
     stripe_url: Optional[str] = None
     receipt_emailed_at: Optional[datetime] = None
+    confirmed_at: Optional[datetime] = None
+    canceled_at: Optional[datetime] = None
 
 
 class MyOrderOut(OrderReceiptLineOut):

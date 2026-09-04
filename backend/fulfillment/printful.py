@@ -191,6 +191,37 @@ class PrintfulAdapter(FulfillmentAdapter):
         except httpx.HTTPError as exc:
             raise OrderError(f"printful order: {exc}") from exc
 
+    def confirm_order(self, order_id: str) -> OrderResult:
+        """POST /orders/{id}/confirm — what the Confirm button in their
+        dashboard does: out of draft, charged to our Printful account, into
+        production."""
+        try:
+            resp = self._client.post(f"/orders/{order_id}/confirm")
+            resp.raise_for_status()
+            result = (resp.json() or {}).get("result") or {}
+            return OrderResult(
+                order_id=str(result.get("id") or order_id),
+                status=result.get("status", ""),
+                costs=_costs_cents(result.get("costs")),
+            )
+        except httpx.HTTPStatusError as exc:
+            raise OrderError(f"printful confirm: {exc.response.status_code} {_error_text(exc.response)}") from exc
+        except httpx.HTTPError as exc:
+            raise OrderError(f"printful confirm: {exc}") from exc
+
+    def cancel_order(self, order_id: str) -> None:
+        """DELETE /orders/{id} — cancels a draft or an order not yet in
+        production. Already-cancelled counts as done."""
+        try:
+            resp = self._client.delete(f"/orders/{order_id}")
+            if resp.status_code == 404:
+                return
+            resp.raise_for_status()
+        except httpx.HTTPStatusError as exc:
+            raise OrderError(f"printful cancel: {exc.response.status_code} {_error_text(exc.response)}") from exc
+        except httpx.HTTPError as exc:
+            raise OrderError(f"printful cancel: {exc}") from exc
+
     def shipping_rate(self, *, recipient: dict, items: list[dict]) -> ShippingRate:
         """POST /shipping/rates. Printful quotes every service it can offer
         (STANDARD, and sometimes an express tier); we ship by the cheapest,

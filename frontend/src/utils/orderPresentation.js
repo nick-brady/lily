@@ -16,6 +16,13 @@ export const POLL_TRIES = 6; // ~12s: Stripe can settle a couple of seconds afte
 export function presentOrder(line, settling = false) {
   if (!line) return null;
   if (line.status === 'refunded') {
+    if (line.fulfillment_status === 'canceled') {
+      return {
+        tone: 'neutral',
+        headline: 'This order was cancelled and refunded.',
+        detail: 'The refund goes back to the card that paid and usually shows within a few days.',
+      };
+    }
     return {
       tone: 'warn',
       headline: 'Someone beat you to this gift.',

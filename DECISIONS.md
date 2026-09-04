@@ -677,6 +677,38 @@ the Stripe payment and Printful's orders dashboard. The one place to stand
 when a buyer writes in quoting a reference. `GET /admin/orders`, gated like
 the rest of the admin API.
 
+### Drafts are approved, or cancelled and refunded, from our own Orders page
+*2026-09-04*
+
+Every Printful order is still created as a draft (`PRINTFUL_CONFIRM_ORDERS`
+stays off), so nothing is charged to us until someone looks at it. That
+look now happens on the admin Orders page instead of Printful's dashboard.
+A draft row says "draft — approve?"; opening it offers **Approve · send to
+print** and **Cancel & refund**. Each opens a dialog that shows the design,
+the destination, and the money — what Printful will charge, what we keep,
+or what goes back to the buyer — and asks once.
+
+- **Approve** is `POST /orders/{id}/confirm` at Printful: the draft leaves
+  draft, our account is charged, production starts. The shipment records
+  `confirmed_at` and who did it. Buyers see nothing new — "being made"
+  already covered this — and a second click is a no-op.
+- **Cancel** deletes the Printful draft, refunds the Stripe payment in full
+  (idempotent key, Stripe keeps its fee), and marks the order refunded,
+  which also releases a family claim. It refuses once the draft has been
+  confirmed or shipped — that's the Terms' "in production" line, and a
+  refund at that point is a decision to eat the cost, made at Stripe by
+  hand. The buyer's receipt page and order list say "cancelled and
+  refunded" rather than the claim-race message.
+- Approving is deliberate and never automatic: it is the moment our money
+  moves, and reviewing the artwork once is the only quality gate there is.
+
+**Where:** `backend/fulfillment/printful.py` (`confirm_order`,
+`cancel_order`), `backend/repositories/gift_orders.py`
+(`approve_shipment`, `cancel_and_refund`), `POST /admin/orders/{id}/approve`
+and `/cancel` in `backend/routes/checkout.py`, migration 0047,
+`frontend-admin/src/pages/OrdersPage.jsx`. Needs `orders/write` on the
+Printful API token.
+
 ### The printer tells us when it ships, and when it doesn't
 *2026-09-04*
 
