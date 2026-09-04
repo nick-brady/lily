@@ -896,7 +896,11 @@ carries on as the SPA it always was.
   `/setup`, `/login` are `noindex, nofollow` twice over: as an
   `X-Robots-Tag` header from nginx and as a meta tag from the app. Real
   `robots.txt` and `sitemap.xml` replace the shell that used to answer for
-  them with a 200.
+  them with a 200. `robots.txt` deliberately does **not** disallow the
+  private routes: Disallow stops the fetch, so a crawler would never see the
+  noindex and could still list a leaked URL bare. It blocks only `/api/`,
+  and carries no comments — it is a public file, and listing the private
+  paths in it would be a map.
 - **The demo phones are client-only on purpose.** `PhoneFrame` renders its
   screen empty until mount: the demo timelines are built from `Date.now()`
   and the visitor's locale, so what the build machine rendered could never
