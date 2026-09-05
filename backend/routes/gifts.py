@@ -179,6 +179,26 @@ def gift_artwork_file(
     return Response(content=body, media_type="image/png")
 
 
+@router.get("/gift-mockup/{rendering_id}.jpg")
+def gift_mockup_file(
+    rendering_id: uuid.UUID,
+    exp: int,
+    sig: str,
+    db: Session = Depends(get_db),
+) -> Response:
+    """The product photograph, for the receipt email — an email can't hold
+    a one-hour presigned S3 link, so it holds a year-long signed link to us
+    instead. Same HMAC credential as the artwork routes."""
+    if not artwork_links.verify_artwork_sig(rendering_id, exp, sig, "mockup"):
+        raise HTTPException(status_code=403, detail="Invalid or expired link")
+    rendering = db.get(GiftRendering, rendering_id)
+    if rendering is None or rendering.deleted_at is not None or not rendering.mockup_s3_key:
+        raise HTTPException(status_code=404, detail="No photograph")
+    key = rendering.mockup_s3_key
+    media_type = "image/png" if key.lower().endswith(".png") else "image/jpeg"
+    return Response(content=get_object_bytes(key), media_type=media_type)
+
+
 @router.get("/gift-artwork/{rendering_id}/{page}.png")
 def gift_artwork_page_file(
     rendering_id: uuid.UUID,

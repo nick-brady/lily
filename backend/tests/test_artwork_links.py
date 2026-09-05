@@ -39,3 +39,33 @@ def test_expired_fails():
     url = signed_artwork_url(rid, expires_in=-10)
     parsed_rid, exp, sig = _parse(url)
     assert not verify_artwork_sig(parsed_rid, exp, sig)
+
+
+def test_mockup_links_are_signed_apart_from_artwork_links():
+    import uuid
+    from urllib.parse import parse_qs, urlparse
+
+    from artwork_links import signed_mockup_url
+
+    rid = uuid.uuid4()
+    url = signed_mockup_url(rid, expires_in=3600)
+    assert f"/api/gift-mockup/{rid}.jpg" in url
+    q = parse_qs(urlparse(url).query)
+    exp, sig = int(q["exp"][0]), q["sig"][0]
+    assert verify_artwork_sig(rid, exp, sig, "mockup")
+    assert not verify_artwork_sig(rid, exp, sig)  # not a valid artwork link
+
+
+def test_the_email_shows_the_photograph_when_there_is_one():
+    import uuid
+    from types import SimpleNamespace
+
+    import gift_receipt_email as rcpt
+
+    rid = uuid.uuid4()
+    with_photo = SimpleNamespace(id=rid, mockup_s3_key="mockups/x.jpg")
+    design_only = SimpleNamespace(id=rid, mockup_s3_key=None)
+    assert "/api/gift-mockup/" in rcpt.email_image_url(with_photo)
+    assert "/api/gift-artwork/" in rcpt.email_image_url(design_only)
+    assert rcpt.email_image_url(None) is None
+    assert 'alt="Arrival Story"' in rcpt.WORDMARK_HTML and "wordmark-email.png" in rcpt.WORDMARK_HTML
