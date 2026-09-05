@@ -238,16 +238,16 @@ class GiftCheckoutIn(BaseModel):
     gift_message: Optional[str] = Field(default=None, max_length=500)
     # Where each copy goes. The buyer names them here rather than on Stripe's
     # page, which collects exactly one address per session — the reason
-    # "both" used to be refused unless the parents had saved theirs.
-    # `family_address` is unnecessary (and ignored) when they have.
+    # "both" used to be refused unless the parents had saved theirs. The
+    # saved one is shown pre-filled; `family_address` is what the buyer
+    # sends back (their edits win) and may be omitted when one is saved.
     family_address: Optional[ShippingAddressIn] = None
     self_address: Optional[ShippingAddressIn] = None
 
 
 class ShippingQuoteIn(BaseModel):
-    """Where one parcel is going. `address` is unnecessary for a family copy
-    when the parents have saved theirs — it's read on the server and never
-    shown to the buyer."""
+    """Where one parcel is going. `address` may be omitted for a family copy
+    when the parents have saved theirs; sent, it wins."""
 
     recipient_kind: str = Field(..., pattern="^(family|self)$")
     address: Optional[ShippingAddressIn] = None
@@ -927,12 +927,14 @@ class GiftItemOut(BaseModel):
 
 
 class GiftGalleryOut(BaseModel):
-    """The gift gallery plus birth-level purchase context (whether the
-    parents saved a shipping address — the address itself never leaves the
-    parent-only routes)."""
+    """The gift gallery plus birth-level purchase context: the parents'
+    saved shipping address, so a buyer sees where the family's copy is
+    going and can fix it. Members only — the page is for people the family
+    invited, who they'd tell their address to anyway."""
 
     items: list["GiftItemOut"] = []
     family_has_shipping_address: bool = False
+    family_shipping_address: Optional[dict] = None
     storage_paid_until: Optional[datetime] = None
     storage_lifetime: bool = False
     # When artwork may first be generated: the arrival plus a few hours for

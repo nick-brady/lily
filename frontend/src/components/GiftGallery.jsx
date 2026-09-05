@@ -19,7 +19,7 @@ function formatTime(timestamp) {
 
 export default function GiftGallery({ birthId, isParent = true }) {
   const [items, setItems] = useState(null);
-  const [familyHasAddress, setFamilyHasAddress] = useState(false);
+  const [savedFamilyAddress, setSavedFamilyAddress] = useState(null);
   const [storagePaidUntil, setStoragePaidUntil] = useState(null);
   const [storageLifetime, setStorageLifetime] = useState(false);
   const [artworkReadyAt, setArtworkReadyAt] = useState(null);
@@ -31,7 +31,7 @@ export default function GiftGallery({ birthId, isParent = true }) {
     try {
       const gallery = await api.listGifts(birthId);
       setItems(gallery.items);
-      setFamilyHasAddress(gallery.family_has_shipping_address);
+      setSavedFamilyAddress(gallery.family_shipping_address || null);
       setStoragePaidUntil(gallery.storage_paid_until);
       setStorageLifetime(gallery.storage_lifetime ?? false);
       setArtworkReadyAt(gallery.artwork_ready_at ?? null);
@@ -70,7 +70,7 @@ export default function GiftGallery({ birthId, isParent = true }) {
     try {
       const gallery = await api.generateGifts(birthId);
       setItems(gallery.items);
-      setFamilyHasAddress(gallery.family_has_shipping_address);
+      setSavedFamilyAddress(gallery.family_shipping_address || null);
       setStoragePaidUntil(gallery.storage_paid_until);
       setStorageLifetime(gallery.storage_lifetime ?? false);
       setArtworkReadyAt(gallery.artwork_ready_at ?? null);
@@ -140,14 +140,14 @@ export default function GiftGallery({ birthId, isParent = true }) {
                 key={item.id}
                 item={item}
                 birthId={birthId}
-                familyHasAddress={familyHasAddress}
+                savedFamilyAddress={savedFamilyAddress}
                 onPhotoChanged={load}
               />
             ))}
           <PairedRow
             items={items.filter((item) => item.kind === 'physical' && PAIRED_KINDS.includes(item.product_kind))}
             birthId={birthId}
-            familyHasAddress={familyHasAddress}
+            savedFamilyAddress={savedFamilyAddress}
             onPhotoChanged={load}
           />
           <ComingNextSection />
@@ -159,7 +159,7 @@ export default function GiftGallery({ birthId, isParent = true }) {
                 key={item.id}
                 item={item}
                 birthId={birthId}
-                familyHasAddress={familyHasAddress}
+                savedFamilyAddress={savedFamilyAddress}
                 onPhotoChanged={load}
               />
             ))}
@@ -193,7 +193,7 @@ const DESIGN_ORDER = [
 ];
 
 
-function GiftItemCard({ item, birthId, familyHasAddress, onPhotoChanged }) {
+function GiftItemCard({ item, birthId, savedFamilyAddress, onPhotoChanged }) {
   const [showAll, setShowAll] = useState(false);
   const designRank = (r) => {
     const i = DESIGN_ORDER.indexOf(r.template_id);
@@ -233,7 +233,7 @@ function GiftItemCard({ item, birthId, familyHasAddress, onPhotoChanged }) {
                 rendering={r}
                 birthId={birthId}
                 item={item}
-                familyHasAddress={familyHasAddress}
+                savedFamilyAddress={savedFamilyAddress}
                 onPhotoChanged={onPhotoChanged}
               />
             ))}
@@ -303,7 +303,7 @@ function ComingNextSection() {
   );
 }
 
-function PairedRow({ items, birthId, familyHasAddress, onPhotoChanged }) {
+function PairedRow({ items, birthId, savedFamilyAddress, onPhotoChanged }) {
   const ordered = PAIRED_KINDS.map((k) => items.find((it) => it.product_kind === k)).filter(Boolean);
   if (ordered.length === 0) return null;
   return (
@@ -330,7 +330,7 @@ function PairedRow({ items, birthId, familyHasAddress, onPhotoChanged }) {
                 rendering={usable[0]}
                 birthId={birthId}
                 item={item}
-                familyHasAddress={familyHasAddress}
+                savedFamilyAddress={savedFamilyAddress}
                 onPhotoChanged={onPhotoChanged}
               />
             )}
@@ -467,7 +467,7 @@ function RenderingTile({
   rendering,
   birthId,
   item,
-  familyHasAddress,
+  savedFamilyAddress,
   onPhotoChanged,
 }) {
   // Index into the gallery below, or null. One set of images, one viewer.
@@ -582,7 +582,7 @@ function RenderingTile({
           birthId={birthId}
           rendering={rendering}
           item={item}
-          familyHasAddress={familyHasAddress}
+          savedFamilyAddress={savedFamilyAddress}
           onClose={() => setWizardAt(null)}
           onChanged={onPhotoChanged}
           renderCheckout={(current) => (
@@ -591,7 +591,7 @@ function RenderingTile({
               birthId={birthId}
               rendering={current}
               item={item}
-              familyHasAddress={familyHasAddress}
+              savedFamilyAddress={savedFamilyAddress}
               onClose={() => setWizardAt(null)}
             />
           )}
@@ -740,7 +740,7 @@ function GiftCheckoutSheet({
   birthId,
   rendering,
   item,
-  familyHasAddress,
+  savedFamilyAddress,
   onClose,
   embedded = false,
 }) {
@@ -750,17 +750,20 @@ function GiftCheckoutSheet({
   const [note, setNote] = useState('');
   const [starting, setStarting] = useState(false);
   const [error, setError] = useState('');
-  const [familyAddress, setFamilyAddress] = useState(emptyAddress);
+  // The family's form starts filled with the parents' saved address, so the
+  // buyer sees where it's going and can fix what's changed. The people on
+  // this page were invited by the family; the address isn't a secret from
+  // them, and "is this going to the right place" is the question anyone
+  // buying a parcel wants answered.
+  const [familyAddress, setFamilyAddress] = useState(() =>
+    savedFamilyAddress ? { ...emptyAddress(), ...savedFamilyAddress } : emptyAddress(),
+  );
   const [selfAddress, setSelfAddress] = useState(emptyAddress);
 
   const copies = (toFamily ? 1 : 0) + (toSelf ? 1 : 0);
   const recipientKind = toFamily && toSelf ? 'both' : toFamily ? 'family' : 'self';
-  // Each parcel needs somewhere to go. The family's is already known when the
-  // parents have saved one — and it stays theirs: we ship to it without ever
-  // showing it to whoever is buying.
-  const needFamilyAddress = toFamily && !familyHasAddress;
   const missingAddress =
-    (needFamilyAddress && !addressComplete(familyAddress)) ||
+    (toFamily && !addressComplete(familyAddress)) ||
     (toSelf && !addressComplete(selfAddress));
 
   // Postage is quoted per parcel as soon as its address is whole — the same
@@ -770,8 +773,8 @@ function GiftCheckoutSheet({
     birthId,
     rendering.id,
     'family',
-    toFamily && (familyHasAddress || addressComplete(familyAddress)),
-    familyHasAddress ? null : familyAddress,
+    toFamily && addressComplete(familyAddress),
+    familyAddress,
   );
   const selfQuote = useShippingQuote(
     birthId,
@@ -795,7 +798,7 @@ function GiftCheckoutSheet({
       const { url } = await api.createGiftCheckout(birthId, rendering.id, {
         recipientKind,
         giftMessage: note.trim() || null,
-        familyAddress: needFamilyAddress ? familyAddress : null,
+        familyAddress: toFamily ? familyAddress : null,
         selfAddress: toSelf ? selfAddress : null,
       });
       window.location.assign(url);
@@ -836,14 +839,14 @@ function GiftCheckoutSheet({
           hint={
             item.is_claimed_for_family
               ? 'Already gifted 🤍'
-              : familyHasAddress
-                ? "Ships to the family's saved address."
+              : savedFamilyAddress
+                ? "Their saved address, so you know it's going to the right place."
                 : "They haven't saved an address, so you'll need theirs."
           }
           checked={toFamily}
           disabled={item.is_claimed_for_family}
           onChange={setToFamily}
-          open={needFamilyAddress}
+          open={toFamily && !item.is_claimed_for_family}
         >
           <AddressForm
             birthId={birthId}

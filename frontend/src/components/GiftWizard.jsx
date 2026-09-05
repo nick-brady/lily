@@ -33,7 +33,7 @@ export default function GiftWizard({
   birthId,
   rendering: initialRendering,
   item,
-  familyHasAddress,
+  savedFamilyAddress,
   onClose,
   onChanged,
   renderCheckout,

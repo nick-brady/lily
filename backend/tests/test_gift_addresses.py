@@ -204,3 +204,21 @@ def test_a_session_from_before_the_change_still_ships():
         }
     }
     assert _resolve(order, birth, session)["name"] == "From Stripe"
+
+
+def test_the_buyers_family_address_wins_over_the_saved_one():
+    from fastapi import HTTPException
+
+    from routes.checkout import _family_destination
+    from schemas import ShippingAddressIn
+
+    saved = {**_GOOD, "name": "Saved Parents"}
+    # nothing typed: the saved address, copied
+    assert _family_destination(None, saved) == saved
+    # typed (pre-filled and corrected): the correction is what ships
+    typed = ShippingAddressIn(**{**_GOOD, "line1": "14 Rue Street"})
+    assert _family_destination(typed, saved)["line1"] == "14 Rue Street"
+    # nothing saved and nothing typed: refused before anyone pays
+    with pytest.raises(HTTPException) as exc:
+        _family_destination(None, None)
+    assert exc.value.status_code == 422

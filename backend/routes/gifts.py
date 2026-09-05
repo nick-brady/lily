@@ -148,6 +148,7 @@ def _gift_gallery_out(db, birth, *, is_parent: bool) -> GiftGalleryOut:
     return GiftGalleryOut(
         items=_serialize_gift_items(db, birth.id, is_parent=is_parent),
         family_has_shipping_address=birth.shipping_address is not None,
+        family_shipping_address=birth.shipping_address,
         storage_paid_until=birth.storage_paid_until,
         storage_lifetime=birth.storage_lifetime,
         artwork_ready_at=gifts_repo.artwork_ready_at(birth),
