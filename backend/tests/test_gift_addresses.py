@@ -246,7 +246,7 @@ def test_the_receipt_email_writes_the_address_out_in_full():
         "product_price_cents": 1800, "shipping_cents": 669, "amount_cents": 2469, "gift_message": None,
     }
     _, body, text = rcpt.build([line], birth=SimpleNamespace(child_name="Lily", slug="lily-wren"), url="https://x/receipt")
-    assert "Going to the family:<br>Nora Brady<br>12 Rue Street<br>Boston, MA 02118" in body
+    assert "Going to the family:</p>" in body and "Nora Brady<br>12 Rue Street<br>Boston, MA 02118" in body
     assert "Going to the family:\n  Nora Brady\n  12 Rue Street\n  Boston, MA 02118" in text
     # without the street we still say where, roughly
     line["address"] = None
