@@ -105,7 +105,12 @@ def build(lines: list[dict], *, birth: Birth, url: str) -> tuple[str, str, str]:
         # the whole address when we have it — the buyer just typed or approved
         # it, and "is it going to the right place" is what they open this for
         if line.get("address"):
-            where = ":<br>" + "<br>".join(html.escape(part) for part in line["address"])
+            # its own small block: label, then the address as it goes on the
+            # parcel, set in from the margin so the eye reads it as one thing
+            where = (
+                ':</p><p style="font-size: 14px; color: #44364a; margin: 2px 0 10px 14px; line-height: 1.45;">'
+                + "<br>".join(html.escape(part) for part in line["address"])
+            )
         else:
             where = f", in {html.escape(line['destination'])}" if line.get("destination") else ""
         image = (
