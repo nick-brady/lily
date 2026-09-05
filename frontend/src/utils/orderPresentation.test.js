@@ -21,7 +21,7 @@ describe('presentOrder', () => {
   });
 
   it('says where it stands: waiting on us, then being made', () => {
-    expect(presentOrder(paid('submitted')).detail).toMatch(/waiting for us/);
+    expect(presentOrder(paid('submitted')).detail).toMatch(/preparing your order/);
     const made = presentOrder({ status: 'paid', fulfillment_status: 'confirmed', confirmed_at: '2026-09-05T12:00:00Z' });
     expect(made.headline).toMatch(/being made/);
     expect(made.detail).toMatch(/Sent to print on/);

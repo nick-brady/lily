@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Link, useParams, useSearchParams } from 'react-router-dom';
+import { Link, useLocation, useParams, useSearchParams } from 'react-router-dom';
 import { api } from '../api/client';
 import { useAuth } from '../contexts/AuthContext';
 import useDialog from '../hooks/useDialog';
@@ -26,7 +26,10 @@ import { SUPPORT_EMAIL } from '../utils/support';
 export default function OrderConfirmationPage() {
   const { slug, orderId } = useParams();
   const [searchParams, setSearchParams] = useSearchParams();
-  const { isAuthenticated } = useAuth();
+  const { isAuthenticated, loading: authLoading } = useAuth();
+  // Arriving from Stripe, the way back is the family's page; arriving from
+  // Your orders, it's the list you were just reading.
+  const fromOrders = useLocation().state?.from === 'orders';
   const [receipt, setReceipt] = useState(null);
   const [error, setError] = useState(null);
   const [tries, setTries] = useState(0);
@@ -48,8 +51,11 @@ export default function OrderConfirmationPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [slug, searchParams]);
 
-  // Load, and keep asking while a payment is still settling.
+  // Load once the session check has answered — so the card arrives knowing
+  // whether it's yours, rather than painting and then growing a cancel
+  // button a moment later — and keep asking while a payment is still settling.
   useEffect(() => {
+    if (authLoading) return undefined;
     let cancelled = false;
     let timer;
     const load = (attempt) => {
@@ -72,8 +78,7 @@ export default function OrderConfirmationPage() {
       cancelled = true;
       clearTimeout(timer);
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [slug, orderId, isAuthenticated]);
+  }, [slug, orderId, authLoading, isAuthenticated]);
 
   const settling = receipt ? paymentSettling(receipt.orders) && tries < POLL_TRIES : false;
   const childName = receipt?.child_name;
@@ -135,10 +140,23 @@ export default function OrderConfirmationPage() {
               </p>
             </div>
 
-            <div className="pt-2 text-center">
-              <Link to={`/b/${slug}`} className="btn-primary inline-block px-8 py-4 text-base">
-                Back to {pageName} →
-              </Link>
+            <div className="pt-2 text-center space-y-3">
+              {fromOrders ? (
+                <>
+                  <Link to="/account/orders" className="btn-primary inline-block px-8 py-4 text-base">
+                    ← Back to your orders
+                  </Link>
+                  <p>
+                    <Link to={`/b/${slug}`} className="text-sm text-gray-500 dark:text-gray-400 underline underline-offset-2 hover:text-primary-600">
+                      {pageName.charAt(0).toUpperCase() + pageName.slice(1)} →
+                    </Link>
+                  </p>
+                </>
+              ) : (
+                <Link to={`/b/${slug}`} className="btn-primary inline-block px-8 py-4 text-base">
+                  Back to {pageName} →
+                </Link>
+              )}
             </div>
           </>
         )}
@@ -301,11 +319,11 @@ function OrderCard({ line, settling, first, childName, onCancel }) {
 
       {onCancel && (
         <p className="text-sm text-gray-500 dark:text-gray-400 border-t pt-4">
-          Changed your mind?{' '}
+          Changed your mind? You can{' '}
           <button type="button" onClick={onCancel} className="underline underline-offset-2 text-gray-800 dark:text-white hover:text-primary-600">
-            Cancel this order
+            cancel this order
           </button>{' '}
-          for a full refund — you can until we send it to print.
+          for a full refund until we send it to print.
         </p>
       )}
     </section>

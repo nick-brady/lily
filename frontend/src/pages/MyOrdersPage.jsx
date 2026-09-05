@@ -66,6 +66,7 @@ export default function MyOrdersPage() {
                 <li key={o.id}>
                   <Link
                     to={`/b/${o.slug}/order/${o.id}`}
+                    state={{ from: 'orders' }}
                     className="card flex gap-4 items-center hover:shadow-md transition-shadow"
                   >
                     {o.image_url ? (
@@ -127,6 +128,6 @@ function statusWord(o) {
   if (o.fulfillment_status === 'on_hold') return 'On hold — we are on it';
   if (o.fulfillment_status === 'shipped') return `Shipped${o.carrier ? ` with ${o.carrier}` : ''}`;
   if (o.fulfillment_status === 'confirmed') return 'Being made';
-  if (o.fulfillment_status === 'submitted') return 'Waiting to be sent to print';
+  if (o.fulfillment_status === 'submitted') return 'Preparing your order';
   return 'Order received';
 }
