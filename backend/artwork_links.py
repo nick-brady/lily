@@ -51,6 +51,15 @@ def signed_artwork_url(
     return f"{ARTWORK_PUBLIC_URL}/api/gift-artwork/{rid}.png?exp={exp}&sig={_sig(rid, exp)}"
 
 
+def signed_mockup_url(rendering_id: uuid.UUID | str, *, expires_in: int) -> str:
+    """Public URL for the product photograph (the mug with the design on
+    it) — what the receipt email shows. Same credential as the artwork
+    links, a different subject so one can't be swapped for the other."""
+    rid = str(rendering_id)
+    exp = int(time.time()) + expires_in
+    return f"{ARTWORK_PUBLIC_URL}/api/gift-mockup/{rid}.jpg?exp={exp}&sig={_sig(rid, exp, 'mockup')}"
+
+
 def verify_artwork_sig(
     rendering_id: uuid.UUID | str, exp: int, sig: str, page: str | None = None
 ) -> bool:

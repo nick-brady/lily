@@ -24,7 +24,7 @@ import artwork_links
 import messenger
 import payments
 from db import SessionLocal
-from models import Birth, GiftOrder, GiftShipment, User
+from models import Birth, GiftOrder, GiftRendering, GiftShipment, User
 from repositories import gift_orders as gift_orders_repo
 
 logger = logging.getLogger(__name__)
@@ -60,6 +60,27 @@ def unclaim(db: Session, order_ids: list[uuid.UUID]) -> None:
     """The send failed; let a later attempt try again."""
     db.execute(update(GiftOrder).where(GiftOrder.id.in_(order_ids)).values(receipt_emailed_at=None))
     db.commit()
+
+
+# The wordmark as the site shows it — the cursive Great Vibes — rendered to a
+# PNG because email clients don't load web fonts. Shown at 180px, file is 2x.
+# alt text carries the name when images are blocked.
+WORDMARK_HTML = (
+    f'<img src="{payments.FRONTEND_URL}/brand/wordmark-email.png" alt="Arrival Story" width="180" '
+    'style="display: block; width: 180px; height: auto; margin: 0 0 20px;">'
+)
+
+
+def email_image_url(rendering) -> str | None:
+    """What the email shows for the item: the product photograph (the mug
+    with the design on it) when we have one, else the design itself. Links
+    are signed for a year — the receipt page's hour-long presigned URLs die
+    long before anyone reopens the email."""
+    if rendering is None:
+        return None
+    if rendering.mockup_s3_key:
+        return artwork_links.signed_mockup_url(rendering.id, expires_in=IMAGE_TTL_SECONDS)
+    return artwork_links.signed_artwork_url(rendering.id, expires_in=IMAGE_TTL_SECONDS)
 
 
 def receipt_url(slug: str, order_id: uuid.UUID) -> str:
@@ -114,8 +135,7 @@ def build(lines: list[dict], *, birth: Birth, url: str) -> tuple[str, str, str]:
     body_html = f"""\
 <div style="font-family: Georgia, 'Times New Roman', serif; max-width: 460px;
             margin: 0 auto; padding: 32px 24px; color: #44364a;">
-  <p style="font-size: 14px; letter-spacing: 2px; color: #a21caf;
-            text-transform: uppercase; margin: 0 0 16px;">Arrival Story</p>
+  {WORDMARK_HTML}
   <p style="font-size: 22px; margin: 0 0 8px;">Thank you &mdash; your order is in.</p>
   <p style="font-size: 14px; color: #6d6076; margin: 0 0 20px;">
     It's made to order and usually ships within a few business days.
@@ -174,8 +194,7 @@ def build_shipped(line: dict, *, birth: Birth, url: str) -> tuple[str, str, str]
     body_html = f"""\
 <div style="font-family: Georgia, 'Times New Roman', serif; max-width: 460px;
             margin: 0 auto; padding: 32px 24px; color: #44364a;">
-  <p style="font-size: 14px; letter-spacing: 2px; color: #a21caf;
-            text-transform: uppercase; margin: 0 0 16px;">Arrival Story</p>
+  {WORDMARK_HTML}
   <p style="font-size: 22px; margin: 0 0 8px;">It&rsquo;s on its way.</p>
   <p style="font-size: 15px; color: #6d6076; margin: 0 0 20px;">
     Your <strong style="color: #44364a;">{item}</strong> has shipped with {carrier}.
@@ -256,11 +275,8 @@ def send_for_orders(order_ids: list[uuid.UUID], session_obj: dict | None) -> Non
 
         lines = [gift_orders_repo.receipt_line(db, o, birth) for o in orders]
         for o, line in zip(orders, lines):
-            # the receipt page presigns S3 for an hour; an email needs longer
-            line["image_url"] = (
-                artwork_links.signed_artwork_url(o.gift_rendering_id, expires_in=IMAGE_TTL_SECONDS)
-                if o.gift_rendering_id
-                else None
+            line["image_url"] = email_image_url(
+                db.get(GiftRendering, o.gift_rendering_id) if o.gift_rendering_id else None
             )
         subject, body_html, text = build(lines, birth=birth, url=receipt_url(birth.slug, orders[0].id))
         if not messenger.send_email(to=to, subject=subject, html=body_html, text=text):
