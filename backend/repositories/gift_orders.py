@@ -324,6 +324,28 @@ def _destination(address: dict | None) -> str | None:
     return ", ".join(p for p in (city, state) if p) or None
 
 
+def address_lines(address: dict | None) -> list[str] | None:
+    """The whole address, as it would be written on the parcel — for the
+    buyer's own eyes: their email, and the receipt page when it's theirs.
+    Reads either our shape (line1/state/postal_code) or the partner's
+    (address1/state_code/zip)."""
+    if not address:
+        return None
+    city = address.get("city") or ""
+    if city.isupper():
+        city = city.title()
+    state = address.get("state") or address.get("state_code") or ""
+    postal = address.get("postal_code") or address.get("zip") or ""
+    last = " ".join(p for p in (", ".join(p for p in (city, state) if p), postal) if p)
+    lines = [
+        address.get("name"),
+        address.get("line1") or address.get("address1"),
+        address.get("line2") or address.get("address2"),
+        last,
+    ]
+    return [line for line in lines if line] or None
+
+
 def buyer_can_cancel(status: str, fulfillment_status: str) -> bool:
     """The Terms' window: a full refund any time before we send it to print.
     A draft at the printer, or nothing there yet, or a failed submission —
@@ -333,8 +355,10 @@ def buyer_can_cancel(status: str, fulfillment_status: str) -> bool:
     return status == "paid" and fulfillment_status in ("none", "submitted", "failed")
 
 
-def receipt_line(db: Session, o: GiftOrder, birth: Birth) -> dict:
-    """One order as its buyer may see it (see OrderReceiptLineOut)."""
+def receipt_line(db: Session, o: GiftOrder, birth: Birth, *, full_address: bool = False) -> dict:
+    """One order as its buyer may see it (see OrderReceiptLineOut).
+    `full_address` adds the street — for the buyer's own email and their
+    signed-in view of the receipt, never for the page a link reaches."""
     item = db.get(GiftCatalogItem, o.gift_catalog_item_id)
     rendering = db.get(GiftRendering, o.gift_rendering_id) if o.gift_rendering_id else None
     shipment = db.scalar(
@@ -361,6 +385,7 @@ def receipt_line(db: Session, o: GiftOrder, birth: Birth) -> dict:
         "product_display_name": product.display_name if product else None,
         "image_url": image,
         "destination": _destination(address),
+        "address": address_lines(address) if full_address else None,
         "product_price_cents": o.product_price_cents
         if o.product_price_cents is not None
         else max(0, (o.amount_cents or 0) - (o.shipping_cents or 0)),
@@ -376,7 +401,7 @@ def receipt_line(db: Session, o: GiftOrder, birth: Birth) -> dict:
     }
 
 
-def receipt(db: Session, order: GiftOrder, birth: Birth) -> list[dict]:
+def receipt(db: Session, order: GiftOrder, birth: Birth, *, full_address: bool = False) -> list[dict]:
     """The buyer's view of a checkout: this order and any companion paid in
     the same session (a "both" purchase is two orders, one payment)."""
     orders = [order]
@@ -389,7 +414,7 @@ def receipt(db: Session, order: GiftOrder, birth: Birth) -> list[dict]:
                 ).order_by(GiftOrder.created_at)
             )
         )
-    return [receipt_line(db, o, birth) for o in orders]
+    return [receipt_line(db, o, birth, full_address=full_address) for o in orders]
 
 
 def my_orders(db: Session, *, user_id: uuid.UUID) -> list[dict]:

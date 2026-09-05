@@ -102,7 +102,12 @@ def build(lines: list[dict], *, birth: Birth, url: str) -> tuple[str, str, str]:
         item = html.escape(line["item_display_name"])
         option = f" &middot; {html.escape(line['product_display_name'])}" if line.get("product_display_name") else ""
         who = "to the family" if line["recipient_kind"] == "family" else "to you"
-        where = f", in {html.escape(line['destination'])}" if line.get("destination") else ""
+        # the whole address when we have it — the buyer just typed or approved
+        # it, and "is it going to the right place" is what they open this for
+        if line.get("address"):
+            where = ":<br>" + "<br>".join(html.escape(part) for part in line["address"])
+        else:
+            where = f", in {html.escape(line['destination'])}" if line.get("destination") else ""
         image = (
             f'<img src="{html.escape(line["image_url"])}" alt="" width="96" height="96" '
             f'style="border-radius: 12px; object-fit: cover; display: block; margin: 0 0 12px;">'
@@ -154,7 +159,10 @@ def build(lines: list[dict], *, birth: Birth, url: str) -> tuple[str, str, str]:
 
     def line_text(line: dict) -> str:
         who = "to the family" if line["recipient_kind"] == "family" else "to you"
-        where = f", in {line['destination']}" if line.get("destination") else ""
+        if line.get("address"):
+            where = ":\n  " + "\n  ".join(line["address"])
+        else:
+            where = f", in {line['destination']}" if line.get("destination") else ""
         option = f" · {line['product_display_name']}" if line.get("product_display_name") else ""
         parts = [
             f"{line['item_display_name']}{option}",
@@ -273,7 +281,7 @@ def send_for_orders(order_ids: list[uuid.UUID], session_obj: dict | None) -> Non
         if not claim(db, [o.id for o in orders]):
             return  # the other path got here first
 
-        lines = [gift_orders_repo.receipt_line(db, o, birth) for o in orders]
+        lines = [gift_orders_repo.receipt_line(db, o, birth, full_address=True) for o in orders]
         for o, line in zip(orders, lines):
             line["image_url"] = email_image_url(
                 db.get(GiftRendering, o.gift_rendering_id) if o.gift_rendering_id else None

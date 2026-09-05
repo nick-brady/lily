@@ -204,3 +204,51 @@ def test_a_session_from_before_the_change_still_ships():
         }
     }
     assert _resolve(order, birth, session)["name"] == "From Stripe"
+
+
+def test_the_buyers_family_address_wins_over_the_saved_one():
+    from fastapi import HTTPException
+
+    from routes.checkout import _family_destination
+    from schemas import ShippingAddressIn
+
+    saved = {**_GOOD, "name": "Saved Parents"}
+    # nothing typed: the saved address, copied
+    assert _family_destination(None, saved) == saved
+    # typed (pre-filled and corrected): the correction is what ships
+    typed = ShippingAddressIn(**{**_GOOD, "line1": "14 Rue Street"})
+    assert _family_destination(typed, saved)["line1"] == "14 Rue Street"
+    # nothing saved and nothing typed: refused before anyone pays
+    with pytest.raises(HTTPException) as exc:
+        _family_destination(None, None)
+    assert exc.value.status_code == 422
+
+
+def test_the_buyer_sees_the_whole_address_as_written_on_the_parcel():
+    from repositories.gift_orders import address_lines
+
+    ours = address_lines({**_GOOD, "line2": "Apt 4"})
+    assert ours == ["Nora Brady", "12 Rue Street", "Apt 4", "Boston, MA 02118"]
+    partners = address_lines({"name": "Nora Brady", "address1": "12 Rue Street", "city": "BOSTON", "state_code": "MA", "zip": "02118"})
+    assert partners == ["Nora Brady", "12 Rue Street", "Boston, MA 02118"]
+    assert address_lines(None) is None
+
+
+def test_the_receipt_email_writes_the_address_out_in_full():
+    from types import SimpleNamespace
+
+    import gift_receipt_email as rcpt
+
+    line = {
+        "id": uuid.uuid4(), "reference": "638659F9", "status": "paid", "fulfillment_status": "submitted",
+        "recipient_kind": "family", "item_display_name": "Birth Story Mug", "product_display_name": None,
+        "image_url": None, "destination": "Boston, MA", "address": ["Nora Brady", "12 Rue Street", "Boston, MA 02118"],
+        "product_price_cents": 1800, "shipping_cents": 669, "amount_cents": 2469, "gift_message": None,
+    }
+    _, body, text = rcpt.build([line], birth=SimpleNamespace(child_name="Lily", slug="lily-wren"), url="https://x/receipt")
+    assert "Going to the family:<br>Nora Brady<br>12 Rue Street<br>Boston, MA 02118" in body
+    assert "Going to the family:\n  Nora Brady\n  12 Rue Street\n  Boston, MA 02118" in text
+    # without the street we still say where, roughly
+    line["address"] = None
+    _, body, _ = rcpt.build([line], birth=SimpleNamespace(child_name="Lily", slug="lily-wren"), url="https://x/receipt")
+    assert "Going to the family, in Boston, MA" in body

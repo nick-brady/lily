@@ -809,7 +809,7 @@ def test_receipt_route_is_public_and_scoped_to_the_birth(monkeypatch):
     monkeypatch.setattr(
         checkout.gift_orders_repo,
         "receipt",
-        lambda db, o, b: [{
+        lambda db, o, b, full_address=False: [{
             "id": o.id, "reference": "638659F9", "status": "paid", "fulfillment_status": "submitted",
             "recipient_kind": "self", "item_display_name": "Birth Story Mug",
             "product_display_name": "White glossy 11oz", "image_url": None, "destination": "Raleigh, NC",

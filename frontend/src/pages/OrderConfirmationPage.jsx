@@ -271,7 +271,21 @@ function OrderCard({ line, settling, first, childName, onCancel }) {
           </div>
           <div className="flex gap-2">
             <dt className="text-gray-500 dark:text-gray-400">Going</dt>
-            <dd className="text-gray-800 dark:text-white">{destinationLine(line)}</dd>
+            <dd className="text-gray-800 dark:text-white">
+              {line.address ? (
+                // the whole address, because this is the buyer's own view
+                <>
+                  {line.recipient_kind === 'family' ? 'to the family:' : 'to you:'}
+                  <span className="block mt-0.5 leading-snug">
+                    {line.address.map((part) => (
+                      <span key={part} className="block">{part}</span>
+                    ))}
+                  </span>
+                </>
+              ) : (
+                destinationLine(line)
+              )}
+            </dd>
           </div>
           <div className="flex gap-2">
             <dt className="text-gray-500 dark:text-gray-400">Reference</dt>

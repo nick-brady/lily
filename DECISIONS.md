@@ -1007,7 +1007,39 @@ the mug, Stripe was a convenient form.
 The buyer now names each destination on the send step and `collect_shipping`
 is False in every case (`routes/checkout.py`). A buyer typing the family's
 address never writes it to `births.shipping_address` — that field is the
-parents' own record, not a guest's guess.
+parents' own record, not a guest's guess. ~~The saved address is used without
+ever being shown to the buyer.~~ *Reversed 2026-09-04: see "The buyer sees the
+family's address" below.*
+
+### The buyer sees the family's address, pre-filled, and their version wins
+*2026-09-04*
+
+Until now a copy for the family shipped to the parents' saved address
+without the buyer ever seeing it — "Ships to the family's saved address" and
+a closed form. That guarded a secret nobody was keeping: the people on this
+page were invited by the family, and someone you'd share your daughter's
+birth with is someone you'd tell your address. Meanwhile it withheld the one
+thing anyone buying a parcel wants to know.
+
+> "when you buy something, it's really nice to know it's going to the right
+> address."
+
+Now the family's form opens with the saved address filled in. The buyer
+reads it, fixes a typo or a move if they know of one, and what they send is
+what ships — written onto the order as before. The parents' own record is
+untouched either way; a guest's correction is theirs, not the family's. With
+nothing saved the form is empty and required, as it was. The address rides
+on the gift gallery payload, which is members-only.
+
+The same thinking reaches the receipt: the email writes the address out in
+full, name and street, since it goes only to the buyer who just approved
+it; the receipt page shows it in full to the signed-in buyer and city and
+state to anyone else holding the link.
+
+**Where:** `family_shipping_address` on `GiftGalleryOut`
+(`backend/routes/gifts.py`), `_family_destination` in
+`backend/routes/checkout.py` (checkout and the shipping quote),
+`GiftCheckoutSheet` in `frontend/src/components/GiftGallery.jsx`.
 
 ### The order snapshots the address it was bought against
 *2026-08-23*

@@ -132,6 +132,19 @@ async def printful_webhook(
     return {"received": True, "outcome": outcome}
 
 
+def _family_destination(typed, saved) -> dict:
+    """Where the family's copy goes. The parents' saved address is shown to
+    the buyer pre-filled, and what they send back wins — they may have fixed
+    a typo, or know the family has moved. Without a saved one, theirs is
+    required. Whatever wins is written onto the order; nothing here touches
+    the parents' own record."""
+    if typed is not None:
+        return _checked(typed, "the family's address")
+    if saved:
+        return dict(saved)
+    return _checked(None, "the family's address")
+
+
 def _checked(address, whose: str) -> dict:
     """A destination we're willing to send a parcel to, as a plain dict.
 
@@ -193,18 +206,14 @@ def create_gift_checkout(
         # UX guard — the partial unique index is the real enforcement
         raise HTTPException(status_code=409, detail={"code": "already_claimed"})
     # Where each copy is going, settled before anyone pays and written onto
-    # the order. The parents' saved address is copied here rather than read at
-    # shipping time: an order should say where it was going, and the buyer is
-    # being charged for a parcel to a particular place. If that address
-    # changed between the payment and the shipment, we'd be delivering
-    # something nobody agreed to.
+    # the order. The address is copied here rather than read at shipping
+    # time: an order should say where it was going, and the buyer is being
+    # charged for a parcel to a particular place. If that address changed
+    # between the payment and the shipment, we'd be delivering something
+    # nobody agreed to.
     family_address = None
     if wants_family:
-        family_address = (
-            dict(access.birth.shipping_address)
-            if access.birth.shipping_address
-            else _checked(payload.family_address, "the family's address")
-        )
+        family_address = _family_destination(payload.family_address, access.birth.shipping_address)
     self_address = _checked(payload.self_address, "your address") if wants_self else None
 
     # Bigger and darker mugs cost us more, so the choice carries a flat
@@ -400,13 +409,10 @@ def quote_shipping(
     )
     if product is None:
         raise HTTPException(status_code=409, detail={"code": "not_purchasable"})
-    if payload.recipient_kind == "family" and access.birth.shipping_address:
-        address = dict(access.birth.shipping_address)
+    if payload.recipient_kind == "family":
+        address = _family_destination(payload.address, access.birth.shipping_address)
     else:
-        address = _checked(
-            payload.address,
-            "the family's address" if payload.recipient_kind == "family" else "your address",
-        )
+        address = _checked(payload.address, "your address")
     postage = gift_shipping.quote(product, address)
     return ShippingQuoteOut(
         shipping_cents=postage.cents,
@@ -581,15 +587,16 @@ def gift_order_receipt(
     if order is None or order.birth_id != birth.id:
         raise HTTPException(status_code=404, detail="Unknown order")
     response.headers["Cache-Control"] = "no-store"
+    yours = viewer is not None and order.purchased_by_user_id == viewer.id
     return OrderReceiptOut(
         slug=birth.slug,
         child_name=birth.child_name,
         theme=birth.theme or "lily",
         orders=[
             OrderReceiptLineOut(**line)
-            for line in gift_orders_repo.receipt(db, order, birth)
+            for line in gift_orders_repo.receipt(db, order, birth, full_address=yours)
         ],
-        yours=viewer is not None and order.purchased_by_user_id == viewer.id,
+        yours=yours,
     )
 
 
