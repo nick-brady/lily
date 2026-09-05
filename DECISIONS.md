@@ -1031,6 +1031,11 @@ untouched either way; a guest's correction is theirs, not the family's. With
 nothing saved the form is empty and required, as it was. The address rides
 on the gift gallery payload, which is members-only.
 
+The same thinking reaches the receipt: the email writes the address out in
+full, name and street, since it goes only to the buyer who just approved
+it; the receipt page shows it in full to the signed-in buyer and city and
+state to anyone else holding the link.
+
 **Where:** `family_shipping_address` on `GiftGalleryOut`
 (`backend/routes/gifts.py`), `_family_destination` in
 `backend/routes/checkout.py` (checkout and the shipping quote),

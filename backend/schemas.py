@@ -345,6 +345,9 @@ class OrderReceiptLineOut(BaseModel):
     product_display_name: Optional[str] = None
     image_url: Optional[str] = None
     destination: Optional[str] = None  # "Raleigh, NC"
+    # the whole address, as written on the parcel — only when the viewer is
+    # the buyer (the page a link reaches shows the city and state alone)
+    address: Optional[list[str]] = None
     product_price_cents: int
     shipping_cents: int
     amount_cents: int

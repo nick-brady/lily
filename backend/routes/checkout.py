@@ -587,15 +587,16 @@ def gift_order_receipt(
     if order is None or order.birth_id != birth.id:
         raise HTTPException(status_code=404, detail="Unknown order")
     response.headers["Cache-Control"] = "no-store"
+    yours = viewer is not None and order.purchased_by_user_id == viewer.id
     return OrderReceiptOut(
         slug=birth.slug,
         child_name=birth.child_name,
         theme=birth.theme or "lily",
         orders=[
             OrderReceiptLineOut(**line)
-            for line in gift_orders_repo.receipt(db, order, birth)
+            for line in gift_orders_repo.receipt(db, order, birth, full_address=yours)
         ],
-        yours=viewer is not None and order.purchased_by_user_id == viewer.id,
+        yours=yours,
     )
 
 
